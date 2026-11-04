@@ -1,0 +1,89 @@
+name: contracts-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to a pull request cancels the run it supersedes; every push to main runs to the end.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  forge:
+    name: forge test (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # contracts-projects was missing, so the project hook, the enumeration hook and both
+        # field renderers had no CI at all — the contracts where a bug is least recoverable,
+        # since both hooks are vetoes.
+        package: [protobuf-sol, contracts-core, contracts-companion, contracts-projects]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
+        with:
+          # Pinned, not `stable`. The gas-snapshot check compares committed numbers against a fresh
+          # run, and forge's gas accounting shifts between releases — so a floating toolchain made
+          # the snapshots fail on a schedule nobody controlled. Bumping this is a deliberate act
+          # that comes with regenerating the snapshots.
+          version: v1.4.3
+
+      - name: Install forge dependencies
+        run: ./scripts/install-forge-deps.sh
+
+      # contracts-companion and contracts-projects deploy the content layer from contracts-core's OWN artifacts
+      # (`DeployFromArtifacts` reads ../contracts-core/out, because the addresses commit to core's build), so core must
+      # be built first; without it their tests fail and every later step is skipped.
+      - name: build contracts-core (companion and projects read its out/)
+        if: matrix.package == 'contracts-companion' || matrix.package == 'contracts-projects'
+        working-directory: packages/contracts-core
+        run: forge build
+
+      - name: forge build
+        working-directory: packages/${{ matrix.package }}
+        run: forge build --sizes
+
+      - name: forge test
+        working-directory: packages/${{ matrix.package }}
+        run: forge test -vvv
+
+      # The deploy scripts skip their pin check only on a chain whose RPC answers 31337 (`script/LocalChain.sol`). These
+      # fork tests drive both sides of that rule against real nodes, with no third-party endpoint: an anvil on 8453 (an
+      # overridden block.chainid cannot fake a local chain; a drifted build is refused) and a default 31337 anvil (it is
+      # local, and the same node is not local when its eth_chainId call fails).
+      - name: deploy gate against real nodes
+        if: matrix.package == 'contracts-core' || matrix.package == 'contracts-companion'
+        working-directory: packages/${{ matrix.package }}
+        run: |
+          anvil --chain-id 8453 --port 8546 > /dev/null 2>&1 &
+          remote=$!
+          anvil --port 8547 > /dev/null 2>&1 &
+          local=$!
+          trap 'kill $remote $local' EXIT
+          for port in 8546 8547; do
+            for i in $(seq 1 30); do
+              curl -sf -X POST -H 'content-type: application/json' \
+                --data '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' "http://127.0.0.1:$port" > /dev/null && break
+              if [ "$i" = 30 ]; then echo "anvil on $port did not start" && exit 1; fi
+              sleep 1
+            done
+          done
+          ABXFS_GATE_RPC_URL=http://127.0.0.1:8546 ABXFS_LOCAL_RPC_URL=http://127.0.0.1:8547 \
+            forge test -vvv --match-contract "DeployGateFork|LocalChainFork"
+
+      # Fuzz and invariant tests are excluded: their snapshot line records mean and median gas
+      # over random inputs, so it moves every run and can never match. `contracts-core` passed this
+      # check before only because it happens to have no fuzz tests.
+      - name: gas snapshot check
+        working-directory: packages/${{ matrix.package }}
+        run: |
+          forge snapshot --check --no-match-test "testFuzz|invariant" \
+            || (echo "Gas snapshot changed. Regenerate with: forge snapshot --no-match-test 'testFuzz|invariant'" && exit 1)

@@ -1,0 +1,97 @@
+{
+  "profile": {
+    "cid_version": 1,
+    "raw_leaves": true,
+    "chunker": "fixed-size",
+    "chunk_size": 262144,
+    "max_links": 174
+  },
+  "flat_chunked": {
+    "file_size": 286720,
+    "file_seed": "flat-chunked",
+    "sibling_seed": null,
+    "entries": [
+      {
+        "path": "big.bin",
+        "cid": "bafybeiag4mu6wqcrwrhlrkgvrn6ursegdqs2keggqgvetaky2yavzvdffq",
+        "cidBytes": "0x0170122006e329eb4051b44eb8a8d58b7d48c8861c25a510c681aa498158d6015cd4652c",
+        "unixfs": "file"
+      },
+      {
+        "path": "",
+        "cid": "bafybeiezgdqs5ajxeeexm2j5hlwjho2nug7ovtcpn47afre3nqznn6ir4e",
+        "cidBytes": "0x017012209930e12e8137210976693d3aec93bb4da1beeacc4f6f3e02c49b6c32d6f911e1",
+        "unixfs": "directory"
+      }
+    ],
+    "wrap_cid": "bafybeiezgdqs5ajxeeexm2j5hlwjho2nug7ovtcpn47afre3nqznn6ir4e"
+  },
+  "nested_chunked": {
+    "file_size": 286720,
+    "file_seed": "nested-chunked",
+    "sibling_text": "hello from inside the subdirectory\n",
+    "entries": [
+      {
+        "path": "root/sub/big.bin",
+        "cid": "bafybeiertmu2yxxbydwhjlxcuw3ykvwvn6shpnqvhzdlhpuzfrewnzoysm",
+        "cidBytes": "0x01701220919b29ac5ee1c0ec74aee2a5b78556d56fa477b6153e46b3be992c4966e5d893",
+        "unixfs": "file"
+      },
+      {
+        "path": "root/sub/note.txt",
+        "cid": "bafkreibfcq67lrotazp55hfkg4ye27njtqrocmcs3s43tiui7rrexd5xvm",
+        "cidBytes": "0x0155122025143df5c5d3065fde9caa37304d7da99c22e13052dcb9b9a288fc624b8fb7ab"
+      },
+      {
+        "path": "root/sub",
+        "cid": "bafybeibphmfjjukcpirhkuv52n5aqxldii3vabcw7nhnb7brbbn5kxpmfm",
+        "cidBytes": "0x017012202f3b0a94d1427a227552bdd37a085d634237500456fb4ed0fc31085bd55dec2b",
+        "unixfs": "directory"
+      },
+      {
+        "path": "root",
+        "cid": "bafybeifllaegbpepwifwm7jpyaopntcjtbouh3cqq2vjp6nyauzvy2tmoe",
+        "cidBytes": "0x01701220ab580860bc8fb20b667d2fc01cf6cc49985d43ec5086aa97f9b805335c6a6c71",
+        "unixfs": "directory"
+      }
+    ],
+    "root_cid": "bafybeifllaegbpepwifwm7jpyaopntcjtbouh3cqq2vjp6nyauzvy2tmoe",
+    "sub_cid": "bafybeibphmfjjukcpirhkuv52n5aqxldii3vabcw7nhnb7brbbn5kxpmfm",
+    "file_cid": "bafybeiertmu2yxxbydwhjlxcuw3ykvwvn6shpnqvhzdlhpuzfrewnzoysm",
+    "sibling_cid": "bafkreibfcq67lrotazp55hfkg4ye27njtqrocmcs3s43tiui7rrexd5xvm"
+  },
+  "end_to_end": {
+    "file_size": 286720,
+    "file_seed": "e2e-nested-chunked",
+    "readme_text": "# end-to-end test project\n",
+    "entries": [
+      {
+        "path": "proj/readme.md",
+        "cid": "bafkreic3dhyr4dha67lk4vovhvt5ck4y5cndkvgvni2ocvx6f4jbt3swsa",
+        "cidBytes": "0x015512205b19f11e0ce0f7d6ae55d53d67d12b98e89a3554d56a34e156fe2f1219ee5690"
+      },
+      {
+        "path": "proj/sub/big.bin",
+        "cid": "bafybeib3qtvznkck6odzclwrzhc5ze6slwtp3uuaej2amw275ha7kl3zs4",
+        "cidBytes": "0x017012203b84eb96a84af387912ed1c9c5dc93d25da6fdd2802274065b5fe9c1f52f7997",
+        "unixfs": "file"
+      },
+      {
+        "path": "proj/sub",
+        "cid": "bafybeieqiffpuifwfbe67ixmp2svjhbvoffvprwon3tfd4zzplvkpxesp4",
+        "cidBytes": "0x0170122090414afa20b62849efa2ec7ea5549c35714b57c6ce6ee651f3397aeaa7dc927f",
+        "unixfs": "directory"
+      },
+      {
+        "path": "proj",
+        "cid": "bafybeihebubkyjsws2ofeck2d23dbc2sxxoqofwu5etlr2cfhizmpjfkui",
+        "cidBytes": "0x01701220e40d02ac2656969c52095a1eb6308b52bddd0716d4e926b8e8453a32c7a4aaa2",
+        "unixfs": "directory"
+      }
+    ],
+    "root_cid": "bafybeihebubkyjsws2ofeck2d23dbc2sxxoqofwu5etlr2cfhizmpjfkui",
+    "sub_cid": "bafybeieqiffpuifwfbe67ixmp2svjhbvoffvprwon3tfd4zzplvkpxesp4",
+    "file_cid": "bafybeib3qtvznkck6odzclwrzhc5ze6slwtp3uuaej2amw275ha7kl3zs4",
+    "readme_cid": "bafkreic3dhyr4dha67lk4vovhvt5ck4y5cndkvgvni2ocvx6f4jbt3swsa"
+  }
+}

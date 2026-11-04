@@ -1,0 +1,5 @@
+{
+  "title": "Reference",
+  "icon": "BookBookmark",
+  "pages": ["deployments", "cli", "sdk", "reads"]
+}

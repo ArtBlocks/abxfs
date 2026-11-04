@@ -1,0 +1,51 @@
+name: Bug report
+description: Report reproducible incorrect behavior in ABX FS
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not disclose vulnerabilities or credentials here. Use the private process in SECURITY.md.
+        To report content served by the site, email legal@artblocks.io.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Contracts
+        - SDK
+        - CLI
+        - Gateway or content origin
+        - Pinning
+        - Site (fs.abx.io)
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: 0.x.y or commit SHA
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include the chain, commands and redacted output. Never paste an environment file, a private key or a keyed RPC URL.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true

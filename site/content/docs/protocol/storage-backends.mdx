@@ -1,0 +1,106 @@
+---
+title: "Storage backends"
+description: "Where a chunk's bytes live is a choice per chunk, made by the writer and bound into the chunk's id."
+---
+
+A chunk's bytes live in a **storage backend**: any contract that implements a
+five-function interface. Nothing registers backends and nobody approves them.
+The backend's address is part of every chunk id, so choosing one is the writer's
+business and cannot affect content stored through any other.
+
+```solidity
+interface IStorageBackend {
+  error NotEvmReadable();
+
+  function store(bytes calldata input, address caller) external returns (bytes32 pointer);
+  function readable() external view returns (bool);
+  function retrieve(bytes32 pointer) external view returns (bytes memory data);   // reverts NotEvmReadable() if !readable()
+  function retrieval() external view returns (bytes32 scheme, string memory instructions);
+  function maxInputSize() external view returns (uint256);
+}
+```
+
+Only `ChunkStore` ever calls a backend. The file and directory stores, the
+project hook and the token renderers never do.
+
+`caller` is the account that called `ChunkStore.write`. It lets a backend
+charge, meter or gate writers, for example by debiting a deposit it holds,
+without a new `ChunkStore`. Anyone can call a backend directly and claim any
+`caller`, so a backend that acts on it must first check that `msg.sender` is
+the `ChunkStore` it serves. Rewriting a chunk that already exists never reaches
+the backend, so a writer pays at most once per chunk. The backends ABX FS ships
+ignore `caller`.
+
+## What `ChunkStore` checks
+
+A chunk id commits to the backend, the exact input handed to it, and the claimed
+hash and size of the chunk's **data** (what `retrieve` returns):
+
+```text
+chunkId = keccak256(0x30 ‖ backend ‖ keccak256(input) ‖ dataHash ‖ uint48(size))
+```
+
+`ChunkStore.write(backend, input, dataHash, size)` stores the input through the
+backend and, when the backend says it is `readable()`, reads the data straight
+back and refuses to record the chunk unless it matches `dataHash` and `size`.
+`ChunkStore.read(id)` checks the same thing on every read. For a backend the EVM
+cannot read, the claims are still bound into the id, so a false claim only
+produces an id no honest writer would ever compute: nobody can occupy an id
+someone else will use.
+
+A backend that misbehaves can make **its own** chunks unavailable or expensive to
+read. It cannot change what any id means. `retrieval()` is a best-effort,
+untrusted description of how to fetch the bytes off chain; whatever a reader
+fetches is checked against the chunk record.
+
+## The launch backends
+
+Both store `0x00 ‖ input` as the code of a contract deployed with CREATE2 (the
+leading `STOP` keeps it from running), both are readable, and both accept 1 to
+24,575 bytes of input: EIP-170's 24 KiB code limit minus that byte. The cap is a
+constant, so each backend has one address on every chain.
+
+| Backend | `retrieve` returns | Used for |
+| --- | --- | --- |
+| `Sstore2Backend` | the stored bytes | media, anything incompressible, and data a file codec already compressed |
+| `FastLzSstore2Backend` | the stored bytes, inflated with Solady's `LibZip.flzDecompress` | compressible text: stored compressed, inflated on chain on every read |
+
+The SDK chooses per chunk: FastLZ when it makes that chunk smaller, raw
+otherwise. FastLZ only references back 8 KiB, so compressing each chunk on its
+own costs almost nothing against compressing the whole file. Either way the chunk
+id commits to the chunk's data, so the choice changes how compactly a chunk is
+kept, never what a reader gets. See [Compression](/docs/using-abxfs/compression).
+
+<Callout type="warn">
+The backend's **address** is part of every chunk id. Deploying your own
+backend creates chunks that will not deduplicate against, or produce the same
+CIDs as, the canonical ones. That is a protocol-level choice, not a
+configuration one.
+</Callout>
+
+## Writing your own
+
+A backend may compress, may keep its bytes in state, in logs, in blobs or
+anywhere else, and may charge for storage (it holds its own deposit: no ABX FS
+contract accepts ETH). It may also change its behaviour at any time — any code
+can, including an EIP-7702 account or a proxy. That is the general property:
+availability is declared, never certified, and integrity never depends on it.
+
+| Situation | Backend shape |
+| --- | --- |
+| Ordinary EVM chain | `Sstore2Backend` or `FastLzSstore2Backend` |
+| A chain with a larger code-size limit | the same design with a larger cap, at its own address |
+| L2/L3 with cheap calldata | bytes in a log or in calldata, not EVM-readable |
+| EIP-4844 blob awareness | a blob backend, not EVM-readable |
+| An existing protocol's blob store | an adapter |
+
+A backend that is not EVM-readable needs an off-chain reader for its
+`retrieval()` scheme in every client that should read it. The SDK reads through
+`ChunkStore.read` today; for a chunk it cannot read that way it throws
+`ChunkUnavailableError`, carrying the backend's own `retrieval()` answer.
+
+## Cancun is required
+
+All sources target Solidity 0.8.24 and EVM Cancun. The IPFS resolver uses
+`mcopy` directly, and the compiler may emit it anywhere for that target. On a
+pre-Cancun EVM, reads fail with an invalid-opcode error (anvil reports `OpcodeNotFound`).

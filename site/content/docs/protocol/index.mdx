@@ -1,0 +1,168 @@
+---
+title: "Architecture"
+description: "Two layers: permissionless content, and an NFT that points at it."
+---
+
+ABX FS is a content-addressed, immutable filesystem whose index lives in
+contract storage and whose bytes live in pluggable storage backends. Everything
+else follows from one split.
+
+<Callout type="warn">
+**Prerelease, and unaudited.** The protocol is early and may have bugs, and its
+contracts have had no independent security audit. Everything on chain is immutable: a bug found later is
+fixed by deploying new contracts, never by changing these.
+</Callout>
+
+ABX FS is deployed on production networks and their testnets, at the same addresses on each
+(see [Deployments](/docs/reference/deployments)). The specifications are
+`specs/abx-fs.md` (the content layer) and `specs/abx-fs-orgs.md` (orgs and projects) in the repository.
+
+## Two layers
+
+**The content layer is permissionless and immutable.** Anyone can write bytes.
+Nothing is owned, nothing can be changed, and identical content deduplicates on
+write. A root CID resolves whether or not anybody has claimed it.
+
+**The project layer is an NFT.** A project is an [ABX](https://docs.abx.io)
+token, and `ownerOf` is the entire authorization model. Its owner publishes root
+CIDs and moves tags.
+
+Content does not need a project to exist or resolve. A project is one
+representation of content, and anyone can build a different one over the same
+bytes.
+
+## The content layer
+
+| Contract | Role |
+| --- | --- |
+| `ChunkStore` | Content-addressed chunk records. A write hands the chunk's input to a storage backend and records where it went; a known chunk writes nothing. |
+| `IStorageBackend` → `Sstore2Backend`, `FastLzSstore2Backend` | Where a chunk's bytes live. The two launch backends deploy a contract whose bytecode is the input; the FastLZ one stores compressed input and inflates it on every read. See [Storage backends](/docs/protocol/storage-backends). |
+| `FileStore` | A file: a tree of chunk nodes whose leaves hold `(chunkId, size)` records, plus a MIME type and an optional file codec. |
+| `DirectoryStore` | A directory: a tree of entry nodes whose leaves hold byte-sorted `(name, childCid, isDirectory)` records. A name is 1 to 255 raw bytes (not necessarily UTF-8) with no `/` or `\`, sorted in unsigned byte order. |
+
+Every id is a keccak256 hash of a complete definition behind a one-byte domain tag:
+
+```text
+chunkId      = keccak256(0x30 ‖ backend ‖ keccak256(input) ‖ dataHash ‖ uint48(size))
+nodeId       = keccak256(0x41 ‖ blob)   chunk nodes      keccak256(0x42 ‖ blob)   entry nodes
+fileCid      = keccak256(0x31 ‖ rootNode ‖ keccak256(bytes(mimeType)) ‖ codec ‖ outputHash)
+directoryCid = keccak256(0x32 ‖ rootNode)
+```
+
+`input` is what the backend was given (FastLZ output, or the data itself); `dataHash` and `size` describe the
+chunk's data, which is what the backend returns. `codec` is an optional off-chain file codec and `outputHash`
+pins what it decodes to; both are zero without one (see [Compression](/docs/using-abxfs/compression)).
+
+Consequences worth internalizing:
+
+- **The backend address is part of every chunk id.** The same bytes stored through a different backend are a
+  different chunk, a different file CID and a different root — not a configuration preference. Use the
+  [canonical addresses](/docs/reference/deployments). No backend can affect content stored through another.
+- **Every chunk is checked.** For a backend the EVM can read, `ChunkStore` reads the data back and checks it
+  against `dataHash` and `size` before recording the chunk, and again on every read. Like any dapp, a reader
+  trusts the RPC endpoint it reads through, so use one you trust (or your own node).
+- **Empty files and empty directories exist.** A root node of zero is the empty file (no chunks, no codec) or
+  the empty directory. The empty directory always exists.
+
+### Trees of nodes
+
+A file or directory is a **tree of nodes**, built bottom-up over as many transactions as it needs:
+
+- A node is one immutable blob of at most 24,575 bytes, kept as contract code inside the store and identified
+  by the hash of its bytes. Leaves (level 0) hold the data; branches (levels 1 to 3) hold 2 to 128 child ids.
+  - A chunk leaf holds 1 to 646 `(chunkId, size)` records of 38 bytes each, as many as fit one node. The SDK
+    packs at most 512, so that a leaf write stays well inside one transaction.
+  - A directory leaf holds as many `(name, childCid, isDirectory)` records as fit one node.
+- Any caller can create any node in any order, and a repeat is a no-op. There is no builder state and no
+  owner, so there is nothing to resume except "which nodes already exist?". An interrupted upload picks up
+  by skipping what is on chain.
+- One finalising call (`createFile(rootNode, mimeType, codec, outputHash)` or `createDirectory(rootNode)`)
+  registers the root. `fileExists` / `directoryExists` therefore mean the whole tree was verified when it was
+  created.
+- The chain reads the index to validate new nodes (counts, byte totals, name order), answer a path lookup or a
+  byte seek in one call, and let the project hook confirm that a root exists.
+
+The 24,575-byte cap limits a node, never a chunk count or a file size. The one hard bound is depth: four tiers
+of nodes. At the SDK's packing that is several million chunks per file, so the planner simply uses as many
+levels as it needs. A big folder or file is not refused for its size: it is more transactions (the CLI adds its own
+memory limits: 256 MiB per file, 1 GiB per upload). The only refusal is
+`PlanTooLargeError`, raised **before anything is written**, with `reason: "levels"` (the tree would need more
+than the level cap) or `reason: "node-gas"` (one node alone would exceed the single-call gas ceiling).
+
+Packing is a client convention, and content-defined: a node ends where an item's hash says so (between a minimum
+and a maximum), so an edit rewrites the nodes around it rather than every node after it. Identical content packs
+identically; a different packing is simply a different CID for the same content.
+
+## The project layer
+
+Project state rides on ABX PostParams:
+
+| Param | Holds |
+| --- | --- |
+| `abxfs.cid` | The current root CID. |
+| `abxfs.name` | A display name. Metadata only. |
+| `abxfs.gateway` | An optional preferred IPFS gateway: an availability hint the owner publishes. |
+| `abxfs.view` | An optional URL for the live project. Marketplaces show it as the token's `animation_url` and `external_url`. See [Token links](/docs/using-abxfs/token-links). |
+| `abxfs.meta` | Reserved for per-client data. The protocol attaches no meaning to it. |
+
+`ProjectHook` is a **configure hook** — a veto that runs before any param
+value persists. It is what makes the layer coherent:
+
+- **Roots must exist, and are kind-locked.** The first publish records whether the root is a
+  directory or a file, by probing the stores. Every later publish re-probes and
+  reverts with `RootKindLocked` on a mismatch. CIDs carry no kind bit, so
+  persisting it once lets consumers branch on a single field. The hook never calls a storage backend.
+- **Versions are append-only.** Each publish appends to a `uint32`-numbered
+  history held in hook storage, alongside an org-wide publish ledger and one ledger across every org.
+- **Tags are mutable named pointers.** `latest` is reserved and always resolves
+  to the current root.
+
+A second hook, `ProjectEnumeration`, runs on transfer and maintains the
+owner → tokens index (and which orgs an address holds a project in). ABX collections
+are not `ERC721Enumerable`, so without it "which projects does this address own" has no
+on-chain answer. An org's whole token set needs no index: an org numbers its tokens
+`0 … nextTokenId() - 1` in mint order, and nothing in it can be burned.
+
+**Ownership transfer is a plain ERC-721 transfer**: one transaction, immediate,
+irreversible. It hands over the sole right to publish and to move tags.
+
+## No roles, no registries
+
+No contract has an owner or an upgrade path, and none accepts ETH. (An org's admin is a record in its factory and controls only who may mint.) Nothing registers storage
+backends: a backend is any contract, and its address is part of every chunk id that uses it. Every contract is
+deployed with CREATE2 through the keyless deployer, with no sender-dependent constructor argument, so it sits at
+the same address on every chain. Its bytecode carries solc's metadata hash, so the address commits to the exact
+source it was built from, comments included.
+
+## No indexer, by construction
+
+Every query is an `eth_call` against contract storage. Version history, tags,
+the recent-publish feed, and ownership all live in hook storage that the hooks
+maintain as writes happen.
+
+Event logs are not a substitute: providers prune them on a rolling window, so
+an index built on events expires while one built on storage does not. That is
+why the hooks carry state at all.
+
+## Companion contract
+
+**`IpfsCidResolver`** derives a canonical IPFS CIDv1 on chain, view-only, from
+the stored content. It is optional and not on the path to reading content. See
+[IPFS](/docs/using-abxfs/ipfs).
+
+A permissionless contract that records root → IPFS CID over several
+transactions, for content too large for one call, may be added later; it would
+only read the stores.
+
+## Determinism
+
+1. Same bytes, same backends, same codec → same file CID, across clients and languages.
+2. Same tree → same directory CID, given byte-sorted entries.
+3. Same content → same IPFS CID, whatever backends or codec stored it.
+
+## Papers
+
+The on-chain IPFS derivation technique is published as a defensive publication:
+[On-Chain Reconstruction of IPFS Content Identifiers from EVM-Resident Content-Addressed Data](https://www.tdcommons.org/dpubs_series/11507/).
+A second covers deriving them across chains:
+[Trustless Cross-Chain Derivation of IPFS Content Identifiers via Zero-Knowledge Proofs](https://www.tdcommons.org/dpubs_series/11508/).

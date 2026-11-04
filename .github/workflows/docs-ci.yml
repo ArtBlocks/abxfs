@@ -1,0 +1,45 @@
+name: docs-ci
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", "pnpm-lock.yaml", ".github/workflows/docs-ci.yml"]
+  pull_request:
+    paths: ["site/**", "pnpm-lock.yaml", ".github/workflows/docs-ci.yml"]
+
+# A newer push to a pull request cancels the run it supersedes; every push to main runs to the end.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    name: Docs site build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # No `version:` here on purpose — see the note in sdk-ci.yml.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # Only the docs package and what it depends on. The site imports nothing
+      # from the workspace, so contracts and Foundry are not needed here.
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile --filter @abxfs/docs...
+
+      - name: Typecheck
+        run: pnpm --filter @abxfs/docs typecheck
+
+      # `next build` is the real gate: it resolves every MDX file, so bad
+      # frontmatter, an unknown lucide icon, or an unresolvable import fails
+      # here rather than on Vercel after merge.
+      - name: Build
+        run: pnpm --filter @abxfs/docs build

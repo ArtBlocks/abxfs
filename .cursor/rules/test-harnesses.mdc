@@ -1,0 +1,71 @@
+---
+description: Test harnesses must use OS-assigned ephemeral ports, never hardcoded constants.
+globs: "**/test/**/*.ts,**/test/**/*.tsx,**/test/helpers/**"
+alwaysApply: false
+---
+
+# Test harnesses must not hardcode network ports
+
+We run the workspace with `pnpm -r test` (parallel by default). Two suites that
+both spawn `anvil` (or any TCP listener) on the same hardcoded port will
+deterministically collide and one will fail with `Connection refused` / `EADDRINUSE`.
+
+## The rule
+
+Any test helper that spawns a process binding a TCP port MUST request a free
+port from the OS at startup, not pin a constant. The canonical pattern lives in
+`packages/sdk/test/helpers/anvil.ts::pickFreePort`.
+
+## Why ephemeral, not "pick the next one"
+
+- Per-package port offsets (`18545`, `18546`, …) appear safe until a third
+  package reuses one or a developer runs the suite alongside an unrelated dev
+  server. The failure mode is intermittent and confusing.
+- OS-assigned ports (`listen(0)`) are coordination-free. The TOCTOU window
+  between closing the probe listener and `anvil` binding is tens of
+  milliseconds and the kernel does not aggressively recycle in that window.
+
+## Examples
+
+### BAD
+
+```typescript
+const ANVIL_PORT = 18545;
+const ANVIL_URL = `http://127.0.0.1:${ANVIL_PORT}`;
+
+const anvil = spawn("anvil", ["--port", String(ANVIL_PORT), ...]);
+```
+
+### GOOD
+
+```typescript
+import { createServer } from "node:net";
+
+async function pickFreePort(): Promise<number> {
+  return new Promise((resolveFn, rejectFn) => {
+    const srv = createServer();
+    srv.unref();
+    srv.on("error", rejectFn);
+    srv.listen(0, "127.0.0.1", () => {
+      const addr = srv.address();
+      if (!addr || typeof addr === "string") {
+        srv.close();
+        rejectFn(new Error("failed to read ephemeral port"));
+        return;
+      }
+      const port = addr.port;
+      srv.close(() => resolveFn(port));
+    });
+  });
+}
+
+const port = await pickFreePort();
+const rpcUrl = `http://127.0.0.1:${port}`;
+const anvil = spawn("anvil", ["--port", String(port), ...]);
+```
+
+## Allowed exception
+
+Tests that need a stable URL across multiple processes (e.g. shelling out to a
+CLI that reads a config file written ahead of time) MAY accept an explicit
+`port` option, but the DEFAULT must still be ephemeral.

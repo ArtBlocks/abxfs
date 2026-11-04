@@ -1,0 +1,13 @@
+{
+  "name": "@abxfs/protobuf-sol-fixtures",
+  "private": true,
+  "type": "module",
+  "description": "Local tooling to regenerate IPFS CID fixtures (not published).",
+  "dependencies": {
+    "@ipld/dag-pb": "^4.1.5",
+    "blockstore-core": "^6.1.3",
+    "ipfs-unixfs": "^11.2.1",
+    "ipfs-unixfs-importer": "^16.1.5",
+    "multiformats": "^13.3.7"
+  }
+}

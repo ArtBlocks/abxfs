@@ -1,0 +1,305 @@
+---
+title: "Projects"
+description: "An NFT in an org that points at content. Its owner publishes versions and moves tags; nobody else can."
+---
+
+A project is an [ABX](https://docs.abx.io) NFT inside an **org**. `ownerOf` is the
+entire authorization model — publishing rights follow the token, with no
+migration step and no separate registry.
+
+## Orgs
+
+An org is its own ABX collection, created by one immutable factory. Its URL, its
+collection on a marketplace and its neighbours are its own, not a shared pool's.
+It separates the *project* layer only: a root's content URL is still one global store,
+so the same bytes resolve whichever org published them.
+
+**An org works like an NFT collection, not like a GitHub org: a project belongs to
+whoever holds its token.** The admin decides who may create projects in the org,
+and nothing after that.
+
+| Role | Can | Cannot |
+| --- | --- | --- |
+| ABX FS / the factory | Nothing. The factory renounces ownership of every org as it creates it. | Change any org or any project. |
+| Org admin | Mint a project to any address. Open the org so anyone can mint, or close it. Hand the admin role on (which closes the org). | Publish to, rename, tag, transfer or take back any project once it is minted, including one it minted. |
+| Project holder | Publish versions, set the name and token links, move tags, transfer or sell the project. | Mint (unless the org is open, like anyone else), or change the org. |
+
+That is deliberate. A holder can rely on nobody, the admin included, being able to
+rewrite their project. Publishing is ABX's own token-owner check on the token's
+`abxfs.cid` param, and tags are checked against the same `ownerOf`. The ABX FS hooks
+can only refuse an action, never grant one, so there is no code path by which an
+admin could be let in.
+
+Because the factory renounces ownership of every org when it creates it,
+nobody — not ABX FS, not the org's admin — can change its schema, hooks,
+renderers, minter or supply cap. Fixing anything is a new factory version, which
+means a new org address. An org holds at most 1,000,000 projects, which keeps every
+project's host name within DNS's 63-character label limit.
+
+The org's **admin** is a record in the factory: one address, with no delegate
+list. Handing the role on is two steps — the admin offers, the new admin
+accepts (accepting is refused unless an offer to you is pending) — so a mistyped address cannot strand an org. If the role is lost while the org is closed, nobody
+can mint into it again, and if it was left open, anyone still can; the projects already in it are unaffected.
+
+By default only the admin can mint. An **open** org lets anyone mint, so open
+one only for as long as you need to: an org holds at most 1,000,000 projects,
+that cap can never rise, and while the org is open anyone can fill it. A full
+org takes no new projects; the ones already in it are unaffected. A project
+minted to you by someone else is yours on chain, as with any NFT.
+
+Org names are fixed at creation and self-declared, so they can be copied. The
+address is the identity, and URLs carry addresses, never names.
+
+### On marketplaces
+
+An org is a collection on OpenSea and other marketplaces, and its collection page is
+filled in from the org itself: its name, its **description**, a logo (a monogram drawn from the org's name),
+a banner, and a link to `https://fs.abx.io`, the address frozen into every org. The link
+never points at the org's own page, which is reachable by direct
+link only.
+
+The description is optional and, like the name, **permanent**: it is given when the org
+is created and can never be changed. It is also the description each of the org's tokens
+shows when the project has none of its own. The factory accepts up to 1000 bytes of
+printable ASCII (letters, digits, punctuation, spaces) and line breaks, and if there is
+one at all it must have more than whitespace in it. The site, the CLI
+(`abxfs org create --description`) and the SDK (`validateOrgDescription`) check the same
+rule before sending anything.
+
+A project's token is named after the project (`abxfs.name`) when that name is 1 to 128
+bytes of printable ASCII, not all spaces, and not `-` (how a cleared name reads on chain). Any
+other name, one with an accent or an emoji for example, is still the project's name everywhere
+else, but marketplaces show the token as `<org name> #<id>`. The site says so under the name field.
+
+The token's image is a card drawn on chain: the org's name, the token's `#<id>` (a project can
+name itself after a sibling, so the id is what tells them apart), the project's name, and its
+version count and current root. The card and the token's **Named** trait follow the same name
+rule, so all three agree on whether a project has a name: a name that is not shown reads as
+"untitled" on the card, and Named is No.
+
+Every org is made by one factory, at the same address on every chain. [Deployments](/docs/reference/deployments) lists it, and the chains it is deployed on.
+
+### For teams
+
+Make the org's admin a Safe (or another smart account), and mint the org's
+projects to **that same Safe**. The org then holds and controls its projects, and
+team members act through the Safe. Minting a project to anyone else, a team
+member included, gives it away: from then on only they can publish to it, and the
+admin cannot take it back. The site and `abxfs org mint --to` both warn before such
+a mint.
+
+The Safe does not have to do the uploading. Writing content is permissionless, so
+any team member's wallet can upload the bytes (`abxfs upload ./build` without
+`--name` prints the root). Only the publish has to come from the holder: one
+`configureTokenParam` call on the org's collection pointing the token's `abxfs.cid`
+at that root, plus a `setTag` on the hook if you tag it, which the Safe signs.
+
+If you want to let a member publish without full Safe access, a Safe module such
+as [Zodiac Roles](https://github.com/gnosisguild/zodiac-modifier-roles) can restrict an address to
+specific calls on specific contracts. That is a Safe feature, not an ABX FS one, and
+ABX FS does not configure or check it.
+
+Token-owner delegation (delegate.xyz) is disabled in every org on purpose: a
+delegate would act as the token owner and could rewrite the project. Use a Safe
+instead.
+
+## Identity
+
+| Field | Mutable | Purpose |
+| --- | --- | --- |
+| `(chainId, org, tokenId)` | no | **Canonical identity.** Token ids repeat across orgs, so all three are needed. |
+| `owner` | yes | `ownerOf(tokenId)`. The only address that can publish. |
+| `abxfs.name` | yes | A display label. Not unique, not an identifier. Also the token's name on marketplaces when it is plain ASCII ([On marketplaces](#on-marketplaces)). |
+| `abxfs.view` | yes | Where the token's marketplace links point. Optional. See [Token links](/docs/using-abxfs/token-links). |
+| root kind | locked at first publish | Directory or single file. |
+
+The name is display metadata only, so `"My Cool Art"` is fine. The limits are
+128 bytes and no control characters. Always store `(chainId, org, tokenId)` as
+the handle — never the name.
+
+## Creating one
+
+Minting and publishing are separate acts, and `upload` does both:
+
+```bash
+abxfs upload ./build --name "My Cool Art" --tag v1.0.0 --chain <network>
+```
+
+The rest of this page leaves `--chain` out, as if `ABXFS_CHAIN` named your network.
+
+It mints into `--org` (or `ABXFS_ORG`, or `org` on the chain in `.abxfs.json` — but only in your own
+`ABXFS_CONFIG` or `~/.config/abxfs/config.json`: an `org` in a `.abxfs.json` in the current directory is
+ignored unless you pass `--allow-config-overrides`, because a cloned repository could otherwise choose where
+your project goes).
+With none set, it uses the newest org you administer, and otherwise creates your
+personal org — in one transaction with the first project, which is then the one
+that gets published. An org where you only hold a project is never chosen for you. `abxfs org create [name] [--description <text>]` makes one explicitly (the name defaults to your shortened address).
+On the site, creating an org on first publish asks for an optional name and description.
+
+Keeping minting and publishing apart is what lets you publish into a token you
+already hold, or bought from someone else:
+
+```bash
+abxfs upload ./build --project-id 17 --org 0x…
+```
+
+A project can exist with nothing in it: an org admin minted it to you (`abxfs org mint`, or "mint to address"
+in the admin panel), or you minted one and never published. On the site, open it: as its owner you see a
+**Publish the first version** card on the Files tab (and on its `/update` page) where you drop a folder, name the
+project and optionally tag it, and it is published into that very token with no new mint. Anyone else sees a
+read-only note. From the CLI it is `abxfs upload ./build --project-id 17 --org 0x…`.
+
+If a mint's receipt is slow to arrive, the site and the CLI say it **may still confirm** and show its hash; do not
+mint again. The site remembers the pending transaction in this browser and, on your next publish, reads the
+chain: if the mint confirmed it publishes into that token instead of creating a second, empty one. The hash is
+recorded the moment the transaction is *sent*, so closing the tab mid-mint loses nothing. If the network dropped the
+transaction it will never confirm: the publish page lists it with **It never confirmed: forget this**, which only
+clears the reminder in this browser (it cannot cancel anything). An entry with no receipt after 30 minutes whose
+nonce your wallet has since used is reported as unresolved and never cleared for you, because a wallet speed-up or
+cancel replaces a transaction under a new hash and the replacement may be the mint that confirmed. Check the hash on
+the explorer and use **It never confirmed: forget this** if it is gone. Any reminder is dropped after 24 hours.
+
+Content is written only after the site has checked, fresh from the chain, that your wallet holds the token and that
+it is still unpublished (or still at the version you built on), so a publish that could not end is refused before
+any gas is spent. A large publish is interrupted safely: publishing again re-checks what is already on chain and
+carries on, without paying for it twice. If the version lands but the tag or name step fails, the site says so and
+points to the Tags or Settings tab instead of reporting a failed publish.
+
+With neither `--name` nor `--project-id`, the upload is still complete — the root
+is addressable on its root's own content origin (below) whether or not a token ever points at it.
+
+Minting is free apart from gas, with a royalty of zero that can never be raised (its cap
+is zero too), but it is gated by the org:
+the admin wallet, or anyone at all if the org is open. For a team, see [For teams](#for-teams).
+
+## Versions
+
+Publishing writes the `abxfs.cid` param on the token, and `ProjectHook`
+appends to an on-chain history as it does:
+
+```ts
+await client.publishVersion(tokenId, rootCid);
+```
+
+Reading that history back is a **single `eth_call`** against hook storage. There
+is no indexer, and nothing here depends on event logs — providers prune those,
+and an index that expires is not an index.
+
+Version numbers start at 1 and never change meaning. The first publish also
+locks the root kind: publish a file root and every later version must be a file
+root, or the hook reverts with `RootKindLocked`.
+
+## Tags
+
+Mutable named pointers from `(tokenId, tag) → version`, authorized against
+`ownerOf`:
+
+```bash
+abxfs tag set 17 stable 2 --org 0x…
+abxfs tag get 17 stable --org 0x…
+abxfs tag list 17 --org 0x…
+abxfs tag remove 17 stable --org 0x…
+```
+
+- **Charset** is `^[a-z0-9][a-z0-9._-]{0,63}$`. Dots are allowed so semver
+  shapes work. Uppercase is rejected, so case-folding cannot produce two tags
+  that look identical but address differently.
+- **`latest` is reserved and virtual.** It always resolves to the head, has no
+  storage, and writes to it revert — so every project has a resolvable `latest`
+  and no off-chain resolver needs a special case.
+- **A tag pins its version.** Moving the head does not drag a tag forward. That
+  is the point: a contract reading `tag/stable/render.js` is undisturbed by an
+  unrelated publish.
+
+Semver is a convention, not a protocol feature. The on-chain primitive is a flat
+`tag → version` map; the SDK ships `isSemverTag` and `pickLatestSemverTag`.
+
+A tagged publish is **two transactions** — the CID lands on the collection and
+the tag on the hook, so no single-contract multicall spans them.
+
+## Transferring
+
+One transaction, immediate and irreversible:
+
+```bash
+abxfs transfer 17 0xNewOwner --org 0x…
+```
+
+There is no window in which to reconsider. Transferring the token transfers the
+sole right to publish and to move tags. Both the CLI and the web UI confirm
+before sending.
+
+The upside is that projects are sellable on any marketplace.
+
+## A preferred gateway
+
+`abxfs.gateway` names an IPFS gateway where the project is pinned: an availability hint
+the owner publishes, shown on marketplaces as the **Preferred IPFS Gateway** trait. The
+ABX FS gateway does not fetch through it. Bytes from an IPFS gateway are only trustworthy
+once checked against the IPFS CID of the on-chain content, and deriving that CID reads the
+file from chain anyway, so every file is served from chain. Another reader may use the hint
+by its own policy. Set it if you pin; ignore it otherwise. Clearing it writes `-` (ABX cannot set a
+token-owner param back to nothing), which the trait reads as **None**.
+
+It must be a public `https://` URL: no credentials, no `localhost`, no private or loopback
+address. The site and the SDK refuse anything else, and a stored value that fails the check is
+never drawn as a link. `abxfs.view` (where token links point) is held to the on-chain charset,
+which refuses `"` `'` `&` `<` `>` `\`, the backtick, `(` `)` `[` `]` `{` `}` `|` and `^`, and is shown as a link only
+when it also passes the public-host check.
+
+## Resolving
+
+Every project is served from **its own origin**, so a site hosted on ABX FS can use
+root-absolute links (`/style.css`) and nothing it runs shares an origin with the app:
+
+```text
+https://<chainId>-<org>-<tokenId>.<content domain>/<path>      the head
+https://<chainId>-<org>-<tokenId>-v<n>.<content domain>/<path>  a fixed version
+https://c-<root, base32>.<content domain>/<path>                raw content, no project needed
+/projects/<chainId>/<org>/<tokenId>                              the project's page (app)
+/orgs/<chainId>/<org>                                            the org's page, by direct link only
+```
+
+`<org>` is the 40 lowercase hex characters without `0x`. The label is one DNS label, so a single
+wildcard certificate covers every project. A tag is not addressable by host (a tag may hold
+characters a hostname cannot); its content is reachable at the version it points to, which is what
+the project page's share link uses for a tagged selection. The project page shows the project's
+own URL in its header; the live preview is a sandboxed frame on that origin, without
+`allow-same-origin`.
+
+### Cookies on the content domain
+
+Separate origins keep projects apart for scripts, storage and fetches, but **not for cookies**. Browsers decide
+which hosts count as "the same site" from the [Public Suffix List](https://publicsuffix.org), and the content domain
+is not on it: the list admits a domain like this one only once thousands of people publish under it. Until then,
+any project can set a cookie for the whole content domain, and that cookie reaches every other project a visitor
+opens there. So, for a project served on the content domain:
+
+- do not keep anything sensitive (a session, a token, a secret) in cookies, and do not trust a cookie you read:
+  another project may have set it. `localStorage` and `IndexedDB` are per origin and are not affected;
+- a project can, for a visitor who opened it, fill those shared cookies until other projects fail to load for
+  that visitor (clearing the browser's cookies for the content domain fixes it).
+
+The site itself sets and reads no cookies on the content domain. This note will go once an entry ships in current
+browsers.
+
+The site serves these hosts from a separate deployment on its content domain. To serve them yourself, run the
+[gateway](/docs/using-abxfs/run-a-gateway) with `--content-domain`.
+
+The old `/g/p/…` and `/g/cid/…` paths on the app are not a way to read a project any more: they are
+redirects to the project's own host (a bare token id would name a different project in every org, so the
+redirect always carries the chain and org). The gateway serves only orgs the factory created; any other
+address is a 404. An org page is not
+linked from anywhere else and is not indexed.
+
+A directory root with no sub-path serves `index.html` when present, and a
+listing otherwise — which is what makes a project URL a website.
+
+Caching follows whether a URL can ever address different bytes. Only a **root** host (`c-…`) serving the root
+itself (a file root, or a directory root's own listing) is `immutable` and cached for a year. Anything else a
+root host serves, such as a directory root's `index.html` or a path under it, gets
+`max-age=60, s-maxage=60, stale-while-revalidate=30`, because the CID actually served is only known after resolving,
+and an `immutable` response could never be revoked. Project hosts are never `immutable`, pinned versions included: a
+pinned version is `max-age=60, s-maxage=60, stale-while-revalidate=30`, and `latest` and tags are
+`max-age=10, s-maxage=60, stale-while-revalidate=30`. Responses carry `x-abxfs-root` (the root CID the URL
+resolved to) and a strong `ETag`.

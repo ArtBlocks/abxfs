@@ -1,0 +1,103 @@
+---
+title: "Quickstart"
+description: "Put a folder on chain, and read it back from anywhere."
+---
+
+ABX FS is deployed on production networks and their testnets, at the same addresses
+on each; [Deployments](/docs/reference/deployments) lists them. Every command below
+takes the production or test network of your choice. The testnets take faucet ETH,
+and are the place to try things first.
+
+<Callout type="warn">
+**Prerelease, and unaudited.** ABX FS is early software and may have bugs; we do
+not guarantee it is bug-free. Its contracts have had internal reviews but no
+independent security audit; ABX, which every org is built on, has had none either.
+Everything you publish is public and permanent: nothing on chain can be edited or
+deleted, by you or by us. On a production network you are spending real funds;
+try things on a testnet first.
+</Callout>
+
+## Two layers, kept separate
+
+The distinction worth learning before anything else:
+
+- **Content** is permissionless and immutable. Anyone can write bytes; they are
+  addressable by CID forever; nothing owns them.
+- **A project** is an [ABX](https://docs.abx.io) NFT inside an **org**. Its owner
+  publishes root CIDs to it and moves tags. `ownerOf` is the entire authorization
+  model.
+
+Content does not need a project to exist or resolve. A project is one
+representation of content, and anyone can build a different one.
+
+## The CLI
+
+The `abxfs` CLI uploads, publishes, diffs, verifies and pins. It is **not published
+to npm yet**, so today it is built from the repository:
+
+```bash
+pnpm install
+pnpm --filter "@abxfs/cli..." build   # the CLI and the packages it uses
+alias abxfs="node $PWD/packages/cli/dist/index.js"
+```
+
+Reads need nothing else; the canonical addresses are compiled in. `--chain`
+names the network, and there is no default: a command without one lists the
+names (set `ABXFS_CHAIN` to name it once for the shell). Project commands need an org:
+
+```bash
+abxfs read <root> --path index.html --chain <network>
+abxfs info --project-id 0 --org <org> --chain <network>
+```
+
+Writes need a funded key, in the environment only — the CLI never reads one from
+disk:
+
+```bash
+export ABXFS_PRIVATE_KEY=0x…
+abxfs upload ./site --chain <network> --dry-run          # compute CIDs, spend nothing
+abxfs upload ./site --chain <network> --name my-project  # mint and publish
+```
+
+With `--name` and no `--org`, the upload uses `ABXFS_ORG` or the `org` in your config if
+you set one, else the newest org you administer. If you administer none, your own
+**org** is created in the same transaction as the project, so there is no extra
+signature.
+
+The upload is chunked, deduplicated against what is already on chain, and
+compressed per chunk with FastLZ by default (the chain inflates it itself). Before
+it sends anything it prints the plan (network, org, transactions, the most it can
+cost) and asks you to type `yes`; in a script, pass `--yes`. A big folder is not
+refused; it is more transactions, and running the same upload again after an
+interruption sends only what is missing.
+
+`--dry-run` runs the whole pipeline offline, so you can see the root CID and the
+transaction count before committing to either. To try everything against a local
+chain instead, `abxfs dev` runs Anvil with the contracts deployed (see the
+[CLI reference](/docs/reference/cli)).
+
+## Read it back
+
+When it finishes you get a root CID. Reading is permissionless and needs no wallet,
+no key, and no configuration. A gateway resolves any stored content by CID, whether
+or not a project points at it, from the content's own host (the root, base32-encoded,
+as one DNS label):
+
+```
+https://c-<base32 root>.<content domain>/index.html
+```
+
+Nothing about a gateway is privileged: [run your own](/docs/using-abxfs/run-a-gateway),
+or skip it and read the bytes from contract storage with `abxfs read`.
+
+## In the browser
+
+[fs.abx.io](https://fs.abx.io), Art Blocks' hosted app, does the same upload and
+publish in the browser, with no install.
+
+## Next
+
+- [Projects](/docs/using-abxfs/projects) — orgs, versions, tags, and handing one off.
+- [Compression](/docs/using-abxfs/compression) — FastLZ per chunk, or a file codec.
+- [IPFS](/docs/using-abxfs/ipfs) — the CID your content also has, and pinning it.
+- [Deployments](/docs/reference/deployments) — addresses, and picking an RPC.

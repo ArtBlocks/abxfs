@@ -1,0 +1,50 @@
+[
+  {
+    "value": "0",
+    "encoded_hex": "0x00"
+  },
+  {
+    "value": "1",
+    "encoded_hex": "0x01"
+  },
+  {
+    "value": "127",
+    "encoded_hex": "0x7f"
+  },
+  {
+    "value": "128",
+    "encoded_hex": "0x8001"
+  },
+  {
+    "value": "255",
+    "encoded_hex": "0xff01"
+  },
+  {
+    "value": "256",
+    "encoded_hex": "0x8002"
+  },
+  {
+    "value": "16383",
+    "encoded_hex": "0xff7f"
+  },
+  {
+    "value": "16384",
+    "encoded_hex": "0x808001"
+  },
+  {
+    "value": "2097151",
+    "encoded_hex": "0xffff7f"
+  },
+  {
+    "value": "2147483647",
+    "encoded_hex": "0xffffffff07"
+  },
+  {
+    "value": "4294967295",
+    "encoded_hex": "0xffffffff0f"
+  },
+  {
+    "value": "1000000000000",
+    "encoded_hex": "0x80a094a58d1d"
+  }
+]

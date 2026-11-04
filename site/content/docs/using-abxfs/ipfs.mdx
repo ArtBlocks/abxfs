@@ -1,0 +1,157 @@
+---
+title: "IPFS"
+description: "Every ABX FS root has a canonical IPFS CIDv1, derived identically on-chain and off."
+---
+
+Every ABX FS file and directory has a canonical **IPFS CIDv1**, computable both
+on-chain (`IpfsCidResolver`) and off-chain (`@abxfs/sdk`). The two agree
+byte-for-byte.
+
+This is not a mirror. Nothing is copied anywhere — it is the address the same
+content *would* have on IPFS, which is what lets an independent pin land on an
+address the chain already knows.
+
+## The profile
+
+| Parameter | Value |
+| --- | --- |
+| CID version | v1 |
+| Multihash | `sha2-256` |
+| File codec | `raw` for single-block, `dag-pb` for multi-block |
+| Directory codec | `dag-pb` |
+| Chunk size | 262,144 bytes (256 KiB) |
+| DAG shape | Balanced, raw leaves |
+| Max links per node | 174 |
+| Entry ordering | By name, byte order |
+| Base encoding | `base32`, lowercase, unpadded |
+
+These are the IPFS defaults for `ipfs add --cid-version=1 --raw-leaves`, so the
+CID matches what a stock IPFS client produces.
+
+A file that fits in one 256 KiB block is `CIDv1(raw, sha256(bytes))`. Larger
+files fold into a balanced DAG: 256 KiB raw leaves, wrapped in groups of ≤174
+links, recursing to a single root. ABX FS's own chunks and node trees never
+enter the derivation: it runs over each file's content and each directory's
+entries. The empty file is
+`bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku` and the empty
+directory `bafybeiczsscdsbs7ffqz55asqdf3smv6klcw3gofszvwlyarci47bgf354`; both
+come out of the same algorithm with zero input.
+
+## On chain
+
+`IpfsCidResolver` is view-only, with no state and no roles. It reads a file's
+chunks through `ChunkStore.read`, which inflates FastLZ chunks on chain, so a
+FastLZ-stored file derives exactly like the raw file with the same content.
+Memory stays flat: chunk data streams through one reused 256 KiB buffer and no
+file is held whole, so a file's cost is linear in its bytes — about 6 gas per
+byte for raw chunks (roughly 4.5 MiB in a 30M-gas `eth_call`, 75 MiB in 500M),
+and more for FastLZ, where inflation is part of the cost (up to about 59 gas a
+byte for long runs of one byte). A directory costs the sum of its children, and
+a child linked from several places is derived each time it appears, so a tree
+that reuses one folder at every level doubles its cost per level.
+
+There is no protocol-level size cap on the resolver. What bounds it is the
+`eth_call` gas budget of the node serving the read — a provider setting, not a
+chain one, so the ceiling moves with your endpoint. Content larger than one call
+is derived off chain. (A permissionless contract that records root → IPFS CID
+over several transactions may be added later.)
+
+Not derivable on chain, by revert:
+
+| Content | On-chain resolver | Off-chain SDK |
+| --- | --- | --- |
+| raw chunks | yes | yes |
+| FastLZ chunks | yes | yes |
+| a file with a codec (`gzip`, `br`, …) | `CodecNotSupported` | yes |
+| a chunk whose backend the EVM cannot read | `RetrieveFailed` | not yet (`ChunkUnavailableError`) |
+
+The SDK surfaces the codec case as `CodecNotSupportedOnChainError`. A gzip file
+**does** have an ordinary IPFS CID; the chain never decodes a file codec, so it
+cannot derive it for you. The SDK, CLI and site derive it off chain, from the
+chain's own bytes.
+
+Addressing the *encoded* bytes instead would sidestep this, and is deliberately
+not done: gateways serve the bytes a CID addresses, so a visitor would get a
+`.gz` file instead of the page.
+
+Kubo shards a large directory into a HAMT, and so `ipfs add -r` gives such a
+directory a different CID. It does so when the directory's entries add up to
+more than 262,144 bytes of name bytes plus 36 per entry: never at 900 entries or
+fewer, always at 7,085 or more, and in between depending on name lengths. The
+HAMT form is not implemented yet, so ABX FS refuses such a directory rather than
+give it a CID no IPFS node agrees on: the resolver reverts
+`DirectoryNeedsSharding`, `abxfs pin` refuses it, and the mirror skips it with a
+log line. The directory itself is fine on chain and is served as usual; only its
+IPFS CID is missing. A later resolver can add HAMT support without changing
+anything else: no contract depends on the resolver's address.
+
+## Compression is invisible to it
+
+An IPFS CID is computed over a file's **content**. The same content stored with
+FastLZ, raw, or under a gzip codec has the *same* IPFS CID, even though its ABX
+FS CIDs differ — an ABX FS CID commits to how the content is stored.
+
+## Pinning
+
+**Nothing pins your content automatically.** ABX FS runs no pinner. Content
+resolves from chain whether or not it is on IPFS, so pinning is a speed
+optimisation and never a durability requirement.
+
+The CLI pins and then verifies the result:
+
+```bash
+export ABXFS_CHAIN=<network>   # or --chain on each command
+abxfs pin --project-id <id> --org <org> --provider local
+PINATA_JWT=… abxfs pin --project-id <id> --org <org> --provider pinata
+```
+
+It reads the tree from chain, builds exactly the IPFS blocks the CID above is
+derived from, and uploads them as one CAR file (IPFS's archive format), so the
+pinned root is that CID by construction, whatever the tree holds: empty files,
+empty folders and codec files included. It then checks the provider's reported
+root against the CID the chain derives (or, where the resolver cannot, the CID
+derived locally from the chain's bytes).
+
+By hand, over a folder that holds exactly the files that were uploaded (copy them to a clean directory: the CLI
+skips `node_modules`, `dist`, `build`, `out`, `cache`, `broadcast`, `.next`, `.turbo`, `.DS_Store` and, without
+`--include-hidden`, dotfiles other than `.well-known`, while `ipfs add --hidden` over the original folder would
+include them):
+
+```bash
+ipfs add -r --cid-version=1 --hidden ./your-project
+```
+
+That reproduces the profile exactly with Kubo's default import settings:
+`--cid-version=1` implies raw leaves, and `--hidden` keeps dotfiles, which
+`ipfs add` otherwise skips. A Kubo node configured with other import settings
+(another chunk size, or an import profile such as `unixfs-v1-2025`) gives other
+CIDs.
+
+A project's [`abxfs.gateway`](/docs/using-abxfs/projects#a-preferred-gateway)
+param can name the IPFS gateway where you pinned it. It is a hint for others;
+the ABX FS gateway itself serves every file from chain.
+
+## Pinning everything
+
+To pin or mirror every project, read the global publish ledger instead of walking
+orgs. The project hook keeps one append-only list across all orgs, and
+`Lens.publishRange(start, count)` returns it with full records
+(org, token id, version, root CID, publisher, timestamp) in one `eth_call`. Keep
+the last index you read, poll `globalPublishCount()` on the hook, and ask for more
+from there. One address, one cursor, no logs to be pruned. In the SDK that is
+`client.globalPublishes({ start, count })` and `client.globalPublishCount()`.
+
+It covers what projects published. Content written to the stores but never
+published by a project is not enumerable — the stores keep no list of it — so a
+mirror of literally every byte has to watch the stores directly.
+
+## Checking
+
+```bash
+abxfs verify <cid>              # on chain and locally, compared
+abxfs verify <cid> --on-chain   # the resolver only
+abxfs verify <cid> --local      # off chain only: every root that has an IPFS CID, codec files included (not a directory IPFS would shard)
+```
+
+For content holding a file with a codec, `abxfs verify` reports the local CID
+and says why there is no on-chain value to compare.

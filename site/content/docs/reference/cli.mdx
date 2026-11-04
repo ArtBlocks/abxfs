@@ -1,0 +1,279 @@
+---
+title: "CLI"
+description: "abxfs — upload, read, verify, tag, transfer, and pin from a terminal."
+---
+
+```bash
+export ABXFS_CHAIN=<network>   # the production or test network of your choice; or pass --chain on each command
+abxfs upload ./site --name my-project --tag v1
+```
+
+The examples on this page leave `--chain` out: they assume `ABXFS_CHAIN` is set, as above.
+
+## Configuration
+
+Settings come from a config file and from environment variables; the one secret, the key, comes only from the environment:
+
+- **`.abxfs.json`** — chain keys, RPC URLs, and per-chain defaults: `defaultCodec`
+  (a file codec, `none` by default), `fastLz` (per-chunk FastLZ, `true` by default)
+  and `defaultBundleGasBudget`. Reads against a canonical chain need none of this;
+  the SDK ships the addresses. A chain the registry lists but ABX FS has not been
+  deployed to loads without addresses, and every command on it says so.
+- **`ABXFS_PRIVATE_KEY`** in the environment — required only for writes, and the
+  only variable the CLI reads a key from (no `PRIVATE_KEY` fallback). The CLI
+  never reads a key from disk and never writes one there.
+
+A config file's values are checked when it loads: `rpcUrl` and every `fallbackRpcUrls` entry must be an
+`http(s)` URL, `org` and every address an address, `defaultBundleGasBudget` a positive whole number. A key the CLI
+does not know is reported and ignored, and a key named like a secret (`privateKey`, `mnemonic`, `apiKey`, ...) is
+reported loudly, never printed and never used. A config file is at most 256 KiB.
+
+### RPC endpoints
+
+`ABXFS_RPC_URL_<chainId>` sets the endpoint for that one chain, over any config file. The unsuffixed
+`ABXFS_RPC_URL` applies **only to the chain a command selects**, and only when that chain's endpoint is still the
+built-in public one: it never replaces an `rpcUrl` from a config file or an `ABXFS_RPC_URL_<chainId>`. The CLI prints
+which chain it applied to (and the host, never the URL). A chosen endpoint gets no public fallbacks.
+
+A chain in your config with **no endpoint at all** (no `rpcUrl`, no `ABXFS_RPC_URL_<chainId>`, and not a built-in
+chain) loads, and is refused only when a command selects it: `rpcUrl is required (or set ABXFS_RPC_URL_<chainId>)`.
+
+<Callout type="info">
+**Migrating from an earlier CLI.** A custom chain (a local anvil, say) with no `rpcUrl` used to take the unsuffixed
+`ABXFS_RPC_URL`. It no longer does: that variable is only for a chain whose endpoint is still the built-in public one.
+Give such a chain an `rpcUrl` in your config (`abxfs dev` writes one) or set `ABXFS_RPC_URL_<chainId>`. Until then it
+is refused when selected; for a while the same entry made every command fail, whichever chain it was for.
+</Callout>
+
+Every endpoint is held to the chain it is configured for. Before the first read or write the CLI asks the node for
+its chain id (`eth_chainId`) and stops if it is another chain; a fallback endpoint is checked the first time it is
+used, and a mismatch is reported, never routed around. A transaction the node fills in for another chain is refused,
+and every SIGNED transaction must carry the configured chain id before it is handed to the RPC.
+
+### Trusting a config file
+
+A `.abxfs.json` in the **current directory** can come from a repository you just
+cloned, so it cannot steer where a write goes or what it costs. Without
+**`--allow-config-overrides`** (or `ABXFS_ALLOW_CONFIG_OVERRIDES=1`) the CLI
+ignores, from that file only: `defaultChain`, `org`, `rpcUrl` and
+`fallbackRpcUrls`, any address that differs from canonical, a different `chainId`,
+`defaultBundleGasBudget`, `defaultCodec` and `fastLz`, and every
+chain entry it has no canonical deployment for (a local anvil, or any chain id such
+as 1). It prints a warning listing each ignored key, and a malformed one (or anything
+named `.abxfs.json` that is not a regular file of at most 256 KiB: a directory, a FIFO, a symlink) is ignored
+with a warning instead of stopping every command; it is never followed or read past that size. A file you pointed at yourself (`ABXFS_CONFIG`) or your home config
+(`~/.config/abxfs/config.json`) is applied as written, and is where a local chain
+from `abxfs dev` and your own `org` belong. They layer: your home config is the base,
+`ABXFS_CONFIG` goes over it, and the working-directory file is only a vetted overlay,
+so a cloned repository cannot hide your own settings.
+
+### What a write shows, and asks
+
+Before the first write of a command the CLI prints the RPC **host** (never the URL) and the account, then the plan:
+the chain, the org, how many transactions (`up to` for content, since what is already on chain is skipped), the
+estimated gas, the most it can cost at the fee ceiling (estimated gas × `ABXFS_MAX_FEE_GWEI`), and what becomes
+permanent (the content, an org's name and description, a version, a project given away). An account with no ETH is
+refused there, before anything is signed.
+
+The **max cost** is execution gas only. On an OP-stack rollup every transaction also pays an
+**L1 data fee** for its calldata, at Ethereum's price, which no gas figure includes and the fee ceiling does not cap;
+the plan says so on those chains. Content transactions carry up to ~100 KB of calldata each, so on such a chain the
+L1 data fee can be most of what an upload costs. An Arbitrum chain charges the same thing
+as an **L1 component** in gas: extra gas units on each transaction, at that chain's gas price (so under the fee
+ceiling), which the node's estimate includes and the plan's figures do not; the plan says so there too.
+
+The project and org figures (mint, publish, name, view, tag, transfer, the org's own writes) are measured on chains
+with legacy pricing. On a chain that prices new state apart under EIP-8037 (Sepolia today) they are low, most of all
+for a long project name or view (each stored as code), and the plan says so; the content figures follow the chain's
+schedule, and an org creation the node estimated is its own figure.
+
+Then it asks: on a terminal you type `yes`, and anything else sends nothing. **Without a terminal it refuses unless
+you pass `--yes`**, which sends without asking (the plan is still printed). This applies to `upload`, `update`,
+`tag set` / `tag remove`, `view`, `org create`, `org mint`, `org open`, `org close`, `org transfer-admin`,
+`org accept-admin` and `transfer`. `--dry-run` never sends, so it needs neither.
+
+Every write caps `maxFeePerGas` and `maxPriorityFeePerGas` at `ABXFS_MAX_FEE_GWEI` (default 50 gwei, 200 on Ethereum
+L1 and its testnets) and stops with an error, signing nothing, if the node quotes above it. Writes are only reported
+as done once their receipt says success. If a mint's receipt (or `org create`'s) does not arrive in time, the CLI
+reads the chain to find the project that transaction made and carries on with it; if it is still pending it stops
+with the hash, the explorer link, and what to run once it confirms (for `upload`, the command that publishes into
+that project). It never tells you to run the minting command again, which would mint a second project. That `upload`
+command carries every choice that decides the root, written out as resolved (`--kind`, `--codec`, `--fastlz` or
+`--no-fastlz`, `--include-hidden`, every `--allow-public`, `--max-bundle-gas`), so a config edited in between cannot
+change it, and it prints the root it must publish: the publish is permanent. The command is the last line of the
+error, printed exactly as built: the error text above it is scrubbed of anything shaped like `host.tld/path`, and
+the command is not, so a folder named `mysite.com/build` or an `--allow-public config.example.org/x.env` comes out
+whole. Each argument is shell-quoted with its exact characters. One that holds a control, bidi or zero-width
+character, or a Unicode space such as a no-break space, has that character written in `$'…'` form as `\xHH` escapes
+of its bytes (`'my'$'\xe2\x80\xaf''site'`), so nothing in the line can drive or reorder your terminal and the pasted
+command still names the same path. bash, zsh and ksh read that form; dash and fish do not, so paste such a command
+into one of the first three.
+
+Error messages from the RPC layer embed the endpoint URL, which often carries an
+API key; the CLI scrubs URLs and key-like path segments from everything it
+prints, and collapses long runs of hex (calldata, a raw transaction) to their ends. Names read from chain (files,
+projects, orgs), and anything from a config file, are printed with control characters and terminal escape sequences
+removed; a transaction hash or IPFS CID from the RPC is printed only when it is well formed.
+
+Every command except `dev` (which always runs a local chain) takes `-c, --chain <name>` to select the production or
+test network of your choice, by the name [Deployments](/docs/reference/deployments) gives it. **There is no default.**
+Omitted, it comes from `ABXFS_CHAIN`, else from a `defaultChain` in your own config (`ABXFS_CONFIG` or
+`~/.config/abxfs/config.json`; one in a `./.abxfs.json` needs `--allow-config-overrides`); with none of them, the
+command stops and lists the names. Try things on a testnet first, and `abxfs dev` gives you a local chain.
+
+Projects live in orgs, and token ids repeat across them, so every command that names a project
+takes **`--org <address>`**. Omitted, it falls back to `ABXFS_ORG`, then to `org` on the chain in
+`.abxfs.json`, and otherwise errors telling you which to set.
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `upload <path>` | Upload a directory or single file. With `--name`, also mints a project token and publishes to it — into `--org`, else `ABXFS_ORG`, else `org` in your config, else the newest org you **administer**, else a personal org it creates first. An org where you only hold a project is never chosen for you, and it decides nothing: "you administer none" is read from the factories' lists of the orgs you administer alone, and only from a complete read of them. If such a list, or the record of an org you administer, could not be read, it stops (`could not read 1 org(s) you administer, or the list of orgs you administer from 1 org factory(ies) (0x…); pass --org or retry`) rather than create an org; an org you only hold a project in that cannot be read stops nothing (anyone can mint into your wallet from an open org). |
+| `org` | `create` / `list` / `info` / `mint` / `transfer-admin` / `accept-admin` / `open` / `close` — see below. |
+| `update <path>` | Publish a new version of an existing project from a local path. |
+| `read <cid>` | Read a file or directory back out of contract storage. |
+| `info` | Project metadata, version history, and tags. |
+| `diff <dir>` | Diff a local directory against the on-chain tree. |
+| `tag` | `set` / `remove` / `get` / `list` — mutable named pointers to versions. |
+| `transfer <projectId> <newOwner>` | Hand a project to a new owner. One tx, effective immediately. |
+| `verify <cid>` | Derive an ABX FS CID's IPFS CID on chain and locally, and compare. For content holding a file with a codec, which the chain cannot decode, it reports the local CID and says why. |
+| `pin` | Pin a root to IPFS through a local Kubo node or Pinata, as one CAR file of the exact blocks. |
+| `view` | Set or clear where a project's token links point: a URL or `--clear`, exactly one. |
+| `dev --i-trust-this-dir` | Run a local Anvil chain with the content layer deployed (`--companion` adds `IpfsCidResolver`; the org layer needs ABX's addresses in the environment). It builds and runs Solidity from the current directory (a Foundry project can run arbitrary commands), so it needs the flag, from inside a checkout you trust. It refuses a `--port` something already listens on, deploys only to the anvil it started (checked by `web3_clientVersion` and its chain id), and stops anvil if forge fails. Ctrl-C and SIGTERM both stop anvil (and a forge script still running), so a supervisor's `kill` never leaves anvil behind. It writes a ready-made config (`--out`, default `.abxfs/dev-chain.json`). |
+
+`abxfs <command> --help` is authoritative for flags.
+
+## Token links
+
+```bash
+abxfs view <https-url> --project-id <id> --org 0x…   # where marketplaces send people for this token
+abxfs view --clear --project-id <id> --org 0x…       # back to the default
+```
+
+See [Token links and your own gateway](/docs/using-abxfs/token-links).
+
+## Orgs
+
+```bash
+abxfs org create [name] [--description <text> | --description-file <path>]
+                                        # your org + its first project, one tx
+abxfs org list [--address 0x…]          # orgs you administer or hold a project in
+abxfs org info <org>
+abxfs org transfer-admin <org> <to>     # an offer; changes nothing until accepted
+abxfs org accept-admin <org>            # refused unless an offer to you is pending; closes the org
+abxfs org open <org> | close <org>      # anyone may mint, or only the admin
+abxfs org mint <org> [--to <address>]   # mint the next project to an address
+```
+
+Each of these that writes takes `--yes` (see [What a write shows, and asks](#what-a-write-shows-and-asks)).
+
+`name` is 1–64 bytes and fixed for life; it defaults to your shortened address. `--description` is
+optional and just as permanent: it is the collection description marketplaces like OpenSea show, and the
+fallback description of every token in the org. Up to 1000 bytes of printable ASCII and newlines, not only
+whitespace; it is checked before anything is sent. `--description-file` reads it from a file (trailing
+newlines dropped; a Windows `\r\n` is refused, not rewritten). `create` also
+takes `--salt <bytes32>` for a deterministic address: the first 20 bytes must be zero or your
+own. The admin only controls who mints and who holds the role — nothing here can touch a project.
+`org mint --to` someone other than you gives the project away: it warns on stderr, because after the mint
+only the holder can publish to it or transfer it. `org open` warns that while the org is open **anyone** can mint
+into it, so anyone can fill it to its 1,000,000-project cap, and the cap never rises: once reached, nobody can mint
+into that org again. See [Orgs](/docs/using-abxfs/projects#orgs).
+
+## Writing
+
+`upload` and `update` share the flags that matter (`diff` takes `--codec`, `--fastlz` / `--no-fastlz` and `--include-hidden` too):
+
+| Flag | Notes |
+| --- | --- |
+| `--codec <codec>` | A file codec, decoded off chain by readers: `none` \| `gzip`. Defaults to the chain's `defaultCodec`, else `none`. `fastlz` is refused: it is a per-chunk storage backend, not a file codec. See [Compression](/docs/using-abxfs/compression). |
+| `--no-fastlz` / `--fastlz` | Store every chunk raw, or through the FastLZ backend where it shrinks them. Without either, the chain's `fastLz` from your config decides, else FastLZ is on. **The choice is part of the root**: a chunk's id commits to the backend that stores it, so the same content with and without FastLZ has two different roots, both permanent. Before `--fastlz` existed, a chain's `fastLz: false` was never applied (FastLZ was always on); it now is, so with `fastLz: false` in your config the same folder uploads to a different root than it did before. Pass `--fastlz` to reproduce a root an earlier CLI made. |
+| `--tag <tag>` | Tag the published version. `latest` is reserved — it always resolves to the head. The tag is written only after the CLI has read back that the version it names holds the root it just published; if that cannot be confirmed, nothing is tagged and the command says so. If the project's current version count cannot be read, the command stops **before** publishing. |
+| `--include-hidden` | Include dotfiles and dot-directories. By default they are skipped (except `.well-known`) and the skipped names are listed. Symlinks are never followed, with or without this flag. Whatever the flag, `node_modules`, `dist`, `build`, `out`, `cache`, `broadcast`, `.next`, `.turbo` and `.DS_Store` are never uploaded, at any depth, and are not listed. |
+| `--allow-public <glob>` | Approve secret-looking files, repeatable, **by naming them**. A file is held when its name says it is a secret (`.env*` and `*.env` but not `.env.example`, `*.pem` / `*.key` and their backups such as `server.pem.bak`, `id_rsa*` and other SSH keys, `wallet.json`, `keystore*.json`, `UTC--*`, `*.tfstate`, `secrets.json`-style files, `credentials` / `credentials.json`, `.npmrc`, `.netrc`, `.aws`, `.ssh`, `.git`, …; not `credentials.html` or `secret.png`; names are compared after Unicode folding and with trailing dots, spaces and full-width dots removed, so `cert.p12 ` and `cert．p12` are caught) or when its **contents** look secret: a private key block (any case, PGP included), an AWS key id, a labelled 64-hex key or `privateKeyToAccount("0x…")`, a web3 keystore, a Slack/GitHub/Google/Stripe/SendGrid/npm/`sk-` token (AWS's documented example key `AKIAIOSFODNN7EXAMPLE` is not one), a labelled JWT, a URL with a password in it, three or more `NAME=value` lines in a file named like a `.env` (in a file that only suggests configuration, such as `config.md`, at least one must also look like a credential: a name containing KEY, SECRET, TOKEN, PASSWORD, ... or a high-entropy value), or a recovery phrase next to a label. Names also include `.p8`, `.htpasswd`, `.pypirc`, `kubeconfig` and `.kube/`; an `.asc` file is held only when it holds a private key block. A 64-hex value is a hit after labels such as `private`, `secret`, `wallet`, `password`, `api_key` (and a bare one after `seed`). Files up to 8 MiB are read in full, in overlapping windows; larger ones by their first and last 4 MiB, and the CLI then says `large file, only partly scanned`. Real binary data is checked only for a private key block with its body. A file over 256 MiB is refused before it is read, and so is an upload whose files add up to more than 1 GiB (the CLI holds an upload in memory to hash it; the protocol has no such limit). On a terminal you are asked for each file; without a TTY the command stops unless every hit is named by a glob. **A pattern that names nothing is refused** (`*`, `**`, `**/*`, `?*`, `*.*`, `**/.*`, and near-match-alls such as `*_*`, `*-*`, `*a*`, `?e*`: "name the files you approve"), so a surprise file still stops a pipeline. Only letters and digits count: a pattern needs at least 3 of them or a real extension (`*.pub`), and a wildcard around one or two characters is refused. The error lists which files in this upload the pattern would have approved. At most 256 characters and 8 `*`. A glob without `/` matches the file name at any depth. Everything uploaded is public and permanent. |
+| `--dry-run` | Compute CIDs and print the plan, including how many transactions each stage needs and the estimated gas; send nothing, and ask nothing. (`upload` only.) |
+| `--max-bundle-gas <gas>` | Ceiling per multicall bundle, a positive whole number such as `12000000` (default 12,000,000, or the chain's `defaultBundleGasBudget`). Never used above 75% of the 2^24 per-transaction gas cap (12,582,912). On a chain where state gas is its own dimension (EIP-8037) it bounds execution gas only. |
+| `--yes` | Send without asking. Required without a terminal. |
+| `--project-id <id>` | (`upload` only; `update` always takes it.) Publish into an existing project you hold instead of minting a new one; needs the org (`--org`, `ABXFS_ORG` or config). It never mints, which is why the command printed after a mint timeout uses it (with every flag that decides the root, and the root it must give). |
+| `--kind <kind>` | (`upload` only.) `file`, `directory` or `auto` (the default, which detects it from the local path). A mismatch is refused. |
+
+Every paid write prints its plan and asks first on a terminal; without one it refuses unless **`--yes`** is passed
+(see [What a write shows, and asks](#what-a-write-shows-and-asks)). Numbers on the command line are whole decimal
+numbers (`--project-id 0x10` or a version of `1.5` is refused, naming the flag). Recipients
+(`org mint --to`, `org transfer-admin`, `transfer`) must be valid addresses: a mixed-case
+address needs a correct EIP-55 checksum, and the zero address, burn addresses (`0x…dEaD` and its look-alikes),
+precompile addresses (0x01 to 0x0a), the all-ones address and the org itself are refused (`transfer` also refuses
+every ABX FS contract in the chain's address book: the content stores and backends, and the factory, hooks, minter
+and lens of the current org-layer generation and of every earlier one).
+
+`--dry-run` is the cheap way to answer "how many transactions is this, and what
+will the CID be" before spending anything.
+
+The protocol never refuses a folder or file for its size: a large one is more transactions. The CLI holds an upload
+in memory to hash it, so it refuses a single file over 256 MiB before reading it, and stops an upload whose files add
+up to more than 1 GiB at the file that would cross it (checked from each file's size as the folder is walked, so the
+files before it have been read; nothing is uploaded); upload a bigger one in parts. `diff` reads the local folder the
+same way, under the same two caps. `upload` prints each stage
+as it runs (chunks, chunk nodes by level, files, entry nodes by wave, directories, then the publish) with
+transactions done and total. If it is interrupted, run the same command again: every node already on chain
+is skipped, so it resumes where it stopped and pays only for what is missing. The one refusal is
+`PlanTooLargeError` (the tree would need more than the level cap), raised before anything is written.
+An empty file uploads as the empty file, and an empty folder as an empty directory (as `ipfs add -r` keeps it),
+so the tree on chain is the folder you uploaded. A folder whose only contents are skipped (hidden files, for
+example) counts as empty.
+
+<Callout type="warn">
+`--codec` and `--no-fastlz` must match between `upload` and `diff`. A mismatch
+re-derives every expected CID and reports the whole tree as changed. For the same
+reason, a chain's `fastLz: false` (applied since `--fastlz` was added; ignored
+before) gives the same folder a different root than an earlier CLI gave it.
+</Callout>
+
+## Reading
+
+Reads need no key and no account:
+
+```bash
+abxfs read <root> --path index.html -o ./index.html
+abxfs info --project-id 4 --org <org>
+abxfs verify <root>
+```
+
+`info` prints the newest 200 versions and counts the older ones; `--max-versions <n>` widens that. `verify` runs both
+derivations by default; `--on-chain` or `--local` runs just one.
+
+`read` writes a file to stdout unless given `-o`, so it pipes. On a terminal it refuses to print binary data or
+terminal control characters unless you pass `-o <file>` or `--force`. It asks the chain whether the CID is a file or a
+directory first, so a failed read is reported as what it is. A directory is listed (at most `--max-entries`,
+default 10,000; a bigger one is refused rather than cut short), and `-o` on a directory is refused: pick a file
+in it with `--path`.
+
+## Pinning
+
+ABX FS does not run a pinning service. `pin` builds the root's IPFS blocks from chain and hands them, as one
+CAR file, to one you choose:
+
+```bash
+abxfs pin --project-id 4 --org <org> --provider local --endpoint http://127.0.0.1:5001
+export PINATA_JWT=…
+abxfs pin --project-id 4 --org <org> --provider pinata
+```
+
+`--project-version <n>` pins version `n` instead of the current one (it was `--version`, which the program's own
+`--version` swallowed). `--car <path>` writes the archive to a new file instead (streamed to disk, never over an
+existing file).
+
+Before it reads anything from chain (with `--project-id`, even the org's factory), `pin` checks the provider: a Kubo
+node must answer `/api/v0/version`, and Pinata must accept the key. `--car` creates its file at that point instead,
+and removes it if the run then fails. Uploads time out on **progress**, not on a fixed clock: a slow upload that keeps moving
+finishes, one that stops moving for 60 s fails, and the reply must start within 5 minutes of the upload ending.
+Replies are read up to 1 MiB, redirects are never followed, and errors name the endpoint's host and the network
+error.
+
+Prefer the environment variable: `--api-key` still works but puts the secret in your shell
+history and in `ps`, and the CLI warns when you use it. A key is only ever sent over `https`;
+an `http://` `--endpoint` is refused when a key is attached (a local node on `localhost` is fine).
+
+It verifies the resulting CID against the on-chain resolver (or, where the resolver
+cannot derive it, the CID derived locally from the chain) unless you pass `--no-verify`. See [IPFS](/docs/using-abxfs/ipfs) for why the CID matches, and
+when it does not.

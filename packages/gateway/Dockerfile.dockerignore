@@ -1,0 +1,16 @@
+**/node_modules
+**/.next
+**/dist
+**/out
+**/cache
+**/broadcast
+.git
+.env
+.env.*
+**/.env
+**/.env.*
+site
+packages/contracts-core
+packages/contracts-companion
+packages/contracts-projects
+packages/protobuf-sol

@@ -1,0 +1,132 @@
+---
+title: "Batched reads and writes"
+description: "Multicall on the write side, index pagination on the read side, and the gas ceilings that bound both."
+---
+
+## Multicall
+
+`ChunkStore`, `FileStore` and `DirectoryStore` inherit Solady's `Multicallable`,
+exposing `multicall(bytes[]) → bytes[]`, which delegatecalls each inner call back
+to the same contract.
+
+Uploading a 50-chunk file would otherwise mean 50 wallet prompts and 50 ×
+21,000 gas of transaction base cost. Instead:
+
+- One signature, one mempool entry, one receipt.
+- **Atomic** — any inner revert unwinds the whole bundle.
+- **`msg.sender` is preserved**, so per-op authorization behaves identically
+  inside and outside a bundle.
+
+### Per-contract only
+
+There is no cross-store router. Flows that span stores — chunks, then chunk nodes and `createFile`,
+then entry nodes and `createDirectory`, then the publish — are orchestrated **client-side** by the SDK, which keeps each
+store's auth surface narrow and its reasoning local.
+
+The same reason makes a tagged publish two transactions: the CID lands on the
+ABX collection and the tag on the hook, and no single-contract multicall spans
+two contracts.
+
+### Not payable in practice
+
+The Solady ABI marks `multicall` `payable` for compatibility, but it refuses ETH,
+and no ABX FS contract accepts any, so attaching value always reverts.
+
+### The gas ceiling is the transaction's, not the block's
+
+The SDK packs same-store ops under a per-bundle gas budget so a large upload
+becomes a handful of transactions rather than one per chunk or node. An upload runs in
+stages (chunks, chunk nodes by level, files, entry nodes by directory height, then
+`createDirectory`), one node per transaction or several small ones per `multicall`, and each
+stage is confirmed readable before the next is simulated.
+
+That budget is clamped, because a transaction's execution gas is capped at
+**2<sup>24</sup> (16,777,216)** (EIP-7825), and every Base Sepolia endpoint tried,
+keyed ones included, reports exactly that cap on `eth_estimateGas` while the
+chain's block gas limit is 1.2 billion. A bundle whose estimate exceeds the cap
+does not merely cost more — it fails to estimate at all, so the clamp applies
+regardless of which RPC you point at. Under EIP-8037 (live on Sepolia) state gas
+is a separate dimension the cap does not count, so a bundle's total is bounded by
+the block gas limit and, in practice, by what the node will simulate (50M by
+default on geth and reth); the SDK detects the chain's schedule and packs
+execution and total separately.
+
+Tune with `--max-bundle-gas` (default 12,000,000, never used above 75% of
+2<sup>24</sup>; under EIP-8037 it bounds execution gas).
+
+A tiny chunk is not cheap. A `ChunkStore.write` through an SSTORE2 backend deploys a
+fresh contract per chunk, records it in three storage slots, and reads it back to
+check it. The SDK models that as about 30,000 gas of execution plus 24 per input
+byte, plus the state it creates: on a pre-EIP-8037 chain 200 gas per code byte,
+32,000 for the account and 22,100 per slot, so about 130,000 gas plus ~224 per
+input byte (a full 24,575-byte chunk measured 5.6M). Inflating a FastLZ chunk at
+the read-back adds about 5 to 8 gas per data byte for text, and up to about 60 for
+long runs of one byte. Under EIP-8037 code costs 1,530 gas a byte, a new account
+183,600 and a new slot 97,920: the same full chunk is 38.7M, 38.1M of it state, so
+each full chunk is a transaction of its own there. The packer also never puts more
+than 100 calls in one bundle, so hundreds of tiny files become a handful of
+transactions that each fit under the cap instead of one that cannot be simulated.
+
+### Existence checks are batched
+
+Before writing, the SDK asks which chunks, files and directories already exist.
+The three stores are `Multicallable`, so those probes ride one `eth_call` per 150
+(`probeExistence`), not one each, and a plan that was already computed is executed
+as given rather than re-planned between stages. A 500-file publish costs about 240
+JSON-RPC calls in all (about 0.5 per file; roughly 54 of them are `eth_call` reads,
+and the rest are simulations, fee and nonce lookups, sends and receipt polls), and
+the pre-flight estimate for it is about 300. The target is at most 1.2 calls per
+file.
+That matters most behind a per-minute RPC budget: a publish can estimate its
+read count first and continue slowly if it will not fit.
+
+## Pagination
+
+Every list-shaped view has a count and a range:
+
+```solidity
+FileStore.chunkCount(cid)          FileStore.getChunkIds(cid, start, end)
+DirectoryStore.entryCount(cid)     DirectoryStore.getEntries(cid, start, end)
+ProjectHook.versionCount(…)        ProjectHook.versionsRange(…)
+```
+
+and the same shape covers tags, owned projects and the publish ledgers. Most views take
+`(start, count)` and clamp to the end, so an overrun is a shorter or empty page and never
+a revert; the range views (`versionsRange`, `getTagsRange`, and the stores' `get…(cid, start,
+end)`) take a half-open `(start, end)` and revert unless `start <= end <= length`.
+Clients walk arbitrarily large collections at fixed `eth_call` cost per page; the SDK
+asks for at most 100 chunk ids or directory entries per call. A file or
+directory has no "read it all" view at all: a path is one `resolvePath` call
+(up to 32 segments), a byte offset is one `locateByte` call, and a listing is
+pages.
+
+### Indexes, not opaque cursors
+
+Most lists are append-only (the org list, a project's versions, both publish ledgers),
+so an index is a stable cursor: new entries append above it and never renumber what is
+below. That is what makes it safe to persist one across sessions.
+
+```ts
+let cursor: bigint | undefined;
+do {
+  const page = await readPublishPage(publicClient, contracts, { limit: 20, before: cursor });
+  render(page.records);
+  cursor = page.nextCursor;
+} while (cursor);
+```
+
+The one thing an index cursor cannot absorb is *removal*. Tags can be removed, and an
+owner's tokens, an owner's orgs and an admin's orgs are kept by swap-and-pop, so an entry
+that leaves moves the last one into its place. A walk that spans such a change may skip
+or repeat an entry: page those lists at one block. The org list, version history and the
+publish ledgers are append-only and have no such case.
+
+### Reads have a ceiling too
+
+Every ABX FS read is an `eth_call`, and reading a large file, or deriving its IPFS
+CID on chain, costs gas in proportion to its size. Public endpoints differ by more than an order of
+magnitude in what they will execute, so the endpoint choice is load-bearing
+rather than cosmetic — see [Deployments](/docs/reference/deployments).
+
+Pagination is what keeps a read under that ceiling: fetch a range, not a
+collection.

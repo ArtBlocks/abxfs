@@ -1,0 +1,260 @@
+---
+title: "SDK"
+description: "@abxfs/sdk — two main entry points, split by whether a chain is involved."
+---
+
+```ts
+import { AbxfsClient }       from "@abxfs/sdk";       // reads, writes, projects — needs an RPC
+import { planUploadOffline } from "@abxfs/sdk/core";  // pure computation — needs nothing
+```
+
+Two small subpaths are also exported: `@abxfs/sdk/content-host` (per-project host parsing) and
+`@abxfs/sdk/names` (directory entry names as bytes).
+
+## `@abxfs/sdk/core`
+
+Everything about the ABX FS *format*: chunking, ABX FS and IPFS CID derivation,
+file codecs and FastLZ, validation, gas arithmetic, and the canonical addresses.
+No RPC and no `node:*` import at load time, so it runs in a browser, a service
+worker, an edge function, or an offline CI job.
+
+It is not a reimplementation for offline use — the real uploader runs this same
+code, so a plan is the upload's own arithmetic rather than an estimate of it.
+
+```ts
+import { planUploadOffline, planBackendsFor, requireCanonicalAddresses } from "@abxfs/sdk/core";
+import { sepolia as chain } from "viem/chains"; // or the production or test network of your choice
+
+const plan = await planUploadOffline(
+  [{ path: "index.html", bytes: new TextEncoder().encode("<h1>hi</h1>") }],
+  {
+    backends: planBackendsFor(requireCanonicalAddresses(chain.id)),
+    // codec: CODEC_GZIP,  // a file codec, decoded off chain; default none
+    // fastLz: false,      // per-chunk FastLZ; default on
+  },
+);
+
+plan.rootCid       // the directory CID this upload will produce
+plan.files         // per file: CID, chunks (backend, input, ids), logical / data / stored size
+plan.directories   // every directory, children-first: creation order
+plan.uniqueChunks  // chunks actually written, after dedup
+plan.storedBytes   // what the backends keep: what the chain pays for
+```
+
+(`requireCanonicalAddresses` throws for a chain with no addresses on record;
+a local chain passes its own addresses.)
+
+### `backends` has no default
+
+It is not a preference, and guessing it produces a plan that disagrees with the
+chain it is predicting. **The backend address is part of every chunk id**, so the
+same bytes planned against a different backend land in a different
+content-address space, where nothing dedups and every CID still looks
+well-formed. `planBackendsFor(addresses)` takes the raw and FastLZ backends from
+an address book.
+
+Chunk boundaries are content-defined (FastCDC over the file's data, at most
+24,575 bytes a chunk) and part of every CID, so they are not an option. The
+planner gives each chunk to the FastLZ backend when FastLZ shrinks it, and to the
+raw backend otherwise; with a file codec, the content is encoded first and every
+chunk goes raw. See [Compression](/docs/using-abxfs/compression).
+
+### Content, data, stored bytes
+
+| | what it is | ABX FS CID changes with it | IPFS CID changes with it |
+| --- | --- | --- | --- |
+| **content** | what a reader finally gets | yes | yes |
+| **data** | the chunks' data joined (the content, or its file-codec encoding) | yes | no |
+| **stored** | what the backends keep (FastLZ output, or the data) | yes, through each chunk's backend | no |
+
+Two consequences: `abxfs diff` must recompute with the codec and FastLZ choice
+the upload used, and changing either is a new content address rather than a
+re-encoding of the same one. Read `plan.storedBytes` rather than assuming
+compression is free; the planner only uses FastLZ for chunks it shrinks.
+
+## `@abxfs/sdk`
+
+Everything above, plus reads, writes, projects, and history.
+
+```ts
+import { AbxfsClient, requireCanonicalAddresses } from "@abxfs/sdk";
+import { createPublicClient, http } from "viem";
+import { sepolia as chain } from "viem/chains"; // or the production or test network of your choice
+
+const client = new AbxfsClient({
+  publicClient: createPublicClient({ chain, transport: http(RPC) }),
+  addresses: requireCanonicalAddresses(chain.id),
+});
+
+await client.readFileByPath(rootCid, "index.html");   // { bytes, mimeType, codec, … }
+```
+
+Writes additionally need a `walletClient`.
+
+### Projects
+
+Every project query is an `eth_call` against contract storage — the hooks
+maintain the indexes on-chain as writes happen:
+
+The free functions take a viem `PublicClient` and the org's contracts
+(`{ collection: org, hook: addresses.projectHook }`, plus `enumeration: addresses.projectEnumeration`
+for owner queries); a client bound to an org with `client.forOrg(org)` has the same reads as methods
+(`project.readProject(tokenId)`, `project.projectVersions(...)`, `project.projectVersionsPage(...)`,
+`project.tagPage(...)`).
+
+```ts
+const contracts = { collection: org, hook: addresses.projectHook!, enumeration: addresses.projectEnumeration };
+
+await readProject(publicClient, contracts, tokenId);        // head CID, name, gateway, viewUrl, owner
+await readVersionHistory(publicClient, contracts, tokenId);   // the NEWEST 200 versions
+await readVersionHistoryPage(publicClient, contracts, tokenId, { before: cursor });  // "load more"
+await listTags(publicClient, contracts, tokenId);             // the newest 200 tags
+await readTagPage(publicClient, contracts, tokenId, { before: cursor });
+await client.forOrg(org).setViewUrl(tokenId, "https://my-site.example/");  // token links; "" clears (see viewUrlProblem)
+
+await readRecentProjects(publicClient, contracts);          // the publish feed
+await readOwnedProjects(publicClient, contracts, owner);    // needs the enumeration hook
+await readTrackedCount(publicClient, contracts);            // every project in the org: ids 0 … count - 1
+```
+
+`readOwnedProjects` returns `undefined` when no enumeration hook is configured.
+That is deliberately distinct from owning nothing: collapsing them would tell
+someone they own no projects when the truth is their projects are not indexed.
+
+| Query | Source |
+| --- | --- |
+| Version history, tags | `ProjectHook` |
+| Publish feed | `ProjectHook`'s append-only ledger |
+| Projects by owner | `ProjectEnumeration` |
+| Every project in an org | the org's own `nextTokenId()` (`readTrackedCount`; `readTrackedTokens` pages the ids) |
+
+### Publishing and tagging
+
+`publishRootAndTag` (also `client.publishAndTag`) is the one implementation behind the draft
+publish, `abxfs upload` and `abxfs update`. It reads the version count first and **throws before
+sending anything** if it cannot; takes the version number from the publish receipt's own
+`ProjectVersionPublished` event (or, without one, polls the history); and writes a tag only after a
+settled read shows `versionAt(v).cid` equals the root it just published. A stale replica can no
+longer tag the previous version.
+
+Every wait on a transaction goes through `waitForSuccessfulReceipt`, which throws
+`TransactionRevertedError` for a mined-but-reverted transaction. `mintInOrg` and `mintProject`
+take `addresses` and check `isOrg` against the org's factory before sending, so a crafted
+address is never minted into.
+
+### Safety helpers
+
+```ts
+recipientProblem(addr, { forbid: [org] });     // strict checksum; zero, burn, precompile, all-ones, forbidden → reason
+assertSafeRecipient(addr, { forbid: [org] });  // throws; returns the checksummed address
+externalUrlProblem(url);                       // https only, no userinfo, no localhost or private IPs
+isUsableViewUrl(url);                          // the on-chain abxfs.view charset (no " ' & < > \ `)
+viewUrlProblem(url);                           // isUsableViewUrl AND externalUrlProblem: null means setViewUrl will accept it
+sanitizeDisplayName(name);                     // printable ASCII, no bidi/format/control characters
+validateOrgDescription(text);                  // throws: the factory's rule (≤1000 bytes, ASCII + newline)
+projectNameShowsOnMarketplaces(name);          // false → marketplaces show "<org name> #<id>"
+```
+
+`setPreferredGateway` applies `externalUrlProblem`. `isUsableViewUrl` mirrors the contract: it refuses
+`"` `'` `&` `<` `>` `\`, the backtick, `(` `)` `[` `]` `{` `}` `|` and `^`. `setViewUrl` applies `viewUrlProblem`, which adds the
+`externalUrlProblem` checks, so validate with `viewUrlProblem` (null means OK) before sending.
+
+### Limits
+
+Content is read from a permissionless chain, so the reading helpers are bounded. `walkDirectory`
+reads each directory once however often a DAG links it and stops at 100,000 nodes;
+`verifyLocalIpfsCid` memoises per CID and caps nodes and bytes (1 GiB); `readFile` caps data
+bytes (1 GiB) and chunks (200,000), and decodes a file codec with an output cap (256 MiB) that
+aborts the decode with an error (a plain `Error`, not `LimitExceededError`). The resolver `eth_call`
+carries an explicit gas limit (30M by default), and a failing root is remembered for the session
+(`clearResolverFailureCache`). The node, byte, chunk and depth caps throw `LimitExceededError` naming
+the limit; every cap is an option. `walkDirectory` and the other directory walks also refuse nesting
+deeper than 1,000 levels, and `readDirectory` refuses a directory of more than `maxEntries` entries
+(default 100,000) before reading a page.
+
+Reading chunks (`readFile`, and `readChunkSlices` for part of a file) also has a call budget: a call
+that a node refuses, or that a backend makes fail, is read again in parts (in halves, or, when the node
+refused it for its length, in calls within that length), and every `eth_call` counts against `maxCalls`
+(a positive integer or `Infinity`; default `defaultMaxChunkReadCalls(n)`, `ceil(n / 4) + ceil(n / 256) + 8`
+for `n` chunks). Past it the read throws `LimitExceededError` with
+`limit: "calls"`. Calls are planned at 25M gas each (8 full FastLZ chunks), and some public nodes simulate
+only 2^24 (16,777,216) per `eth_call`, which a full FastLZ chunk of CSV, hex or DNA (92-105 gas a byte to
+read) exceeds 8 at a time. So once a planned call is refused for gas and its halves are read, the rest of
+the read is planned at half the gas (4 such chunks a call), and again after each further such refusal; the
+default budget is sized for that one halving. A refusal counts as one for gas only when it is a revert with
+no data, ChunkStore's `RetrieveFailed` (how a backend that runs out of gas surfaces, `isChunkReadGasRefusal`),
+or the node's own "out of gas" words: a load-balanced RPC's `-32603 internal error` is read around by halves
+but leaves the budget alone. A node can also refuse a result for its length: Erigon returns at most its
+`--rpc.returndata.limit`, 100,000 bytes by default (four full chunks), and says so. Halving the gas would not
+help there (a raw chunk is cheap to read and as long as a FastLZ one), so the read plans the rest of its calls
+within the length the node named (`resultLimitOf`). A chunk on a backend outside the address book, or one whose record
+could not be read, is priced like the costliest FastLZ chunk, so 1,000 small ones still share calls. Pass a
+larger `maxCalls` for a node that simulates less than about 12.5M gas per `eth_call`, or returns less than
+about 100,000 bytes from one.
+
+**Entry names are bytes.** On chain a directory entry name is 1 to 255 bytes, not necessarily UTF-8. The
+SDK reads each name as exact bytes (`DirectoryEntry.nameBytes`) and gives a lossless text form in `name`:
+the UTF-8 text, with `\xHH` for every byte that is not part of a valid UTF-8 sequence (`decodeEntryName`,
+`encodeEntryName`, `entryNameBytes`, `@abxfs/sdk/names`). Packing, CIDs and IPFS derivation use the bytes.
+Names a person types or a file system supplies are literal text and may not contain a backslash. Text
+holding a lone UTF-16 surrogate (`isWellFormedText` is false) is no name's spelling: UTF-8 cannot encode
+it, so `encodeEntryName` and `assertLiteralPath` refuse it and a lookup with it finds nothing.
+
+`readFile` reads every chunk through `ChunkStore.read`, which checks it against its record on
+chain; like any dapp, the SDK trusts the RPC endpoint it reads through. A file codec's output is
+checked against `outputHash` (`OutputHashMismatchError`), which catches a decoder that disagrees
+with the writer's. A chunk whose backend cannot
+serve it on chain (its read reverts, and the backend's `retrieval()` scheme is not `evm`) throws
+`ChunkUnavailableError` with the backend's `retrieval()` answer; any other failure of one chunk alone (a
+load-balanced RPC's `-32603 internal error`, a node that simulates less gas than one chunk's read) is thrown
+as the node's own error, and a retry, or another node, may read it. The
+on-chain resolver's refusal of a codec file is `CodecNotSupportedOnChainError`.
+
+### Paging
+
+The ledger is append-only, so a cursor is an index that stays valid
+indefinitely — new publishes append above it and never renumber below:
+
+```ts
+let cursor: bigint | undefined;
+do {
+  const page = await readPublishPage(publicClient, contracts, { limit: 20, before: cursor });
+  render(page.records);            // newest first
+  cursor = page.nextCursor;        // undefined when exhausted
+} while (cursor);
+```
+
+`iteratePublishLedger` and `iterateOwnedProjects` are async generators, for
+walking an unbounded ledger without holding all of it.
+
+Some lists are not append-only: an admin's orgs, the orgs and tokens a wallet holds, and a token's
+tags are kept by swap-and-pop, so an entry that leaves is replaced by the last one. Paged at "latest",
+a change between two pages would skip one entry and repeat another, so `readOrgsAdministered`,
+`readOrgsHeld`, `iterateOwnedProjects` / `readOwnedProjects`, `readEmptyOwnedProjects` and `readTagPage`
+read their count and every page at the block the first read used. `readOrgsAdministered` and
+`readOrgsHeld` return at most `max` orgs (2,000 by default) and set a non-enumerable `truncated` on
+the array when there are more; `readMyOrgsDetailed` reports that as `truncated: true`.
+
+To decide which org a wallet administers (to mint into it, or to create one when there is none), use
+`readOrgsAdministeredAcrossGenerations`: every factory generation's administered list and those orgs'
+records, newest first, with `failed` (administered orgs whose record could not be read),
+`failedGenerations` (factories whose list could not be read) and `truncated`. "Administers none" is a
+fact only when all three are empty. It never reads the held list, which anyone can fill by minting into
+a wallet from an open org; `readMyOrgsAcrossGenerationsDetailed` reads both, for a wallet's org switcher.
+
+`iterateOwnedProjects` is a generator over that one block, and it reads a page only when you ask for
+the token after the last one it has: a consumer that pauses mid-walk for longer than its node keeps
+state for old blocks (a non-archive node keeps about 128 blocks, minutes on most chains) gets an error
+at the next page, not a shorter list. Pull the walk through promptly, or start a new one.
+
+## Addresses
+
+```ts
+import { CANONICAL_DEPLOYMENTS, requireCanonicalAddresses } from "@abxfs/sdk/core";
+```
+
+Baked in rather than configured: they are public deployment artifacts, and the
+canonical ones are the only addresses that produce interoperable CIDs. Pass
+explicit `ContractAddresses` to override, which is what a local chain needs.
+
+See [Deployments](/docs/reference/deployments).

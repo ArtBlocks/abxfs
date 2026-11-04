@@ -1,0 +1,16 @@
+{
+  "name": "@abxfs/contracts-companion-fixtures",
+  "private": true,
+  "type": "module",
+  "description": "Regenerates the resolver's IPFS fixtures with ipfs-unixfs-importer 16.1.5, pinned (not published). Run `npm ci && npm run generate` in this directory.",
+  "scripts": {
+    "generate": "node generate-multilevel-dag.mjs && node generate-nested-chunked.mjs && node generate-differential-trees.mjs && node generate-fold-three-levels.mjs && node generate-sharding.mjs"
+  },
+  "dependencies": {
+    "@ipld/dag-pb": "^4.1.5",
+    "blockstore-core": "^6.1.3",
+    "ipfs-unixfs": "12.0.2",
+    "ipfs-unixfs-importer": "16.1.5",
+    "multiformats": "^13.3.7"
+  }
+}

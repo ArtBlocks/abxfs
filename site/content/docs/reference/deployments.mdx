@@ -1,0 +1,145 @@
+---
+title: "Deployments"
+description: "Canonical contract addresses per network. Use these, or your CIDs will not match anyone else's."
+---
+
+An ABX FS chunk id commits to the **storage backend address** as well as the
+bytes, so a different backend address is not a configuration preference — it is
+a different content-address space. Two uploads of byte-identical content through
+different backends produce different CIDs and do not deduplicate against each
+other.
+
+Use the canonical addresses. The SDK ships them, so the CLI and the gateway need
+no configuration to read.
+
+ABX FS is deployed on every network below. Each was read back from the chain and
+rehearsed before the registry gained its addresses.
+
+<Callout type="warn">
+**Prerelease, and unaudited.** ABX FS is early software and may have bugs; we do
+not guarantee it is bug-free. The contracts have had internal reviews but no
+independent security audit; ABX, which every org is built on, has had none
+either. Everything listed here is immutable: no contract has an owner, and every
+org locks itself and renounces ownership when it is created. On a production
+network, real funds are at risk.
+</Callout>
+
+## Networks
+
+| Network | `--chain` | Chain id | | ABX FS |
+| --- | --- | --- | --- | --- |
+| **Base** | `base` | 8453 | production | deployed |
+| **Base Sepolia** | `base-sepolia` | 84532 | Base's paired testnet | deployed |
+| **Ethereum** | `ethereum` | 1 | production | deployed |
+| **Sepolia** | `sepolia` | 11155111 | Ethereum's paired testnet | deployed |
+| **Arbitrum One** | `arbitrum-one` | 42161 | production | deployed |
+| **Arbitrum Sepolia** | `arbitrum-sepolia` | 421614 | Arbitrum One's paired testnet | deployed |
+
+No tool picks a network for you: name the production or test network of your
+choice (`--chain`, or `ABXFS_CHAIN`, with the name above). A testnet tries ABX FS
+without real funds.
+
+## One address on every chain
+
+Every ABX FS contract is deployed with CREATE2 through the keyless deployer
+(`0x4e59b44847b379578588920cA78FbF26c0B4956C`) with a fixed salt, and with no
+constructor argument that depends on who sends the transaction. So each contract
+has **one address on every chain**, determined by its code (its bytecode commits to
+the exact source through solc's metadata hash):
+
+- **Content layer:** `ChunkStore`, `Sstore2Backend`, `FastLzSstore2Backend`,
+  `FileStore`, `DirectoryStore`. Because the backend addresses are part of every
+  chunk id, identical bytes uploaded to any chain produce identical CIDs.
+- **IPFS:** `IpfsCidResolver`.
+- **Org layer:** `OrgMeta` (which deploys `ProjectLinks`), `OrgFactory` and
+  `Lens`, each with its own salt. The factory's five components (`ProjectHook`,
+  `ProjectEnumeration`, `OrgMinter`, `ProjectCard`, `ProjectTraits`) are not
+  deployed by the factory: it computes where the keyless deployer will place each
+  under one shared salt, anyone may deploy each to that address, and `createOrg`
+  reverts with `ComponentsNotDeployed` until all five exist. The factory's address
+  also depends on its constructor arguments (the chain's ABX contracts, the two
+  stores and `OrgMeta`), and those are identical on every network listed here, so
+  it too lands at one address.
+
+## Addresses
+
+The build tagged `abx-fs-freeze-3`, at these addresses on every chain above:
+
+| Contract | Address |
+| --- | --- |
+| `ChunkStore` | `0x56317b1F45E4c15310135Ea72Fa4d768ca902BCc` |
+| `Sstore2Backend` | `0x3C3AE36F5d8Aff2Dd60c37cA9103D93803c4c844` |
+| `FastLzSstore2Backend` | `0x80a4Ec4A4F98358022A5a060F7cB467188fb68E1` |
+| `FileStore` | `0x8b6077a1d6953D96687005B9408D56A655b4d155` |
+| `DirectoryStore` | `0x4273E4E078F47303Ca15b11959eeb61F3FC94c11` |
+| `IpfsCidResolver` | `0x7CE58c2945CbE3C2bDb0D3d276Ba3b9bD294008d` |
+| `OrgMeta` | `0xB21e65DE1c241B9BaE8b7077b6f2E8f2c3Bc0F5D` |
+| `OrgFactory` | `0xC5aBF9fBd94659cdfc173AF30c6052700Fa62798` |
+| `OrgMinter` | `0xc009135a8b9DdB14De53868773Fc1dc97963De1e` |
+| `ProjectHook` | `0x3828Dd35AbF6a42F0d92E0F3311bd70593BD6E7B` |
+| `ProjectEnumeration` | `0x2b2a84df4d62d18329899b66c744E6C643cDC065` |
+| `Lens` | `0x2Ef71C4780e70F64507F04BD1Fde35eC3713269e` |
+
+The factory's three renderers have fixed addresses too: read them from the
+factory (`card()`, `traits()`, `links()`). Read every address from the SDK
+rather than copying it from here:
+
+```ts
+import { requireCanonicalDeployment, isCanonicallyDeployed } from "@abxfs/sdk";
+
+isCanonicallyDeployed(8453);                        // true
+isCanonicallyDeployed(137);                         // false: not a network ABX FS supports
+const { name, addresses, publicRpc } = requireCanonicalDeployment(8453);
+```
+
+`requireCanonicalAddresses(chainId)` throws for a chain with no addresses on
+record, naming the chains that have them.
+
+### Verified source
+
+Every contract above, the three renderers included, is source-verified on
+[Sourcify](https://sourcify.dev) on every network above, as an **exact match**: the
+bytecode commits to the source text through solc's metadata hash, comments
+included, so the source Sourcify shows is exactly the source that was compiled.
+For example, the factory on Base:
+[repo.sourcify.dev/8453/0xC5aB…2798](https://repo.sourcify.dev/8453/0xC5aBF9fBd94659cdfc173AF30c6052700Fa62798).
+
+## Other networks
+
+Sepolia (11155111) is the first chain with the Glamsterdam gas schedule
+(EIP-8037), which reprices state creation: there, deploying `ProjectHook` took
+20.3M gas, against 2.9M on Base Sepolia. ABX FS is deployed there so that it is
+proven before Ethereum mainnet upgrades to the same schedule. A chain gains its
+addresses in the registry only once a deployment exists there, so
+`isCanonicallyDeployed(chainId)` is the honest answer at any moment.
+
+A local chain needs no registry entry: `abxfs dev` deploys the content layer to
+Anvil through the same keyless deployer, so at the same addresses, and writes a
+config for it.
+
+## Picking an RPC endpoint
+
+Every ABX FS read is an `eth_call`, and reading a large file or deriving its IPFS
+CID on chain costs gas in proportion to its size. Public endpoints differ by more
+than an order of magnitude in what they will execute, so the choice is
+load-bearing rather than cosmetic.
+
+| Endpoint | `eth_call` cap |
+| --- | --- |
+| `https://sepolia.base.org` | 500M+ |
+| `https://base-sepolia-rpc.publicnode.com` | ~50M |
+
+These are unkeyed and rate-limited. Use a keyed provider for anything
+sustained, and measure what a public endpoint will execute on your chain before
+relying on it.
+
+### The write-side ceiling is not the block gas limit
+
+`eth_estimateGas` caps at exactly 2<sup>24</sup> (16,777,216) on every Base
+Sepolia endpoint tried, including keyed ones. That is the per-transaction
+execution cap of EIP-7825, not the block gas limit: Base Sepolia's block gas limit
+is 1.2 billion. A bundle whose estimate exceeds the cap fails to estimate at all,
+so the SDK clamps its bundle budget below it regardless of which RPC you point at.
+
+Whether a given endpoint applies the same cap, or a lower one, is not something to
+assume. Measure it before assuming either way.

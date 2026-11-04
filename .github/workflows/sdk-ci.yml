@@ -1,0 +1,148 @@
+name: sdk-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to a pull request cancels the run it supersedes; every push to main runs to the end.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The SDK suite is split by file across four jobs (`vitest --shard`); the other packages' suites take two more.
+        include:
+          - { suite: sdk, shard: 1/4, label: "SDK tests (1/4)" }
+          - { suite: sdk, shard: 2/4, label: "SDK tests (2/4)" }
+          - { suite: sdk, shard: 3/4, label: "SDK tests (3/4)" }
+          - { suite: sdk, shard: 4/4, label: "SDK tests (4/4)" }
+          - { suite: cli, label: "CLI tests" }
+          - { suite: packages, label: "package tests" }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # No `version:` here on purpose. `packageManager` in the root package.json already pins
+      # pnpm exactly, and action-setup@v4 errors out when both are present rather than picking one.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          # Must satisfy the workspace's `engines.node` (>=22.13.0), which @artblocks/abx-sdk
+          # requires. Node 20 here would install a dependency the runtime cannot load.
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
+        with:
+          # Same pin as contracts-ci. `abi-drift.test.ts` compares the SDK's mirrored ABIs against
+          # `forge inspect` output, so the two jobs must agree on which forge produced them.
+          version: v1.4.3
+
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      # The script pins each library by commit, so its hash keys them, and it skips a library already present.
+      # contracts-ci always clones them fresh, and its address pins catch a library that differs.
+      - name: Restore the forge dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/*/lib
+          key: forge-lib-${{ hashFiles('scripts/install-forge-deps.sh') }}
+
+      # Same missing dependencies as contracts-ci: this job compiles contracts too, for the ABIs
+      # `test/abi-drift.test.ts` compares the SDK's mirrors against.
+      - name: Install forge dependencies
+        run: ./scripts/install-forge-deps.sh
+
+      # The contracts rarely change, so their build is nearly always restored whole. forge still checks every source
+      # against its own cache and rebuilds what changed, so an older build restored by the prefix is never trusted as is.
+      # contracts-ci always builds from scratch: it is the job that checks the bytecode pins.
+      - name: Restore the contracts build
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            packages/*/out
+            packages/*/cache
+          key: forge-v1.4.3-${{ hashFiles('packages/*/src/**/*.sol', 'packages/*/test/**/*.sol', 'packages/*/script/**/*.sol', 'packages/*/foundry.toml', 'scripts/install-forge-deps.sh') }}
+          restore-keys: forge-v1.4.3-
+
+      - name: Build contracts (needed for SDK ABIs)
+        run: |
+          (cd packages/protobuf-sol && forge build)
+          (cd packages/contracts-core && forge build)
+          (cd packages/contracts-companion && forge build)
+          (cd packages/contracts-projects && forge build)
+
+      # Every workspace package that another one imports must be built first: they resolve each
+      # other through `exports` maps pointing at `dist/`, so an unbuilt dependency fails to resolve
+      # its entry point before a single test runs. Building recursively rather than naming packages
+      # — `@abxfs/sdk` alone was not enough, `@abxfs/cli` also needs `@abxfs/pinning`, and the next
+      # dependency added would break this again.
+      #
+      # Each package's own tests import from `src/`, so they pass regardless and hide this; it only
+      # surfaces in whichever package consumes an unbuilt one first.
+      - name: Build packages
+        run: pnpm -r --filter="./packages/*" build
+
+      - name: SDK tests
+        if: matrix.suite == 'sdk'
+        run: pnpm --filter @abxfs/sdk exec vitest run --shard=${{ matrix.shard }}
+
+      - name: pinning tests
+        if: matrix.suite == 'packages'
+        run: pnpm --filter @abxfs/pinning test
+
+      - name: gateway and mirror tests
+        if: matrix.suite == 'packages'
+        run: pnpm --filter @abxfs/gateway test
+
+      # Packs every package as `pnpm publish` would, installs the tarballs into an empty directory and
+      # runs what they ship. Inside the repo everything resolves through the workspace by direct path;
+      # this is the only check that sees what a user gets. It caught a CLI that installed cleanly and
+      # then silently printed nothing, because it was only ever started by its real path.
+      - name: Pack and install smoke test
+        if: matrix.suite == 'cli'
+        run: ./scripts/pack-smoke.sh
+
+      # The recovery command the CLI prints is pasted back into each shell it promises (bash, zsh, ksh93): ksh reads
+      # `\x` escapes greedily, and only a run under it shows a quoting that decodes to another path there.
+      - name: Install zsh and ksh
+        if: matrix.suite == 'cli'
+        run: sudo apt-get update -q && sudo apt-get install -y -q zsh ksh
+
+      - name: CLI tests
+        if: matrix.suite == 'cli'
+        run: pnpm --filter @abxfs/cli test
+        env:
+          ABXFS_REQUIRE_SHELLS: "1"
+
+  # The pinning package reaches undici's global dispatcher through a symbol whose name changed between Node 24
+  # (`undici.globalDispatcher.1`) and Node 26 (`.2`). On Node 22 the newer branch never runs, so a regression there was
+  # silent; this runs the pinning tests on the newest Node the workspace's `engines` admits.
+  pinning-node-26:
+    name: pinning tests (Node 26)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26
+          cache: pnpm
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+      - name: Build packages
+        run: pnpm -r --filter="./packages/*" build
+      - name: pinning tests
+        run: pnpm --filter @abxfs/pinning test

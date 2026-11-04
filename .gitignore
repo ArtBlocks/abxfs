@@ -1,0 +1,44 @@
+node_modules/
+dist/
+build/
+out/
+cache/
+broadcast/
+.env
+.env.*
+!.env.example
+!.env.local.example
+!.env.*.example
+
+# Local CLI chain config — contains RPC URLs (often with embedded basic-auth
+# creds) and contract addresses for private deployments. Never commit.
+.abxfs.json
+.abxfs.*.json
+
+# Foundry — ignore the auto-cloned dependency tree under each contracts package.
+# Anchored to `packages/` so it doesn't accidentally swallow source folders
+# named `lib/` elsewhere.
+packages/*/lib/
+!packages/*/lib/.gitkeep
+
+# Editors
+.vscode/
+.idea/
+.DS_Store
+.claude/
+.agents/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+coverage/
+
+# Vercel project link (contains project/org ids)
+.vercel
+.env*

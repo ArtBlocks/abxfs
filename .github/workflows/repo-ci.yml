@@ -1,0 +1,26 @@
+name: repo-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to a pull request cancels the run it supersedes; every push to main runs to the end.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  hygiene:
+    name: Repository hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      # Node built-ins and git only: no install. What it refuses, and why, is at the top of the script.
+      - run: node scripts/check-repo-hygiene.mjs

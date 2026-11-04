@@ -1,0 +1,76 @@
+{
+  "name": "@abxfs/gateway",
+  "version": "0.0.0",
+  "private": true,
+  "description": "ABX FS reference gateway and mirror — serve ABX FS content over HTTP and optionally pin it to IPFS, with your own filtering rules or none.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ArtBlocks/abxfs.git"
+  },
+  "homepage": "https://github.com/ArtBlocks/abxfs#readme",
+  "bugs": "https://github.com/ArtBlocks/abxfs/issues",
+  "keywords": [
+    "abxfs",
+    "gateway",
+    "ipfs",
+    "onchain-storage",
+    "evm"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "abxfs-gateway": "./dist/bin/gateway.js",
+    "abxfs-mirror": "./dist/bin/mirror.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./subjects": {
+      "types": "./dist/subjects.d.ts",
+      "import": "./dist/subjects.js"
+    },
+    "./upstream": {
+      "types": "./dist/upstream.d.ts",
+      "import": "./dist/upstream.js"
+    },
+    "./mirror": {
+      "types": "./dist/mirror.d.ts",
+      "import": "./dist/mirror.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
+    "lint": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@abxfs/pinning": "workspace:*",
+    "@abxfs/sdk": "workspace:*",
+    "viem": "^2.57.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "typescript": "^5.6.3",
+    "vite": "^7.3.7",
+    "vitest": "^4.1.12"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}

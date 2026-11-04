@@ -1,0 +1,101 @@
+---
+title: Token links and your own gateway
+description: "Where a project's marketplace links point, how to change them, and how to host a website at the root of your own domain."
+---
+
+A project is an NFT, and marketplaces show two links from its metadata:
+
+- **`animation_url`** is the live project. Marketplaces that embed an animation render it on the token's page.
+- **`external_url`** is the "view on website" link.
+
+## The default, and your override
+
+By default both are a path on the ABX FS app:
+
+- `animation_url` → `https://fs.abx.io/g/p/<chain>/<org>/<id>/latest/`
+- `external_url` → `https://fs.abx.io/projects/<chain>/<org>/<id>`
+
+That default is computed on chain from the token's own address and id, and the domain is frozen into every
+org's link renderer (it is a constructor argument of `OrgMeta`, which the factory reads), so every org uses it. It is only a fallback. The app serves no project bytes
+itself, so the `animation_url` **redirects** (308) to the project's own origin,
+`https://<chain>-<org>-<id>.<content domain>/`, with the path and query intact. Every token ever minted keeps
+working, because those URLs are frozen into them and the redirect is what keeps them alive. A `tag/<name>` URL redirects (307) to the version the tag points at
+right now. **Set `abxfs.view` and both links are exactly the URL you give, with
+nothing appended.** It assumes nothing about what serves it: your own gateway, your own domain, a
+single-project host, a different ABX FS-compatible reader.
+
+```bash
+export ABXFS_CHAIN=<network>                                   # or --chain on each command
+abxfs view https://my-site.example/ --project-id 3 --org 0x…   # both links now go there
+abxfs view --clear --project-id 3 --org 0x…                    # back to the default
+```
+
+Or in the SDK, `await client.setViewUrl(tokenId, "https://my-site.example/")`, and `readProject(...).viewUrl`
+to read it. In the site it is **Settings → Where your token links point**.
+
+The URL must be `https://` (lowercase), at most 512 bytes of visible ASCII, with none of `"` `'` `&` `<` `>` `\`, the
+backtick, `(` `)` `[` `]` `{` `}` `|` or `^`. Write any of those percent-encoded (`(` is `%28`, `&` is `%26`), paths
+with non-ASCII characters percent-encoded too, and non-ASCII hosts as punycode. The check is strict because the value is
+written by the token owner and then dereferenced or embedded by a marketplace, in places the token cannot see: none of
+those characters can then end a JSON string, an HTML attribute, a Markdown link or a CSS `url()`. Apart from the
+512-byte cap, which the hook enforces, a value that fails it is not rejected on chain; the token simply falls back to
+the default, so the SDK, CLI and site check it **before**
+sending and tell you, rather than letting you save something that does nothing.
+
+<Callout>
+Clearing writes `-`, because ABX cannot set a token-owner param back to nothing. `-` is not a URL, so it
+reads as unset everywhere.
+</Callout>
+
+## In a marketplace's viewer
+
+Not every marketplace frames `animation_url` itself. OpenSea saves a copy of the page it finds there and shows the
+copy, from its own storage. A directory listing still works in that viewer, because the gateway writes each of its
+links as a full URL back to the host that served it. A page of your own that loads `style.css` or `img/a.png` by a
+relative path asks the marketplace's storage for them instead, and gets an error. For a page that has to work there,
+keep it self-contained (inline its styles and scripts), or load each file by its full URL on the project's host.
+
+## This is not how the project is *read*
+
+`abxfs.view` only controls what marketplaces show. A project's data is reachable from anything: the content
+lives in the stores, the current version is `abxfs.cid` on the token, and reading both is a handful of
+`eth_call`s. The default gateway, your own gateway, the CLI and a client someone else writes tomorrow all
+serve the same project. Nothing in the protocol prefers one of them. (`abxfs.gateway` is a different, optional
+param: an IPFS gateway where the owner pinned the project, published as a hint.)
+
+## Hosting a website at the root of your own domain
+
+A website uses links like `<link href="/style.css">`. The leading `/` means "the root of whatever host this
+page came from". On the ABX FS gateway every project already has a host of its own, so its root is the project's root.
+To use your own domain instead, run a single-project gateway so that host's root is the project's root:
+
+```bash
+abxfs-gateway --project <network>/0xORG/3 --port 8080     # follows latest
+abxfs-gateway --project <network>/0xORG/3 --tag stable    # or pin a tag, or --version 2
+```
+
+Every path is now a path inside the project, and nothing else is served. Put your domain in front of it
+(any reverse proxy, container host or CDN), then point the token at it:
+
+```bash
+abxfs view https://my-site.example/ --project-id 3 --org 0x…
+```
+
+See [Run a gateway](/docs/using-abxfs/run-a-gateway) for the rest of the options, including serving only
+chosen orgs and refusing what you name.
+
+## Per-project origins on the ABX FS gateway
+
+The hosted gateway already works this way. Every project is served from its own host on a separate content domain,
+`https://<chain>-<org>-<id>.<content domain>/`, so a root-absolute link such as `/style.css` resolves inside
+the project, one project's script cannot reach another's, and none of it shares an origin with the app. The
+default `animation_url` redirects there. A project that sets `abxfs.view` is unaffected either way.
+
+## What the site and the SDK refuse on top
+
+The token's own renderer is frozen and accepts more than is safe, for example `https://opensea.io@evil.example/`
+(which reads as one site and opens another) or a bare IP. It cannot be changed, so the client is the guard:
+`setViewUrl`, `abxfs view` and the Settings tab refuse a URL with credentials in it (`user@host`), a private or
+loopback address, and anything that is not `https://`. A host written in punycode (`xn--…`) can look like another
+site once rendered, so the Settings tab shows the host in large type under the field and asks you to confirm it
+before saving. `isUsableViewUrl` still mirrors the renderer exactly; use `viewUrlProblem` to ask "may I save this?".

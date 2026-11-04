@@ -1,0 +1,4 @@
+forge-std/=../contracts-core/lib/forge-std/src/
+solady/=../contracts-core/lib/solady/src/
+@abxfs/core/=../contracts-core/src/
+@abxfs/core-script/=../contracts-core/script/

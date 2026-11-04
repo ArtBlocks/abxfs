@@ -1,0 +1,21 @@
+# gitleaks: the default rules, minus files whose test vectors look like secrets on purpose. Each is also listed, with
+# the reason, in FIXTURES in scripts/check-repo-hygiene.mjs (or holds a well-known public value); keep the two in step.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "The upload secret scanner's test vectors: header-only key blocks and fake tokens"
+paths = [
+  '''packages/cli/test/audit2/Audit2ScanA\.test\.ts''',
+  '''packages/sdk/test/audit3/Audit3Secrets\.test\.ts''',
+  '''packages/sdk/test/audit4/Audit4Secrets\.test\.ts''',
+  '''packages/sdk/test/audit5/Audit5Scanner\.test\.ts''',
+  '''packages/sdk/test/round2-hardening\.test\.ts''',
+]
+
+[[allowlists]]
+description = "Public values: Anvil's published development key, the keyless CREATE2 deployer's address"
+paths = [
+  '''packages/cli/test/audit7/write-cli\.test\.ts''',
+  '''packages/contracts-projects/test/DeployScriptBranches\.t\.sol''',
+]

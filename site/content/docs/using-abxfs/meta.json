@@ -1,0 +1,12 @@
+{
+  "title": "Use ABX FS",
+  "icon": "Terminal",
+  "pages": [
+    "quickstart",
+    "projects",
+    "token-links",
+    "compression",
+    "ipfs",
+    "run-a-gateway"
+  ]
+}

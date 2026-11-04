@@ -1,0 +1,106 @@
+---
+title: "Compression"
+description: "Per chunk on chain with FastLZ, or per file off chain with a codec label. Both are pinned by a hash."
+---
+
+ABX FS compresses in two places, and they are different in kind:
+
+- **Per chunk, on chain.** The `FastLzSstore2Backend` keeps a chunk's bytes
+  FastLZ-compressed and inflates them on every read, so the **chain itself**
+  returns the content and checks it. This is the default.
+- **Per file, off chain.** A file may carry a **codec label** (the tools offer
+  `gzip`). Its stored data is then the encoded stream, and a reader decodes it.
+  The chain never decodes a file codec.
+
+Each decoding step is pinned by a hash, so every reader gets exactly the same
+bytes or refuses.
+
+## FastLZ, per chunk (the default)
+
+The planner compresses each chunk with FastLZ and sends it to the FastLZ backend
+when that makes it smaller, and to the raw backend otherwise. Nothing about the
+file changes: no codec label, and the chunk id commits to the chunk's **data**
+(the inflated bytes) through `dataHash`, which `ChunkStore` checks against what
+the backend returns, at write time and on every read.
+
+So a FastLZ-stored file is, to every reader, a plain file: on-chain reads,
+byte ranges and on-chain [IPFS-CID derivation](/docs/using-abxfs/ipfs) all
+work. FastLZ only references back 8 KiB, so compressing chunk by chunk loses
+almost nothing against compressing the whole file. The cost is the gas to
+inflate on read, which an `eth_call` pays, not a transaction.
+
+Turn it off with `--no-fastlz` (CLI), `fastLz: false` (SDK) or **None** on the
+site, for content that is already compressed (JPEG, WebP, video, zip). The
+planner already skips FastLZ for any chunk it would not shrink, so this mostly
+saves the CPU of trying.
+
+## A file codec, off chain
+
+```solidity
+function createFile(bytes32 rootNode, string calldata mimeType, bytes32 codec, bytes32 outputHash)
+  external returns (bytes32 cid);
+```
+
+`codec` is a lowercase ASCII token, left-aligned and zero-padded into a
+`bytes32`; zero means none. The tokens follow the IANA HTTP Content Coding
+registry, so a gateway could in principle pass the stored bytes through with
+`Content-Encoding`; the ABX FS gateway instead decodes the file, checks it against
+`outputHash` and serves the content. The protocol accepts any such token; the CLI and
+the site offer only `gzip`, the one every reader decodes natively.
+
+With a codec, the file's **data** (its chunks joined) is `encode(content)`, and
+`outputHash` is `keccak256(content)`. The contract enforces one rule: `codec` is
+zero if and only if `outputHash` is zero (`InvalidCodec`), and the empty file
+has no codec. Readers must check the decoded content against `outputHash`; the
+SDK throws `OutputHashMismatchError` when it differs.
+
+`outputHash` is required because the same stored bytes can decode differently
+in different decoders (gzip allows several members back to back, which some
+decoders join and others stop after; some ignore trailing bytes and others
+fail). With the output pinned, a file cannot show one thing on a gateway and
+another in a browser. Without a codec there is no decoding step, so the hash
+must be zero: an optional redundant hash would give one file two CIDs.
+
+What a codec gives up:
+
+- **On-chain reads of the content.** The chain holds the encoded bytes.
+- **On-chain IPFS-CID derivation.** `IpfsCidResolver` reverts `CodecNotSupported`
+  for such a file (the SDK raises `CodecNotSupportedOnChainError`); the CID is
+  derived off chain instead. See [IPFS](/docs/using-abxfs/ipfs).
+- **Cheap byte ranges.** A seek reads only the chunks the range covers, which
+  only indexes the content when there is no codec. With a codec a reader must
+  decode the whole file first (the gateway does, within its size cap, then
+  slices).
+
+With a codec, chunks go to the raw backend: the data is already compressed.
+
+## Choosing
+
+| Choice | CLI | Chain returns the content | IPFS CID on chain | Use for |
+| --- | --- | --- | --- | --- |
+| FastLZ per chunk | default | yes | yes | Text, HTML, JS, JSON, SVG: anything compressible. |
+| None | `--no-fastlz` | yes | yes | Already-compressed media. |
+| gzip | `--codec gzip` | no | no | Compresses harder than FastLZ, when off-chain reads are fine. |
+
+gzip is the only file codec the CLI and the site offer because every reader
+decodes it natively: browsers and the gateway through the Compression Streams
+API (`registerWebCodecs`), Node through `node:zlib` (`autoRegisterNodeCodecs`,
+which also registers br, deflate and, where the runtime has it, zstd for SDK
+users reading content written by other tools). A reader refuses a token it does
+not know. A gateway with no decoder for a file's codec answers `501`, and one
+whose decoded content does not match `outputHash` answers `502`; the bytes remain
+on chain for any reader that can decode them. The site offers **FastLZ (on-chain,
+recommended)**, **gzip (off-chain)** and **None**.
+
+## CIDs follow the choice
+
+The codec label, `outputHash` and every chunk's backend are part of the CID, so
+the same content stored with and without FastLZ, or with and without gzip, has
+different ABX FS CIDs (its [IPFS CID](/docs/using-abxfs/ipfs) is the same).
+
+<Callout type="warn">
+`--codec` and `--no-fastlz` must match between `upload` and `diff`. A mismatch
+re-derives every file under the wrong choice and reports the whole tree as
+changed. The CLI config keys `defaultCodec` and `fastLz` set both for every
+command on a chain.
+</Callout>

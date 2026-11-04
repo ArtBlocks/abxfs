@@ -1,0 +1,47 @@
+{
+  "name": "abxfs",
+  "version": "0.0.0",
+  "private": true,
+  "description": "ABX FS: content-addressed, immutable storage on chain.",
+  "license": "MIT",
+  "packageManager": "pnpm@10.28.0",
+  "workspaces": [
+    "packages/sdk",
+    "packages/pinning",
+    "packages/gateway",
+    "packages/cli",
+    "site"
+  ],
+  "scripts": {
+    "build:contracts": "cd packages/contracts-core && forge build && cd ../protobuf-sol && forge build && cd ../contracts-companion && forge build && cd ../contracts-projects && forge build",
+    "test:contracts": "bash scripts/test-contracts.sh",
+    "test:sdk": "pnpm --filter @abxfs/sdk test",
+    "test:pinning": "pnpm --filter @abxfs/pinning test",
+    "test:cli": "pnpm --filter @abxfs/cli test",
+    "test": "pnpm run typecheck && pnpm run test:contracts && pnpm run test:sdk && pnpm run test:pinning && pnpm run test:gateway && pnpm run test:cli",
+    "gas": "bash scripts/gas.sh",
+    "lint": "pnpm -r --if-present lint",
+    "format": "pnpm -r --if-present format",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test:gateway": "pnpm --filter @abxfs/gateway test",
+    "check:hygiene": "node scripts/check-repo-hygiene.mjs"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild"
+    ],
+    "overrides": {
+      "ws@8": "^8.22.0",
+      "postcss": "^8.5.28",
+      "source-map-js": "^1.2.2",
+      "zod": "^4.6.6"
+    }
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "4.1.12"
+  }
+}

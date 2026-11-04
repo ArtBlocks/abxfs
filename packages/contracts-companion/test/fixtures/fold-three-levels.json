@@ -1,0 +1,50 @@
+[
+ {
+  "c": 1,
+  "n": 30276,
+  "mixed": false,
+  "cid": "bafybeidrxoezsalftvu2f7nlu2u7bpyc7crw3rkof2oyiy5hshueehzjzi",
+  "tsize": 7938196343,
+  "importerUnusable": false
+ },
+ {
+  "c": 2,
+  "n": 30277,
+  "mixed": false,
+  "cid": "bafybeigmh2uy2nplbxt5dmss3v7itrj37dyiq4d4tsw2kpnqwbhzuvew7y",
+  "tsize": 7938458717,
+  "importerUnusable": false
+ },
+ {
+  "c": 3,
+  "n": 35000,
+  "mixed": true,
+  "cid": "bafybeifzdqz4b5qqeeilwpy5k2jfnl46wkcdq5x7mw5gvrwnqwfdr3szli",
+  "tsize": 4609230887,
+  "importerUnusable": true
+ },
+ {
+  "c": 4,
+  "n": 30277,
+  "mixed": true,
+  "cid": "bafybeicsow6aeqm624vitlj5e4hepurvirqkigybovegvazl7lsstdbhxu",
+  "tsize": 3961754607,
+  "importerUnusable": true
+ },
+ {
+  "c": 5,
+  "n": 300,
+  "mixed": true,
+  "cid": "bafybeibhx42sf67bncrs6ixy37av5z33e76ud6mkxi4dq3cxwdte77uh4m",
+  "tsize": 41313198,
+  "importerUnusable": false
+ },
+ {
+  "c": 6,
+  "n": 2,
+  "mixed": true,
+  "cid": "bafybeiehhfki3f3ar7ungsc5rcptnf7iundyiikh4dw4algezunumwvz2q",
+  "tsize": 75442,
+  "importerUnusable": false
+ }
+]

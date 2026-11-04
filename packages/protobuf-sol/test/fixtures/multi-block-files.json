@@ -1,0 +1,40 @@
+[
+  {
+    "name": "two-chunk-file",
+    "size": 263168,
+    "num_chunks": 2,
+    "chunk_sizes": [
+      262144,
+      1024
+    ],
+    "chunk_cids": [
+      "bafkreicsn3qhlkeso3j3lp2pvndrtl3gwlcmr326zbddyxdnvcwjy4cvma",
+      "bafkreiaim22wjtgm7vfcxw6shu5q3lfgb7qhey5hupev66uhb6ij6nkepu"
+    ],
+    "pbnode_hex": "0x122c0a2401551220526ee075a89276d3b5bf4fab4719af66b2c4c8ef5ec8463c5c6da8ac9c705560120018808010122b0a24015512200866b564ccccfd4a2bdbd23d3b0daca60fe07263a7a3c95f7a870f909f35447d12001880080a0d08021880881020808010208008",
+    "sha256_hex": "0x35778c4fbc32a720d91067146001bcc8727fd225233b553d0b2649f1d29e2a8a",
+    "cid": "bafybeibvo6ge7pbsu4qnsedhcrqadpgioj75ejjdhnkt2czgjhy5fhrkri",
+    "cid_bytes_hex": "0x0170122035778c4fbc32a720d91067146001bcc8727fd225233b553d0b2649f1d29e2a8a",
+    "input_seed": "two-chunk-file"
+  },
+  {
+    "name": "three-chunk-file",
+    "size": 529288,
+    "num_chunks": 3,
+    "chunk_sizes": [
+      262144,
+      262144,
+      5000
+    ],
+    "chunk_cids": [
+      "bafkreid6lvaczjprf5uyvnyyvglnubsdxmnafarcforgdknnsgj7nyrxzm",
+      "bafkreid6lvaczjprf5uyvnyyvglnubsdxmnafarcforgdknnsgj7nyrxzm",
+      "bafkreigzhqe5sx3civjypww77pltqkw7hkwrzrwlgq2nkmpfgueknfb2cm"
+    ],
+    "pbnode_hex": "0x122c0a24015512207e5d402ca5f12f698ab718a996da0643bb1a0282222ba261a9ad9193f6e237cb120018808010122c0a24015512207e5d402ca5f12f698ab718a996da0643bb1a0282222ba261a9ad9193f6e237cb120018808010122b0a2401551220d93c09d95f62455387dadffbd7382adf3aad1cc6cb3434d531e53508a6943a1312001888270a1108021888a7202080801020808010208827",
+    "sha256_hex": "0xdcf531ae9eb41f9d2daf828d8afbed72c661e8d3355d847a00b2e4f7dfcca641",
+    "cid": "bafybeig46uy25hvud6os3l4crwfpx3lsyzq6ruzvlwchuafs4t357tfgie",
+    "cid_bytes_hex": "0x01701220dcf531ae9eb41f9d2daf828d8afbed72c661e8d3355d847a00b2e4f7dfcca641",
+    "input_seed": "three-chunk-file"
+  }
+]

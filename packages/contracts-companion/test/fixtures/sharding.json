@@ -1,0 +1,74 @@
+[
+ {
+  "label": "atThreshold",
+  "count": 901,
+  "estimate": 262144,
+  "kuboShards": false,
+  "importerType": "directory",
+  "importerCid": "bafybeih6gclkvtkvto7z45fphfnsaqzg4wse5qtcpa5ilgruk4ufgjoyf4"
+ },
+ {
+  "label": "oneOver",
+  "count": 901,
+  "estimate": 262145,
+  "kuboShards": true,
+  "importerType": "hamt-sharded-directory",
+  "importerCid": "bafybeiffjt75wjc3pjp4yskfn6h2rfhlmzm47cyzjadpulhtgkqhjnkycy"
+ },
+ {
+  "label": "long900",
+  "count": 900,
+  "estimate": 261900,
+  "kuboShards": false,
+  "importerType": "directory",
+  "importerCid": "bafybeibjvupp3h6r4d3ecwotwinnybs5hmqmksfztadpgdenpwwdzg5s6m"
+ },
+ {
+  "label": "long901",
+  "count": 901,
+  "estimate": 262191,
+  "kuboShards": true,
+  "importerType": "hamt-sharded-directory",
+  "importerCid": "bafybeiajr7pleop3uobzfdks7sqqbg7wzq7cfcgkvrbc6wow4nn25bvp6e"
+ },
+ {
+  "label": "img5300",
+  "count": 5300,
+  "estimate": 265000,
+  "kuboShards": true,
+  "importerType": "hamt-sharded-directory",
+  "importerCid": "bafybeiba2zlsezlxgfqdsstngsewxl34jnwp6w32ognbq4sxo6i5eruhfm"
+ },
+ {
+  "label": "short7085",
+  "count": 7085,
+  "estimate": 290485,
+  "kuboShards": true,
+  "importerType": "hamt-sharded-directory",
+  "importerCid": "bafybeiednlnziairgdjxbsgh6goy6nzcs23alyw7ychpw6rtfa6tkncue4"
+ },
+ {
+  "label": "subdirectoryAtThreshold",
+  "count": 901,
+  "estimate": 262144,
+  "kuboShards": false,
+  "importerType": "directory",
+  "importerCid": "bafybeiaei3ncafh5f627hfyqygmlcnji2lh72rrburuvhgt6622ideooky"
+ },
+ {
+  "label": "subdirectoryOver",
+  "count": 901,
+  "estimate": 262191,
+  "kuboShards": true,
+  "importerType": "directory",
+  "importerCid": "bafybeihmggndkhgbcoxdd7ckkpnw37tiyv7qgfecehwgbasqti2zgif5le"
+ },
+ {
+  "label": "emptySubdirectoryOver",
+  "count": 901,
+  "estimate": 262191,
+  "kuboShards": true,
+  "importerType": "hamt-sharded-directory",
+  "importerCid": "bafybeicoaebpzlgpsnecvkzwixbm2c2uvzrssz6vsgcfm2nnqbv5qs3v44"
+ }
+]

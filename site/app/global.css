@@ -1,0 +1,70 @@
+@import "tailwindcss";
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/preset.css";
+
+/*
+ * The ABX FS palettes (the brand kit's tokens): paper and ink in light, deep blue-black and white in dark, the same
+ * dark palette as the app (fs.abx.io). Blue is the interaction accent (links, primary actions, focus); keep it to a
+ * small share of any page.
+ */
+:root {
+  --color-fd-background: #f7f5ee;
+  --color-fd-foreground: #2e2a25;
+  --color-fd-card: #ffffff;
+  --color-fd-card-foreground: #2e2a25;
+  --color-fd-popover: #ffffff;
+  --color-fd-popover-foreground: #2e2a25;
+  --color-fd-muted: #eeece5;
+  --color-fd-muted-foreground: #636363;
+  --color-fd-secondary: #eeece5;
+  --color-fd-secondary-foreground: #000000;
+  --color-fd-accent: #eeece5;
+  --color-fd-accent-foreground: #000000;
+  --color-fd-border: #c9c6be;
+  --color-fd-primary: #244ed8;
+  --color-fd-primary-foreground: #ffffff;
+  --color-fd-ring: #244ed8;
+}
+
+.dark {
+  --color-fd-background: #030812;
+  --color-fd-foreground: #e1e4ea;
+  --color-fd-card: #0d1420;
+  --color-fd-card-foreground: #e1e4ea;
+  --color-fd-popover: #0d1420;
+  --color-fd-popover-foreground: #e1e4ea;
+  --color-fd-muted: #151e2b;
+  --color-fd-muted-foreground: #a4acb9;
+  --color-fd-secondary: #151e2b;
+  --color-fd-secondary-foreground: #ffffff;
+  --color-fd-accent: #151e2b;
+  --color-fd-accent-foreground: #ffffff;
+  --color-fd-border: #354052;
+  --color-fd-primary: #9bb5ff;
+  --color-fd-primary-foreground: #030812;
+  --color-fd-ring: #9bb5ff;
+}
+
+@theme inline {
+  --font-sans: var(--font-sans-face), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-sans-face), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono-face), ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Headings are Manrope at medium weight, set slightly tight (the brand's type scale). */
+h1,
+h2,
+h3,
+h4 {
+  letter-spacing: -0.02em;
+}
+
+code,
+pre,
+kbd {
+  font-family: var(--font-mono-face), ui-monospace, SFMono-Regular, monospace;
+}
+
+html {
+  scrollbar-gutter: stable;
+}

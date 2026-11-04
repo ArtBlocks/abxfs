@@ -1,0 +1,60 @@
+{
+  "name": "@abxfs/pinning",
+  "version": "0.0.0",
+  "private": true,
+  "description": "ABX FS pinning \u2014 optionally mirror on-chain ABX FS content to IPFS. Opt-in: content lives on-chain regardless.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ArtBlocks/abxfs.git"
+  },
+  "homepage": "https://github.com/ArtBlocks/abxfs#readme",
+  "bugs": "https://github.com/ArtBlocks/abxfs/issues",
+  "keywords": [
+    "abxfs",
+    "ipfs",
+    "pinning",
+    "kubo",
+    "pinata"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
+    "lint": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@abxfs/sdk": "workspace:*",
+    "viem": "^2.57.1"
+  },
+  "devDependencies": {
+    "@ipld/dag-pb": "^4.1.2",
+    "@types/node": "^22.9.0",
+    "multiformats": "^13.3.1",
+    "typescript": "^5.6.3",
+    "vite": "^7.3.7",
+    "vitest": "^4.1.12"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}

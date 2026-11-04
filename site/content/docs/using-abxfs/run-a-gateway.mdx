@@ -1,0 +1,169 @@
+---
+title: "Run your own gateway"
+description: "The reference gateway and mirror, with your own filtering rules or none."
+---
+
+ABX FS is a protocol, and a gateway is a *reader* of it. Every reader chooses what it serves.
+`@abxfs/gateway` is a complete one, runnable by anyone, with your own filtering rules or none.
+
+```bash
+# one origin per project, on a content domain you control (recommended)
+abxfs-gateway --content-domain content.example
+
+# one network of your choice, your own RPC, refusing what a file names
+ABXFS_RPC_URL_<chainId>=https://… abxfs-gateway --content-domain content.example --chains <network> --deny denylist.txt
+```
+
+<Callout type="warn">
+The packages are not on npm yet, so `abxfs-gateway` and `abxfs-mirror` are not installable by name. Run
+them from a checkout: build with `pnpm --filter "@abxfs/gateway..." build`, then
+`node packages/gateway/dist/bin/gateway.js` and `…/mirror.js`.
+</Callout>
+
+## One origin per project
+
+An ABX FS project is a website, and anyone can publish one, so its JavaScript is not yours to trust. If every
+project were served from one origin, any project's script could read and impersonate every other, and
+anything else on that host. So the gateway gives **each project its own origin**, named by the `Host` header:
+
+```text
+https://<chain>-<org>-<id>.<content domain>/            a project's head
+https://<chain>-<org>-<id>-v<n>.<content domain>/       a fixed version
+https://c-<root>.<content domain>/                      raw content by root
+```
+
+`<org>` is the org's 40 hex digits (no `0x`, lowercase), and `<root>` is the root CID as lowercase base32.
+The request path is the path **inside** the project, so a website's own `/style.css` just works. Parsing is
+strict: there is exactly one spelling of each project, and a host that is not that spelling is a 404.
+
+You provide the wildcard: DNS for `*.content.example` and a wildcard certificate in front of the gateway
+(Caddy with a DNS challenge, a load balancer, or a CDN). **Use a domain that holds nothing else**, ideally a
+separate registrable domain from your app, and list it in the Public Suffix List so one project cannot set
+cookies for its siblings: sibling subdomains of one registrable domain are same-site, so `SameSite` cookies do not
+separate them. Give the content origin no secret, no session and no cookie of your app's. To try it locally, browsers
+resolve `*.localhost` to loopback:
+
+```bash
+abxfs-gateway --content-domain localhost:8080
+# open http://<chainId>-<org>-3.localhost:8080/
+```
+
+Two other modes exist for special cases, and you must choose exactly one: there is no default, because how
+projects are separated is a security decision.
+
+- `--project <chain>/<org>/<id>` serves **one** project at the root of the host (below).
+- `--path-mode` serves the `/g/p/…` and `/g/cid/…` layout on one shared origin. It is **unsafe for content
+  you do not control**, for the reason above. Use it only for your own content, or where you cannot add DNS.
+
+The gateway reads the chain through the RPC you give it (use one you trust: every chunk is checked against its
+record on chain, but the gateway trusts the node's answers, as any dapp does), and serves only orgs the factory created, so an arbitrary contract cannot have your gateway serve its content. Responses carry
+`nosniff` and `Referrer-Policy: no-referrer`, SVG/XHTML/XML/XSL (and the "unknown" types a browser sniffs:
+`unknown/unknown`, `application/unknown`, `*/*`) get `Content-Security-Policy: sandbox`, and
+`X-Frame-Options` is deliberately not set, because marketplaces embed project pages. A file's declared type is
+sent as declared only when it is exactly **one** valid MIME type: a browser splits a `Content-Type` on commas and
+uses the last valid type, so a declared `image/svg+xml,` is SVG to it. Anything that is not one valid type is
+served as `application/octet-stream`, sandboxed.
+
+Two limits you can tune: a single file is capped at 64 MiB, stored and inflated (`--max-file-bytes`; a larger
+one is a `413` whose message says to fetch it from IPFS or another gateway), and a request for something that
+does not exist is answered from a small in-memory cache for a few seconds (a `404` with `s-maxage=5` for an
+unknown org or token), so walking nonexistent hosts is cheap to absorb. Only a **definitive** answer is
+remembered: if the chain cannot be read (a rate-limited or unreachable RPC), the answer is a `503` with
+`Retry-After` and `no-store`, never a cached "not found" (only a real revert, a JSON-RPC `code: 3` or an
+`execution reverted` message, counts as the chain saying no; a 429, a timeout, a `-32603`, an empty answer or a
+proxy page that merely mentions a revert is a `503`). RPC reads are bounded (4 s, one retry) and every request has
+a 15 s deadline (`requestTimeoutMs` when you embed the handler), after which the answer is a `503`. Cold lookups
+for one address share a single in-flight read, and a file over the cap is refused once and remembered. A single
+`Range` request (`bytes=a-b`, `a-`, `-n`) is answered with `206`; several ranges get the whole file, and an
+unsatisfiable one is a `416`. On a file without a file codec (FastLZ chunks included: their recorded sizes are of
+the inflated data) a range is a seek: the store records each chunk's size, so the chunk holding any byte is found in
+one call and only the chunks the range covers are read, however large the file (a video can be scrubbed to its end,
+an mp4 index read from its tail). A file with a codec is read whole, subject to the cap. The gateway decodes `gzip`
+and `deflate` everywhere and, on Node, `br` and `zstd` (where `node:zlib` has it), each capped at the file limit as it
+inflates. A file in a codec it cannot decode is a `501` that names the codec, known from the file's record before any
+chunk is read; one whose decoded content does not match its `outputHash` is a `502` that says so. Both are facts
+about immutable bytes: remembered, and cacheable like the `413`. A client that already holds a file (a matching
+`If-None-Match`) gets a `304` before any content is read. Every read is paged (at
+most 100 chunk ids or directory entries per call): a path inside a large directory is one on-chain lookup, never a
+listing, and a directory listing page is paged. A raw-root host (`c-<root>.…`) names no chain, so the
+gateway tries the default chain first and then each other chain it serves. The gateway only serves `GET` and
+`HEAD`; every other method is a `405`.
+
+If you run the gateway **on a platform that caps response bodies** (Vercel Functions allow 4.5 MB), set `--max-file-bytes` below that limit: the gateway
+buffers what it sends (a file codec is decoded and checked whole), so it cannot stream a larger body. This is a platform limit
+to verify on a preview deployment. A request whose
+`Host` header contains anything but a host and port (a `/`, `?`, `#`, `@` or whitespace) is a `400`.
+
+**There is no IPFS shortcut.** A project's owner can name an `abxfs.gateway` URL where it is pinned. The
+gateway does not fetch through it: bytes from an IPFS gateway can only be trusted once checked against the IPFS
+CID of the on-chain content, and deriving that reads the whole file from chain, which is the work the shortcut
+would exist to avoid. Every file is served from chain. There is no `--ipfs` option: the gateway rejects it as an unknown option.
+
+## Hosting one project at the root of your own domain
+
+For your own website at your own domain, give the gateway one project and nothing else:
+
+```bash
+abxfs-gateway --project <network>/0xORG/3 --port 8080     # follows latest
+abxfs-gateway --project <network>/0xORG/3 --tag stable    # or pin a tag, or --version 2
+```
+
+Every path is a path inside the project (`/docs/a.html` is `docs/a.html`), and nothing else is served: no
+raw roots, no other project. Point your domain at it. The filters (`--deny`) still apply.
+
+## Filtering
+
+Two ways to run one. **Open, with a blocklist** is `--deny denylist.txt`. **Only these orgs** is
+`--allow-orgs 0xAbc…,0xDef…` (or a file of addresses): it serves the projects of those orgs and nothing
+else, and refuses root hosts (`c-<root>.…`), since a root names content rather than an org. With neither,
+nothing is filtered.
+
+For finer control, `--deny` refuses a request that names anything in a file and `--allow` serves **only**
+what a file names.
+One subject per line, re-read when the file changes:
+
+```text
+project:<chainId>:<org>:<id>   # one project
+org:<chainId>:<org>            # every project URL under an org
+root:0x…cid…                   # one piece of content, whatever points at it
+```
+
+Refusal is a **451**. A request may be checked more than once (with what the URL names, then with the root it
+resolves to and the CIDs it serves), so a filter you write must be idempotent.
+
+<Callout type="warn">
+**Root hosts are `immutable` behind a CDN.** A raw-root host's response for the root itself is cached for a year,
+`immutable`, because its one subject can be checked from the URL alone. That is safe only if your filter runs
+**ahead of every cache** that holds it. If a CDN you cannot purge
+sits in front of this process, an entry you add later will not reach what it already holds: set
+`--root-max-age <seconds>` (`ABXFS_ROOT_MAX_AGE`, or `rootMaxAge` when you embed the handler) to a short value, such
+as `60`. Everything else is short-lived whatever you set: a project response is cached for about a minute (`s-maxage=60`,
+plus 30 s of `stale-while-revalidate`), and so is anything a root host serves that is not the root itself (a
+directory root's `index.html`, a sub-path), because the CID it serves is only known after resolving.
+</Callout>
+
+An empty list serves everything the gateway can resolve — which is the protocol's own position. Yours
+will be a decision.
+
+## Mirroring to IPFS
+
+```bash
+abxfs-mirror --chain <network> --provider local            # follow forever
+abxfs-mirror --chain <network> --provider pinata --once    # catch up and exit
+```
+
+Every publish in every org goes into one append-only ledger, so mirroring everything published is one
+cursor over one list — no indexer, no database, no log scan. See [IPFS](/docs/using-abxfs/ipfs).
+
+Each factory has its own ledger and its own cursor file, named for that factory's **hook**
+(`abxfs-mirror.<chainId>.<hook8>.json`), never for its position in the registry, so a new factory starts from its
+own first publish and cannot inherit another's position. One factory failing does not stop the others, and a
+factory with no lens is a startup error, never a silent skip.
+
+A root over a size, file-count or read cap (`--max-root-bytes`, `--max-files-per-root`, `--max-entries-per-root`:
+directory entries read to assess it, across all its directories) is skipped with a log line saying why, and the
+cursor moves on. The same `--deny`, `--allow` and `--allow-orgs` lists as the gateway apply to each publish and to
+every CID inside its root, so a root that holds a listed file or directory is skipped too. `--poll-seconds` (how long to wait when caught up) must be a positive number. Give the mirror its
+key in `PINATA_JWT`, not `--api-key`, which lands in shell history.
+
+Before you expose a gateway, read the package README: RPC limits and caching.

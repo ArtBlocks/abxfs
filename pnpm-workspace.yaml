@@ -1,0 +1,6 @@
+packages:
+  - 'packages/sdk'
+  - 'packages/pinning'
+  - 'packages/gateway'
+  - 'packages/cli'
+  - 'site'
