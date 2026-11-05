@@ -2,7 +2,7 @@
   "name": "@artblocks/abxfs-sdk",
   "version": "0.0.0",
   "private": true,
-  "description": "ABX FS SDK \u2014 content-addressed, immutable file storage on any EVM chain. Chunk, compute CIDs, upload, read, and derive IPFS CIDs.",
+  "description": "ABX FS SDK — content-addressed, immutable file storage on any EVM chain. Chunk, compute CIDs, upload, read, and derive IPFS CIDs.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -70,7 +70,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
-    "blockstore-core": "^6.1.3",
+    "blockstore-core": "^7.0.1",
     "ipfs-unixfs-importer": "^17.1.1",
     "typescript": "^6.0.3",
     "vite": "^8.3.5",
