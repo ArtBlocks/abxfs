@@ -107,7 +107,7 @@ describe("L4: the id scanner", () => {
     expect(ids("[]")).toEqual([]);
   });
 
-  it("leaves a non-array answer (an error object, an HTML page) to viem", () => {
+  it("reads a non-array answer (an error object, an HTML page) as not an array", () => {
     expect(scan('{"jsonrpc":"2.0","id":1,"error":{"code":-32600}}').kind).toBe("not-an-array");
     expect(scan("<html>502</html>").kind).toBe("not-an-array");
     expect(scan("").kind).toBe("not-an-array");
@@ -118,5 +118,33 @@ describe("L4: the id scanner", () => {
     const t0 = performance.now();
     expect(scan(text, 65_536)).toEqual({ kind: "ids", ids: Array.from({ length: 64 }, (_, i) => i) });
     expect(performance.now() - t0).toBeLessThan(1_000);
+  });
+});
+
+describe("a batch answered with something other than an array", () => {
+  // viem (since 2.57) hands a bare error answering a batch to EVERY call in it, so one `execution reverted` would
+  // read as each call reverting. The answer is refused instead: a 2xx becomes a 502, a non-2xx keeps its status.
+  const answer = (status: number, text: string) => async () => new Response(text, { status, headers: { "content-type": "application/json" } });
+  const batch = { method: "POST", body: JSON.stringify([{ jsonrpc: "2.0", id: 1, method: "eth_call" }, { jsonrpc: "2.0", id: 2, method: "eth_call" }]) };
+  const bare = JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: 3, message: "execution reverted", data: "0x" } });
+
+  it("a bare error object or an HTML page with a 2xx is a 502 that names neither", async () => {
+    for (const text of [bare, "<html>execution reverted</html>", ""]) {
+      const res = await strictBatchFetch(answer(200, text))("http://rpc.test", batch);
+      expect(res.status, text).toBe(502);
+      expect(await res.text()).not.toMatch(/execution reverted/);
+    }
+  });
+
+  it("a non-2xx keeps its status (a 429 stays a 429), without the body", async () => {
+    const res = await strictBatchFetch(answer(429, bare))("http://rpc.test", batch);
+    expect(res.status).toBe(429);
+    expect(await res.text()).not.toMatch(/execution reverted/);
+  });
+
+  it("a single (non-batch) request's answer is passed through untouched", async () => {
+    const res = await strictBatchFetch(answer(200, bare))("http://rpc.test", { method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call" }) });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe(bare);
   });
 });

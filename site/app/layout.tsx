@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { RootProvider } from "fumadocs-ui/provider/next";
-import { Banner } from "fumadocs-ui/components/banner";
+import { RootProvider } from "@fumadocs/base-ui/provider/next";
+import { Banner } from "@fumadocs/base-ui/components/banner";
 import { Manrope, Red_Hat_Mono } from "next/font/google";
 import "./global.css";
 

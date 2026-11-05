@@ -35,7 +35,7 @@
     ],
     "overrides": {
       "ws@8": "^8.22.0",
-      "postcss": "^8.5.28",
+      "postcss": "^8.5.32",
       "source-map-js": "^1.2.2",
       "zod": "^4.6.6"
     }

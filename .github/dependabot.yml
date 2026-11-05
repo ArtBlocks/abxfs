@@ -6,7 +6,17 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # TypeScript 7 is the native compiler and no longer ships `typescript/lib/typescript.js`, the JavaScript API two
+      # tests use (one transpiles a source file, one stores the compiler as a large real file). Revisit when they move.
+      - dependency-name: typescript
+        versions: [">=7"]
     groups:
+      # `@fumadocs/base-ui` requires the exact `fumadocs-core` it was released with, so they move together, majors too.
+      fumadocs:
+        patterns:
+          - "fumadocs-*"
+          - "@fumadocs/*"
       production-dependencies:
         dependency-type: production
         update-types:

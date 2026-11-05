@@ -99,7 +99,10 @@ export function isRevert(err: unknown): boolean {
 
   // Every layer must be one a revert is made of. A single foreign layer disqualifies the whole chain.
   if (!chain.every((e) => nameOf(e) === "" || REVERT_LAYERS.has(nameOf(e)))) return false;
-  if (chain.some((e) => typeof (e as { status?: unknown }).status === "number")) return false;
+  // viem (since 2.57) puts the HTTP status on an RpcRequestError as well, when a non-2xx answer carried a well-formed
+  // JSON-RPC error: the node answered, and its code decides (below). A status on any other layer is an HTTP failure.
+  // A batch answered with one bare error never gets here: `strictBatchFetch` refuses it.
+  if (chain.some((e) => typeof (e as { status?: unknown }).status === "number" && nameOf(e) !== "RpcRequestError")) return false;
 
   // The node's own error is the layer that carries a numeric `code` (an `RpcRequestError`, or the unnamed
   // JSON-RPC error object under it). Its message is the node's, not viem's.
@@ -393,8 +396,10 @@ export const BATCH_RESPONSE_MAX_BYTES = 10_485_760;
  * the mistaken belief that viem validated them.) The answer is read once; only the `id` of each element is parsed,
  * by {@link BatchIdScanner}, so a large answer is not decoded or parsed twice; viem then reads the same bytes.
  *
- * A non-batch request, or an answer that is not a JSON array (a bare error object, an HTML page), is returned as the
- * provider sent it, for viem to classify as it always did.
+ * A non-batch request is returned as the provider sent it. An answer to a batch that is not a JSON array (a bare error
+ * object, an HTML page) is refused too: viem (since 2.57) hands a bare error to EVERY call in the batch, so one
+ * `execution reverted` would read as every call reverting, "this org does not exist" for each. A non-2xx status is
+ * kept (a 429 stays a 429) with the body replaced, so viem reports the HTTP failure it is; a 2xx becomes a 502.
  *
  * A batch answer is buffered to at most `maxBytes` ({@link BATCH_RESPONSE_MAX_BYTES} by default, which is viem's own
  * cap on a response body): past it, or past a `Content-Length` that says so, the rest is not read and the answer is a
@@ -461,7 +466,13 @@ export function strictBatchFetch(inner: typeof fetch = (...a) => fetch(...a), op
     const replay = () => new Response(nullBody ? null : bytes, { status: res.status, statusText: res.statusText, headers });
 
     const verdict = scanner.finish();
-    if (verdict.kind === "not-an-array") return replay();
+    if (verdict.kind === "not-an-array") {
+      return new Response("JSON-RPC batch answered with something other than an array", {
+        status: res.ok ? 502 : res.status,
+        statusText: res.ok ? "Bad Gateway" : res.statusText,
+        headers: { "content-type": "text/plain" },
+      });
+    }
     if (verdict.kind === "ids") {
       const have = new Map<unknown, number>();
       for (const id of verdict.ids) have.set(id, (have.get(id) ?? 0) + 1);

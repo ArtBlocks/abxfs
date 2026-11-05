@@ -234,7 +234,11 @@ export function isDefiniteRevert(err: unknown): boolean {
   const chain: Array<{ name?: unknown; message?: unknown; code?: unknown; status?: unknown; details?: unknown; shortMessage?: unknown }> = [];
   for (let cur: unknown = err; cur && typeof cur === "object" && chain.length < 12; cur = (cur as { cause?: unknown }).cause) chain.push(cur as never);
   if (chain.length === 0) return false;
-  if (chain.some((e) => typeof e.status === "number" || e.name === "HttpRequestError" || e.name === "TimeoutError" || e.name === "InternalRpcError" || e.code === -32603)) return false;
+  // viem (since 2.57) puts the HTTP status on an RpcRequestError as well: there the node answered with a well-formed
+  // JSON-RPC error, and its code decides. Any other error with a status is the HTTP failure it says. (A batch answered
+  // with one bare error, which viem would hand to every call, never gets this far: the gateway's `strictBatchFetch`
+  // refuses it, and nothing else batches.)
+  if (chain.some((e) => (typeof e.status === "number" && e.name !== "RpcRequestError") || e.name === "HttpRequestError" || e.name === "TimeoutError" || e.name === "InternalRpcError" || e.code === -32603)) return false;
   return chain.some(
     (e) =>
       e.name === "ContractFunctionRevertedError" ||

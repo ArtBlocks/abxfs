@@ -1,5 +1,5 @@
 import Image from "next/image";
-import type { BaseLayoutProps } from "fumadocs-ui/layouts/shared";
+import type { BaseLayoutProps } from "@fumadocs/base-ui/layouts/shared";
 import { appUrl, repoUrl } from "./shared";
 
 /** Shared chrome for every layout. */

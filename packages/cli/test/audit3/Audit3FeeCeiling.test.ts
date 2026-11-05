@@ -121,7 +121,10 @@ describe("Audit3 fee ceiling", () => {
   });
   it("nonce manager: after a refused send, the next legit send reuses the nonce (no gap)", async () => {
     const c = client();
-    let first: unknown; try { first = await (c.walletClient as any).sendTransaction({ to: "0x000000000000000000000000000000000000dEaD", value: 0n, maxFeePerGas: 1000_000_000_000n }); } catch (e) { first = "threw"; }
+    // Both fees, over the ceiling: viem re-estimates BOTH when only `maxFeePerGas` is given (2.57.16 does), and the
+    // send must really be refused, or this test checks nothing.
+    let first: unknown; try { first = await (c.walletClient as any).sendTransaction({ to: "0x000000000000000000000000000000000000dEaD", value: 0n, maxFeePerGas: 1000_000_000_000n, maxPriorityFeePerGas: 1000_000_000_000n }); } catch (e) { first = "threw"; }
+    expect(first).toBe("threw");
     const { parseTransaction: pt } = await import("viem");
     log = [];
     await (c.walletClient as any).sendTransaction({ to: "0x000000000000000000000000000000000000dEaD", value: 0n });
