@@ -1,14 +1,14 @@
 {
   "name": "@artblocks/abxfs-cli",
-  "version": "0.0.0",
-  "private": true,
-  "description": "ABX FS command-line interface \u2014 upload a folder to the blockchain and read it back.",
+  "version": "0.1.0",
+  "description": "ABX FS command-line interface — upload a folder to the blockchain and read it back.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ArtBlocks/abxfs.git"
+    "url": "git+https://github.com/ArtBlocks/abxfs.git",
+    "directory": "packages/cli"
   },
-  "homepage": "https://github.com/ArtBlocks/abxfs#readme",
+  "homepage": "https://docs.fs.abx.io",
   "bugs": "https://github.com/ArtBlocks/abxfs/issues",
   "keywords": [
     "abxfs",
@@ -24,7 +24,9 @@
   "files": [
     "dist",
     "src",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "sideEffects": false,
   "publishConfig": {

@@ -2,9 +2,9 @@
  * Config validation (F20), chain resolution (F17 and the untested branches), the program's own flags (F4 through
  * `buildProgram()`, `--allow-config-overrides` anywhere), and what an error prints (F14, F16, F18).
  */
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TransactionTimeoutError } from "@artblocks/abxfs-sdk";
 import type { Hex } from "viem";
@@ -125,7 +125,8 @@ describe("the program", () => {
     const program = buildProgram().exitOverride();
     const write = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     await expect(program.parseAsync(["node", "abxfs", "pin", "--project-id", "1", "--version", "2"])).rejects.toThrow(/now `--project-version`/);
-    expect(write.mock.calls.flat().join("")).not.toContain("0.0.0");
+    const { version } = JSON.parse(readFileSync(resolve(__dirname, "../../package.json"), "utf8")) as { version: string };
+    expect(write.mock.calls.flat().join("")).not.toContain(version);
     const pin = program.commands.find((c) => c.name() === "pin")!;
     expect(pin.options.map((o) => o.long)).toContain("--project-version");
     expect(pin.helpInformation()).not.toMatch(/--version/);

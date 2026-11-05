@@ -1,49 +1,59 @@
 name: release
 
+# Publishes the @artblocks/abxfs-* packages through Changesets and npm trusted publishing (OIDC): no npm token is
+# stored anywhere. Each package names this repository and this workflow file as its trusted publisher on npmjs.com, so
+# renaming this file stops every release until each package is told the new name.
+#
+# Every push to main either opens (or updates) the Version Packages pull request, when changesets are waiting, or
+# publishes whatever version on main is not on npm yet. Nothing is tested here: main only takes a pull request whose
+# required checks passed, and the tarballs are the ones sdk-ci's pack smoke test installs.
+#
+# OIDC needs Node >= 22.14 and pnpm pinned in package.json, and no `registry-url` on setup-node: the .npmrc it writes
+# gets in the way of the token exchange.
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
 
-# Builds, tests and packs every package, and uploads the tarballs as artifacts. It publishes nothing:
-# publishing will go through npm trusted publishing (OIDC, no stored token), set up with the first release.
+# Never two releases at once: a second push waits rather than racing a publish.
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
 permissions:
-  contents: read
+  contents: write # the Version Packages branch, and the release tags
+  pull-requests: write # open or update the Version Packages pull request
+  id-token: write # the OIDC token npm trades for a short-lived publish token
+  actions: write # start the required checks on the Version Packages branch (below)
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # Changesets diffs against main
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
-      # `pnpm run test` runs forge (the contracts, and `abi-drift.test.ts`'s `forge inspect`): the same pin and
-      # dependencies as contracts-ci and sdk-ci.
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
-        with:
-          version: v1.4.3
       - run: pnpm install --frozen-lockfile
-      - name: Install forge dependencies
-        run: ./scripts/install-forge-deps.sh
-      - name: Build contracts (needed for SDK ABIs)
-        run: |
-          (cd packages/protobuf-sol && forge build)
-          (cd packages/contracts-core && forge build)
-          (cd packages/contracts-companion && forge build)
-          (cd packages/contracts-projects && forge build)
-      # There is no root `build` script: every workspace package, as sdk-ci builds them.
+      # Packages read each other from dist, and none of them builds on pack.
       - name: Build packages
         run: pnpm -r --filter="./packages/*" build
-      - run: pnpm run test
-      - name: Pack and install smoke test
-        run: ./scripts/pack-smoke.sh
-      - name: Pack
-        run: |
-          mkdir -p dist-tarballs
-          pnpm -r --filter "./packages/*" exec pnpm pack --pack-destination "$GITHUB_WORKSPACE/dist-tarballs"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - name: Open the Version Packages pull request, or publish
+        id: changesets
+        uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
-          name: package-tarballs
-          path: dist-tarballs/*.tgz
+          version-script: pnpm ci:version
+          publish-script: pnpm ci:publish
+          commit-message: Version packages
+          pr-title: Version packages
+      # A pull request opened with this workflow's token starts no workflow, so its required checks would never
+      # report. Start them on the release branch: their check runs land on the commit the pull request shows.
+      - name: Run the required checks on the Version Packages pull request
+        if: steps.changesets.outputs.pr-number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for workflow in repo-ci.yml contracts-ci.yml sdk-ci.yml; do
+            gh workflow run "$workflow" --ref changeset-release/main
+          done

@@ -8,17 +8,16 @@ just a *reader* of it, and every reader makes its own choices about what it will
 complete one, runnable by anyone.
 
 ```bash
+npm install -g @artblocks/abxfs-gateway    # Node 22.13 or later; installs abxfs-gateway and abxfs-mirror
+```
+
+```bash
 # one origin per project on a content domain you control (recommended)
 abxfs-gateway --content-domain content.example
 
 # one network of your choice, on your own RPC, refusing what a file names
 ABXFS_RPC_URL_<chainId>=https://… abxfs-gateway --content-domain content.example --chains <network> --deny denylist.txt
 ```
-
-> **Not on npm yet.** Until the packages are published, run it from a checkout:
-> `pnpm install && pnpm --filter "@artblocks/abxfs-gateway..." build && node packages/gateway/dist/bin/gateway.js --help`.
-> Everywhere below, `abxfs-gateway` and `abxfs-mirror` mean `node packages/gateway/dist/bin/gateway.js`
-> and `…/mirror.js`.
 
 **You must choose how projects are addressed**, and there is no default, because it is a security
 decision:

@@ -19,11 +19,8 @@ Pin ABX FS content (a directory tree or a single file) to IPFS, from chain.
 
 ## Installation
 
-> **Not on npm yet.** Until the packages are published, build it from a checkout:
-> `pnpm install && pnpm --filter "@artblocks/abxfs-pinning..." build`. Once they are:
-
 ```bash
-pnpm add @artblocks/abxfs-pinning @artblocks/abxfs-sdk
+npm install @artblocks/abxfs-pinning @artblocks/abxfs-sdk
 ```
 
 ## Usage

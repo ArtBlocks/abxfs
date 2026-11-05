@@ -3,6 +3,7 @@
  * ABX FS CLI entry point.
  */
 import { realpathSync } from "node:fs";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 import { Command } from "commander";
@@ -24,6 +25,9 @@ import { updateCommand } from "./commands/update.js";
 import { uploadCommand } from "./commands/upload.js";
 import { verifyCommand } from "./commands/verify.js";
 
+// The published version, read at run time: `../package.json` is the package's own from `src/` and from `dist/` alike.
+const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
+
 function buildProgram(): Command {
   const program = new Command();
   program
@@ -31,7 +35,7 @@ function buildProgram(): Command {
     .description(
       "ABX FS command-line interface — content-addressed, immutable file storage on any EVM chain.",
     )
-    .version("0.0.0")
+    .version(version)
     // Program options only BEFORE the subcommand: otherwise `pin --project-version`'s old spelling, `--version`,
     // was taken by the program, which printed its version and exited 0 having done nothing.
     .enablePositionalOptions()

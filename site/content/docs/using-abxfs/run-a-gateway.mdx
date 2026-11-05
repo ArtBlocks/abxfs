@@ -7,18 +7,14 @@ ABX FS is a protocol, and a gateway is a *reader* of it. Every reader chooses wh
 `@artblocks/abxfs-gateway` is a complete one, runnable by anyone, with your own filtering rules or none.
 
 ```bash
+npm install -g @artblocks/abxfs-gateway    # Node 22.13 or later; installs abxfs-gateway and abxfs-mirror
+
 # one origin per project, on a content domain you control (recommended)
 abxfs-gateway --content-domain content.example
 
 # one network of your choice, your own RPC, refusing what a file names
 ABXFS_RPC_URL_<chainId>=https://… abxfs-gateway --content-domain content.example --chains <network> --deny denylist.txt
 ```
-
-<Callout type="warn">
-The packages are not on npm yet, so `abxfs-gateway` and `abxfs-mirror` are not installable by name. Run
-them from a checkout of [the repository](https://github.com/ArtBlocks/abxfs): build with `pnpm --filter "@artblocks/abxfs-gateway..." build`, then
-`node packages/gateway/dist/bin/gateway.js` and `…/mirror.js`.
-</Callout>
 
 ## One origin per project
 

@@ -4,7 +4,7 @@
  * builds every package before the CLI tests.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -13,6 +13,7 @@ import { MAX_CONFIG_BYTES } from "../../src/config.js";
 import { redact } from "../../src/redact.js";
 
 const CLI_DIST = resolve(__dirname, "../../dist/index.js");
+const VERSION = (JSON.parse(readFileSync(resolve(__dirname, "../../package.json"), "utf8")) as { version: string }).version;
 const addr = (n: number) => "0x" + n.toString(16).padStart(40, "0");
 const tmp = () => mkdtempSync(join(tmpdir(), "abxfs-find-"));
 const env = (extra: Record<string, string> = {}) => ({ PATH: process.env["PATH"]!, HOME: "/nonexistent", ...extra });
@@ -99,14 +100,14 @@ describe.skipIf(!existsSync(CLI_DIST))("built CLI", () => {
   describe("F4: `pin --version` is not swallowed by the program-level --version", () => {
     it("reaches the pin command (which says it is now --project-version) instead of printing the CLI version", () => {
       const r = run(["pin", "--project-id", "1", "--version", "2", "--chain", "base-sepolia"]);
-      expect(r.stdout.trim()).not.toBe("0.0.0");
+      expect(r.stdout.trim()).not.toBe(VERSION);
       expect(r.status).toBe(1);
       expect(r.stderr).toMatch(/--project-version/);
     });
 
-    it("`abxfs --version` still prints the version", () => {
+    it("`abxfs --version` still prints the version, the package's own", () => {
       const r = run(["--version"]);
-      expect(r.stdout.trim()).toBe("0.0.0");
+      expect(r.stdout.trim()).toBe(VERSION);
     });
   });
 

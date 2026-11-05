@@ -24,7 +24,10 @@
     "format": "pnpm -r --if-present format",
     "typecheck": "pnpm -r --if-present typecheck",
     "test:gateway": "pnpm --filter @artblocks/abxfs-gateway test",
-    "check:hygiene": "node scripts/check-repo-hygiene.mjs"
+    "check:hygiene": "node scripts/check-repo-hygiene.mjs",
+    "changeset": "changeset",
+    "ci:version": "changeset version",
+    "ci:publish": "changeset publish"
   },
   "engines": {
     "node": ">=22.13.0"
@@ -41,6 +44,7 @@
     }
   },
   "devDependencies": {
+    "@changesets/cli": "^3.0.3",
     "@vitest/coverage-v8": "4.1.12"
   }
 }
