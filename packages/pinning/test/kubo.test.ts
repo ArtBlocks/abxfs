@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
-import type { AbxfsCid, AbxfsClient } from "@abxfs/sdk";
+import type { AbxfsCid, AbxfsClient } from "@artblocks/abxfs-sdk";
 
 const c = (n: number) => ("0x" + n.toString(16).padStart(64, "0")) as AbxfsCid;
 const FILES = new Map<string, Uint8Array>([
@@ -17,8 +17,8 @@ const FILES = new Map<string, Uint8Array>([
   [c(102), Uint8Array.from({ length: 300 * 1024 }, (_, i) => (Math.imul(i, 2654435761) >>> 24) & 0xff)],
 ]);
 
-vi.mock("@abxfs/sdk", async (orig) => ({
-  ...(await orig<typeof import("@abxfs/sdk")>()),
+vi.mock("@artblocks/abxfs-sdk", async (orig) => ({
+  ...(await orig<typeof import("@artblocks/abxfs-sdk")>()),
   readFile: async (_pc: unknown, _a: unknown, cid: string) => ({ bytes: FILES.get(cid)! }),
 }));
 

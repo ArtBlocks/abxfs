@@ -10,7 +10,7 @@
  * Every request goes through {@link httpClient}: progress-based timeouts instead of a fixed one, capped response
  * bodies, no redirects (the key must never follow one to another origin), and errors that name the host and code.
  */
-import { asIpfsCid, type IpfsCid } from "@abxfs/sdk";
+import { asIpfsCid, type IpfsCid } from "@artblocks/abxfs-sdk";
 
 import { assertSecureEndpoint } from "../endpoint.js";
 import { errorText, httpClient, jsonOf, multipartBody, type HttpTimeouts } from "../http.js";

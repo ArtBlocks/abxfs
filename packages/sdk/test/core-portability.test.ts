@@ -1,5 +1,5 @@
 /**
- * `@abxfs/sdk/core` must stay chain-free and runtime-agnostic.
+ * `@artblocks/abxfs-sdk/core` must stay chain-free and runtime-agnostic.
  *
  * The value of that entry point is entirely a negative claim — "this needs no node, no wallet, no
  * Node.js" — and a negative claim in a doc comment decays the moment someone adds a convenient
@@ -47,7 +47,7 @@ describe("core is chain-free", () => {
 
   /**
    * `autoRegisterNodeCodecs` imports `node:zlib`, but LAZILY — inside the function body. If it moved
-   * to a top-level import, `@abxfs/sdk/core` would stop loading in a browser or edge runtime, which
+   * to a top-level import, `@artblocks/abxfs-sdk/core` would stop loading in a browser or edge runtime, which
    * is the specific failure this guards.
    */
   it("keeps node:* imports lazy so the module loads in a browser", () => {

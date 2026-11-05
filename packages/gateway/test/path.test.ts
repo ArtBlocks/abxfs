@@ -7,7 +7,7 @@
  * server both run this code.
  */
 import { describe, expect, it } from "vitest";
-import { asAbxfsCid } from "@abxfs/sdk";
+import { asAbxfsCid } from "@artblocks/abxfs-sdk";
 
 import {
   GatewayError,

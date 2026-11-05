@@ -2,7 +2,7 @@
 
 Orientation for AI coding agents. Humans should find it useful too.
 
-The product is **ABX FS**: packages `@abxfs/*`, the `abxfs` CLI, `ABXFS_*` environment variables, `.abxfs.json`
+The product is **ABX FS**: packages `@artblocks/abxfs-*`, the `abxfs` CLI, `ABXFS_*` environment variables, `.abxfs.json`
 config files. The specs are [`specs/abx-fs.md`](./specs/abx-fs.md) (the content layer and IPFS) and
 [`specs/abx-fs-orgs.md`](./specs/abx-fs-orgs.md) (projects and orgs). It is deployed on production networks and their
 testnets, with real funds at stake on the production ones: see "Deployed networks" below.
@@ -97,8 +97,10 @@ The build keeps solc's metadata hash (by design: NatSpec is frozen with the code
 exact source text, comments included, to the source paths and to the remappings. Three consequences: every comment edit
 in a pinned contract moves its address; `auto_detect_remappings = false` in every `foundry.toml`, because auto-detection
 adds absolute paths of the checkout to the metadata and addresses would then depend on where the repo lives; and the
-Solidity package folder names and remapping names (`@abxfs/core/…`) are frozen at deployment. The library sources a
-contract compiles are part of its address too (Solady's `LibZip`, `SSTORE2`, `Multicallable`, `LibString`, `LibBytes`,
+Solidity package folder names and remapping names (`@abxfs/core/…`) are frozen at deployment (they are Solidity
+remappings, not npm packages: the npm packages are `@artblocks/abxfs-*`, and renaming a remapping moves every
+address). The library sources a contract compiles are part of its address too (Solady's `LibZip`, `SSTORE2`,
+`Multicallable`, `LibString`, `LibBytes`,
 `Base64`): install them only with `scripts/install-forge-deps.sh`, which checks each tag's commit, and never edit or
 format `lib/` (every `foundry.toml` has `[fmt] ignore = ["lib/**"]`). A locally reformatted Solady once moved the
 factory's address while every logic byte stayed the same. The changes are made loud
@@ -201,12 +203,12 @@ a new factory (see "Superseding" in the deploy runbook). A chain is listed with 
 what it does with such a chain: `requireCanonicalAddresses` throws "not deployed"; the CLI loads such a
 chain without addresses and refuses commands on it (`requireAddresses`); a site leaves it out of the chains it serves.
 `canonical.test.ts` fails if the registry's addresses drift from the deploy scripts' `pinned()`, so a re-pin
-cannot leave the record pointing at an old build. Tests that need an address book mock `@abxfs/sdk` through
+cannot leave the record pointing at an old build. Tests that need an address book mock `@artblocks/abxfs-sdk` through
 `packages/sdk/test/helpers/deployed-registry.ts` (a test setup file can do it for a whole suite), so they defend stand-in
 addresses on every chain, so they do not move when a chain is deployed. Deploying anything to a production chain
 needs the maintainers' explicit go-ahead.
 
-**Packages read each other from `dist`.** The CLI and the gateway import `@abxfs/sdk` (and a site imports the SDK and
+**Packages read each other from `dist`.** The CLI and the gateway import `@artblocks/abxfs-sdk` (and a site imports the SDK and
 the gateway) through their package exports, so after changing one of those, rebuild it
 (`pnpm -r --filter="./packages/*" build`) before trusting a dependent test. A stale `dist` reads as a baffling mock
 error ("No `<name>` export is defined on the mock") rather than a type error.
@@ -305,7 +307,7 @@ address**, so URLs change. That is the cost of the trust model, and it is why `a
 open flag exist. Do not reach for an owner, an upgrade path or a setter to avoid it.
 `packages/contracts-projects/test/fork/OrgFork.t.sol` runs against the real ABX contracts and closes
 every state-changing selector in ABX's ABI against every actor; the list is generated from that ABI
-(`pnpm --filter @abxfs/sdk gen:battery`) and a test fails if it goes stale, so an ABX release that adds
+(`pnpm --filter @artblocks/abxfs-sdk gen:battery`) and a test fails if it goes stale, so an ABX release that adds
 a mutator shows up in a diff instead of past a hand-kept list.
 
 **Two structures are not namespaced by caller, and each admits registered orgs only.** The hooks key
@@ -355,7 +357,7 @@ where the content layer is deployed before the factory.
 ## No blocklist on chain
 
 Content is permanent and neutral, and the protocol has no blocklist: what a gateway declines to serve is that gateway's
-own choice, made off chain (`@abxfs/gateway` takes a deny list or a filter). Do not add one on chain: editorial policy
+own choice, made off chain (`@artblocks/abxfs-gateway` takes a deny list or a filter). Do not add one on chain: editorial policy
 would read as protocol state, an entry could never be retracted, and writing one would need a hot key.
 
 ## Serving content
@@ -408,7 +410,7 @@ the check on the CID actually served happens after resolution.
 ## No infrastructure
 
 ABX FS needs no indexer, database or hosted service: a site's only backend dependency is a JSON-RPC endpoint. The
-gateway and the mirror are tools anyone may run, and `@abxfs/pinning` is an opt-in library (`abxfs pin`,
+gateway and the mirror are tools anyone may run, and `@artblocks/abxfs-pinning` is an opt-in library (`abxfs pin`,
 `abxfs-mirror`) for people who want to pin.
 
 If a change starts to need a database or a background service, that is a signal to re-read

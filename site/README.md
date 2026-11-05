@@ -4,11 +4,11 @@ The ABX FS documentation site. [fumadocs](https://fumadocs.dev) on Next.js,
 deployed to **docs.fs.abx.io** as its own Vercel project.
 
 ```bash
-pnpm --filter @abxfs/docs dev     # http://localhost:3002
-pnpm --filter @abxfs/docs build
+pnpm --filter @artblocks/abxfs-docs dev     # http://localhost:3002
+pnpm --filter @artblocks/abxfs-docs build
 ```
 
-To run it on another port: `pnpm --filter @abxfs/docs exec next dev --port <port>`.
+To run it on another port: `pnpm --filter @artblocks/abxfs-docs exec next dev --port <port>`.
 
 ## Where the words are
 

@@ -16,7 +16,7 @@ import {
 import { nonceManager, privateKeyToAccount } from "viem/accounts";
 
 import type { Address } from "viem";
-import { AbxfsClient } from "@abxfs/sdk";
+import { AbxfsClient } from "@artblocks/abxfs-sdk";
 import { chainDisplayName, knownViemChain, maxFeeCapWei } from "./chains.js";
 import { getPrivateKey, requireAddresses, type ChainConfig } from "./config.js";
 import { CliRefusal } from "./redact.js";

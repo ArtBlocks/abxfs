@@ -5,7 +5,7 @@
  * entry's own subjects, and the mirror skips a root that holds a blocked CID.
  */
 import { describe, expect, it } from "vitest";
-import { ProjectKind, type AbxfsCid } from "@abxfs/sdk";
+import { ProjectKind, type AbxfsCid } from "@artblocks/abxfs-sdk";
 
 import { allowlistFilter, denylistFilter } from "../../src/filters.js";
 import { RootContainsBlockedError, assessRoot, memoryCursor, runMirror, type TreeFilter } from "../../src/mirror.js";

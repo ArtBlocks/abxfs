@@ -11,8 +11,8 @@
 import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, readdirSync, readlinkSync, type Stats } from "node:fs";
 import { dirname, join, parse, relative, resolve, sep } from "node:path";
 
-import type { FileDescriptor } from "@abxfs/sdk";
-import { UPLOAD_DOT_ALLOWLIST, UPLOAD_IGNORE_NAMES, UPLOAD_VCS_NAMES, inferMimeType, isSecretLikePath, sniffSecret } from "@abxfs/sdk";
+import type { FileDescriptor } from "@artblocks/abxfs-sdk";
+import { UPLOAD_DOT_ALLOWLIST, UPLOAD_IGNORE_NAMES, UPLOAD_VCS_NAMES, inferMimeType, isSecretLikePath, sniffSecret } from "@artblocks/abxfs-sdk";
 
 import { safe } from "./text.js";
 

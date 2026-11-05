@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { loadConfig, resolveChain, setAllowConfigOverrides } from "../../src/config.js";
 
 // The registry has no addresses for the production chains; these tests need a canonical address book to defend.
-vi.mock("@abxfs/sdk", async (orig) => (await import("../../../sdk/test/helpers/deployed-registry.js")).withDeployedRegistry(await orig()));
+vi.mock("@artblocks/abxfs-sdk", async (orig) => (await import("../../../sdk/test/helpers/deployed-registry.js")).withDeployedRegistry(await orig()));
 
 const saved = { ...process.env };
 let dir: string;

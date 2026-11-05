@@ -23,8 +23,8 @@ const SIZE = 1 << 20;
 
 const state = vi.hoisted(() => ({ readCalls: 0, infoCalls: new Map<string, number>(), locateCalls: 0 }));
 
-vi.mock("@abxfs/sdk", async (orig) => {
-  const real = await orig<typeof import("@abxfs/sdk")>();
+vi.mock("@artblocks/abxfs-sdk", async (orig) => {
+  const real = await orig<typeof import("@artblocks/abxfs-sdk")>();
   return {
     ...real,
     getFileInfo: async (_c: unknown, _a: unknown, cid: string) => {
@@ -43,7 +43,7 @@ vi.mock("@abxfs/sdk", async (orig) => {
   };
 });
 
-import { ProjectKind, registerFileCodec, type AbxfsCid, type FileCodec } from "@abxfs/sdk";
+import { ProjectKind, registerFileCodec, type AbxfsCid, type FileCodec } from "@artblocks/abxfs-sdk";
 
 registerFileCodec({ label: KNOWN as FileCodec, name: "x-test", encode: (b) => b, decode: (b) => b });
 

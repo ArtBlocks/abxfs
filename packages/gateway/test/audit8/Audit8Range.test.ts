@@ -10,7 +10,7 @@
  * 12,287-byte chunks, so for any range under that it is 1 every time.
  */
 import { beforeEach, describe, expect, it } from "vitest";
-import { asAbxfsCid, rootContentLabel, type AbxfsCid } from "@abxfs/sdk";
+import { asAbxfsCid, rootContentLabel, type AbxfsCid } from "@artblocks/abxfs-sdk";
 
 import { byteRange, createGateway } from "../../src/handler.js";
 import { __resetResolveCaches } from "../../src/resolve.js";

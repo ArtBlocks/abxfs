@@ -12,7 +12,7 @@ import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ProjectKind } from "@abxfs/sdk";
+import { ProjectKind } from "@artblocks/abxfs-sdk";
 import type { Hex } from "viem";
 
 const h = vi.hoisted(() => ({
@@ -26,12 +26,12 @@ vi.mock("../../src/client.js", () => ({
   createClient: () => (h.calls.push("createClient"), h.client),
   createOrgClient: async () => (h.calls.push("createOrgClient"), h.orgClient),
 }));
-vi.mock("@abxfs/sdk", async (orig) => ({
-  ...(await orig<typeof import("@abxfs/sdk")>()),
+vi.mock("@artblocks/abxfs-sdk", async (orig) => ({
+  ...(await orig<typeof import("@artblocks/abxfs-sdk")>()),
   readOrgsAdministeredAcrossGenerations: async () => ({ ...h.myOrgs, failedGenerations: [] }),
 }));
-vi.mock("@abxfs/pinning", async (orig) => ({
-  ...(await orig<typeof import("@abxfs/pinning")>()),
+vi.mock("@artblocks/abxfs-pinning", async (orig) => ({
+  ...(await orig<typeof import("@artblocks/abxfs-pinning")>()),
   localPinningProvider: () => ({
     name: "local",
     preflight: async () => void h.calls.push("preflight"),
@@ -419,7 +419,7 @@ describe("declined, empty and error paths", () => {
   });
 
   it("upload: a personal org whose creation timed out but mined is recovered, and the upload goes into its first project", async () => {
-    const { TransactionTimeoutError } = await import("@abxfs/sdk");
+    const { TransactionTimeoutError } = await import("@artblocks/abxfs-sdk");
     h.client = uploadClient({
       createOrg: async (o: { onSent?: (x: Hex) => void }) => (o.onSent?.(TX as Hex), Promise.reject(new TransactionTimeoutError(TX as Hex, "createOrg"))),
       recoverCreateOrg: async () => ({ state: "mined", org: ORG, tokenId: 0n }),

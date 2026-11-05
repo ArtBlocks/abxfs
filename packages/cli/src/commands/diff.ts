@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import kleur from "kleur";
 
-import { autoRegisterNodeCodecs } from "@abxfs/sdk";
+import { autoRegisterNodeCodecs } from "@artblocks/abxfs-sdk";
 
 import { parseTokenId } from "../args.js";
 import { createOrgClient } from "../client.js";

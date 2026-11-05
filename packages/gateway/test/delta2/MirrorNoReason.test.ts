@@ -3,7 +3,7 @@
  * `{ allow: false }`): the skip still says why, as "filtered", rather than "undefined".
  */
 import { describe, expect, it } from "vitest";
-import { ProjectKind } from "@abxfs/sdk";
+import { ProjectKind } from "@artblocks/abxfs-sdk";
 
 import { RootContainsBlockedError, assessRoot } from "../../src/mirror.js";
 import { rootSubject } from "../../src/subjects.js";

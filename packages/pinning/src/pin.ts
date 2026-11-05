@@ -33,7 +33,7 @@ import {
   locateContent,
   readDirectory,
   readFile,
-} from "@abxfs/sdk";
+} from "@artblocks/abxfs-sdk";
 
 import { CAR_MEDIA_TYPE, encodeCar } from "./car.js";
 import type { PinnedFile, PinningProvider } from "./types.js";

@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import kleur from "kleur";
 
-import { autoRegisterNodeCodecs, asAbxfsCid } from "@abxfs/sdk";
+import { autoRegisterNodeCodecs, asAbxfsCid } from "@artblocks/abxfs-sdk";
 
 import { createClient } from "../client.js";
 import { loadConfig, resolveChain } from "../config.js";

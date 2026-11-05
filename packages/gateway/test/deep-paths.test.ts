@@ -7,7 +7,7 @@
  * Past that, and for a file mid-path, the answer is the same 404 as any other path that names nothing.
  */
 import { beforeEach, describe, expect, it } from "vitest";
-import { asAbxfsCid, rootContentLabel, type AbxfsCid, type DirectoryEntry } from "@abxfs/sdk";
+import { asAbxfsCid, rootContentLabel, type AbxfsCid, type DirectoryEntry } from "@artblocks/abxfs-sdk";
 
 import { createGateway } from "../src/handler.js";
 import { __resetResolveCaches } from "../src/resolve.js";

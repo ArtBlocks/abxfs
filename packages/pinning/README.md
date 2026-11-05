@@ -1,10 +1,10 @@
-# @abxfs/pinning
+# @artblocks/abxfs-pinning
 
 Pin ABX FS content (a directory tree or a single file) to IPFS, from chain.
 
 ## What it does
 
-- Reads the content from chain with `@abxfs/sdk`, each distinct file and directory once (FastLZ chunks inflated on
+- Reads the content from chain with `@artblocks/abxfs-sdk`, each distinct file and directory once (FastLZ chunks inflated on
   chain, a file codec decoded and checked against its `outputHash`).
 - Derives its IPFS DAG with the SDK's profile (CIDv1, sha2-256, 256 KiB raw leaves, balanced dag-pb files, flat dag-pb
   directories) and keeps every block.
@@ -20,17 +20,17 @@ Pin ABX FS content (a directory tree or a single file) to IPFS, from chain.
 ## Installation
 
 > **Not on npm yet.** Until the packages are published, build it from a checkout:
-> `pnpm install && pnpm --filter "@abxfs/pinning..." build`. Once they are:
+> `pnpm install && pnpm --filter "@artblocks/abxfs-pinning..." build`. Once they are:
 
 ```bash
-pnpm add @abxfs/pinning @abxfs/sdk
+pnpm add @artblocks/abxfs-pinning @artblocks/abxfs-sdk
 ```
 
 ## Usage
 
 ```typescript
-import { AbxfsClient } from "@abxfs/sdk";
-import { pinRoot, deriveCar, localPinningProvider } from "@abxfs/pinning";
+import { AbxfsClient } from "@artblocks/abxfs-sdk";
+import { pinRoot, deriveCar, localPinningProvider } from "@artblocks/abxfs-pinning";
 
 const client = new AbxfsClient({ publicClient, addresses });
 const provider = localPinningProvider({ endpoint: "http://127.0.0.1:5001" });
@@ -66,7 +66,7 @@ are not carried over, and any other global dispatcher (a `ProxyAgent`, say) is u
 To keep your own transport and still get the progress timeouts, pass the provider a `fetch` that sets its dispatcher.
 
 Pinning is opt-in: the content is on chain and the gateway serves it from there. Use `abxfs pin`, or call
-`pinRoot` directly; `abxfs-mirror` (`@abxfs/gateway`) pins everything published.
+`pinRoot` directly; `abxfs-mirror` (`@artblocks/abxfs-gateway`) pins everything published.
 
 See [the IPFS docs](https://docs.fs.abx.io/docs/using-abxfs/ipfs) for how a pinned root can be advertised
 (a project's `abxfs.gateway`, a hint the ABX FS gateway itself does not fetch through).

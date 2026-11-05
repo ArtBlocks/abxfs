@@ -3,7 +3,7 @@ import kleur from "kleur";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
-import { autoRegisterNodeCodecs, asAbxfsCid, readDirectory, ProjectKind, type AbxfsCid } from "@abxfs/sdk";
+import { autoRegisterNodeCodecs, asAbxfsCid, readDirectory, ProjectKind, type AbxfsCid } from "@artblocks/abxfs-sdk";
 
 import { parsePositiveInt } from "../args.js";
 import { createClient } from "../client.js";

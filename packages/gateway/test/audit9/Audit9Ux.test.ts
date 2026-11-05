@@ -10,13 +10,13 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@abxfs/sdk", async (orig) => {
-  const real = await orig<typeof import("@abxfs/sdk")>();
+vi.mock("@artblocks/abxfs-sdk", async (orig) => {
+  const real = await orig<typeof import("@artblocks/abxfs-sdk")>();
   return { ...real, isOrg: async () => true };
 });
 
-import * as sdk from "@abxfs/sdk";
-import { rootContentLabel } from "@abxfs/sdk";
+import * as sdk from "@artblocks/abxfs-sdk";
+import { rootContentLabel } from "@artblocks/abxfs-sdk";
 
 import { parsePathSegments, parseTokenId } from "../../src/addressing.js";
 import { GatewayError } from "../../src/errors.js";

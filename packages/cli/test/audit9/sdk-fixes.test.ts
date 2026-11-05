@@ -8,7 +8,7 @@
  */
 import { BaseError, UserRejectedRequestError } from "viem";
 import { describe, expect, it, vi } from "vitest";
-import { CodecNotSupportedOnChainError, DirectoryNeedsShardingError, type AbxfsCid, type AbxfsClient } from "@abxfs/sdk";
+import { CodecNotSupportedOnChainError, DirectoryNeedsShardingError, type AbxfsCid, type AbxfsClient } from "@artblocks/abxfs-sdk";
 
 import { describeCliError } from "../../src/index.js";
 import { deriveIpfsCid } from "../../src/commands/pin.js";

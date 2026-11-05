@@ -20,10 +20,10 @@ importers:
 
   packages/cli:
     dependencies:
-      '@abxfs/pinning':
+      '@artblocks/abxfs-pinning':
         specifier: workspace:*
         version: link:../pinning
-      '@abxfs/sdk':
+      '@artblocks/abxfs-sdk':
         specifier: workspace:*
         version: link:../sdk
       commander:
@@ -51,10 +51,10 @@ importers:
 
   packages/gateway:
     dependencies:
-      '@abxfs/pinning':
+      '@artblocks/abxfs-pinning':
         specifier: workspace:*
         version: link:../pinning
-      '@abxfs/sdk':
+      '@artblocks/abxfs-sdk':
         specifier: workspace:*
         version: link:../sdk
       viem:
@@ -76,7 +76,7 @@ importers:
 
   packages/pinning:
     dependencies:
-      '@abxfs/sdk':
+      '@artblocks/abxfs-sdk':
         specifier: workspace:*
         version: link:../sdk
       viem:

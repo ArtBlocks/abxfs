@@ -11,7 +11,7 @@ import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync } fr
 import { basename, resolve } from "node:path";
 
 import kleur from "kleur";
-import { inferMimeType, sniffSecret, type FileDescriptor } from "@abxfs/sdk";
+import { inferMimeType, sniffSecret, type FileDescriptor } from "@artblocks/abxfs-sdk";
 
 import { MAX_READ_FILE_BYTES, assertNotSymlink, isSecretLikePath, scanDirectoryReport, tooLargeToReadError } from "./fsscan.js";
 import { confirmTyped } from "./prompt.js";

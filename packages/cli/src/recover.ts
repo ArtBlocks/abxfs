@@ -9,7 +9,7 @@
  */
 import kleur from "kleur";
 import type { Address, Hex } from "viem";
-import { isReceiptTimeout, type RecoveredWrite } from "@abxfs/sdk";
+import { isReceiptTimeout, type RecoveredWrite } from "@artblocks/abxfs-sdk";
 
 import { safeExplorerUrl } from "./redact.js";
 import { txHash } from "./text.js";

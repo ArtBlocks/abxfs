@@ -15,15 +15,15 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TransactionTimeoutError } from "@abxfs/sdk";
+import { TransactionTimeoutError } from "@artblocks/abxfs-sdk";
 
 const h = vi.hoisted(() => ({ client: {} as Record<string, unknown> }));
 vi.mock("../../src/client.js", () => ({
   createClient: () => h.client,
   createOrgClient: async () => h.client,
 }));
-vi.mock("@abxfs/sdk", async (orig) => ({
-  ...(await orig<typeof import("@abxfs/sdk")>()),
+vi.mock("@artblocks/abxfs-sdk", async (orig) => ({
+  ...(await orig<typeof import("@artblocks/abxfs-sdk")>()),
   // The implicit org choice reads the factories' administered lists alone.
   readOrgsAdministeredAcrossGenerations: async () => ({
     orgs: h.client["administers"] ? [{ org: ORG, name: "Mine", roles: ["admin"], open: false, createdBlock: 1n }] : [],

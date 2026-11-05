@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
-import type { AbxfsCid } from "@abxfs/sdk";
+import type { AbxfsCid } from "@artblocks/abxfs-sdk";
 
 import { denylistFilter } from "../src/filters.js";
 import { fileCursor, memoryCursor, runMirror, runMirrorGenerations } from "../src/mirror.js";

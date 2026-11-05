@@ -25,8 +25,8 @@ const state = vi.hoisted(() => ({
   slices: [] as Uint8Array[],
 }));
 
-vi.mock("@abxfs/sdk", async (orig) => {
-  const real = await orig<typeof import("@abxfs/sdk")>();
+vi.mock("@artblocks/abxfs-sdk", async (orig) => {
+  const real = await orig<typeof import("@artblocks/abxfs-sdk")>();
   return {
     ...real,
     isOrg: async () => true,

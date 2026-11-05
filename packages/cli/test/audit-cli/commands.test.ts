@@ -16,7 +16,7 @@ import { mkdtempSync, mkdirSync, readFileSync, existsSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CodecNotSupportedOnChainError, ProjectKind, TransactionTimeoutError } from "@abxfs/sdk";
+import { CodecNotSupportedOnChainError, ProjectKind, TransactionTimeoutError } from "@artblocks/abxfs-sdk";
 import type { Hex } from "viem";
 
 const h = vi.hoisted(() => ({
@@ -37,8 +37,8 @@ vi.mock("../../src/client.js", () => ({
   createOrgClient: async () => h.orgClient,
 }));
 // `read` lists a directory through the SDK's readDirectory (which takes an entry cap).
-vi.mock("@abxfs/sdk", async (orig) => ({
-  ...(await orig<typeof import("@abxfs/sdk")>()),
+vi.mock("@artblocks/abxfs-sdk", async (orig) => ({
+  ...(await orig<typeof import("@artblocks/abxfs-sdk")>()),
   readDirectory: async (_pc: unknown, _a: unknown, _cid: unknown, opts: { maxEntries?: number }) => {
     h.calls.push(`readDirectory:max=${opts.maxEntries}`);
     if (opts.maxEntries !== undefined && h.dirEntries.length > opts.maxEntries) throw new Error(`directory has ${h.dirEntries.length} entries, over ${opts.maxEntries}`);
@@ -50,8 +50,8 @@ vi.mock("@abxfs/sdk", async (orig) => ({
   ),
   readOrgsHeld: async () => h.myOrgs.orgs.filter((o) => o.roles.includes("holder") && !o.roles.includes("admin")).map((o) => o.org),
 }));
-vi.mock("@abxfs/pinning", async (orig) => ({
-  ...(await orig<typeof import("@abxfs/pinning")>()),
+vi.mock("@artblocks/abxfs-pinning", async (orig) => ({
+  ...(await orig<typeof import("@artblocks/abxfs-pinning")>()),
   pinRoot: async ({ root, provider }: { root: string; provider: { name: string } }) => {
     h.calls.push(`pinRoot:${provider.name}:${root}`);
     return { pinnedCid: h.pin.pinned ?? PINNED, expectedCid: PINNED, verified: true, kind: "directory", files: [], blockCount: 3, carBytes: 100 };

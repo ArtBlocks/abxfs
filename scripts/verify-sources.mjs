@@ -4,7 +4,7 @@
  *
  *   node scripts/verify-sources.mjs <chainId> [sourcify|etherscan|both]      (default: both)
  *
- * The addresses come from the SDK registry (`pnpm --filter @abxfs/sdk build` first). The three it does not list (the
+ * The addresses come from the SDK registry (`pnpm --filter @artblocks/abxfs-sdk build` first). The three it does not list (the
  * card, the traits renderer and the links renderer) and the factory's ABX arguments are read from the deployed
  * contracts, so no address here is entered by hand.
  *

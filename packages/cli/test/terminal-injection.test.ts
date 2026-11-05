@@ -16,8 +16,8 @@ vi.mock("../src/client.js", () => ({
   }),
 }));
 // `read` lists a directory through the SDK's readDirectory, which takes an entry cap.
-vi.mock("@abxfs/sdk", async (orig) => ({
-  ...(await orig<typeof import("@abxfs/sdk")>()),
+vi.mock("@artblocks/abxfs-sdk", async (orig) => ({
+  ...(await orig<typeof import("@artblocks/abxfs-sdk")>()),
   readDirectory: async () => ({ entries: [{ name: EVIL, cid: "0x" + "ab".repeat(32), isDirectory: false }] }),
 }));
 

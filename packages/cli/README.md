@@ -1,9 +1,9 @@
-# @abxfs/cli
+# @artblocks/abxfs-cli
 
 Command-line client for ABX FS: upload content, publish projects, and administer orgs.
 
 > **Not on npm yet.** Until the packages are published, run it from a checkout:
-> `pnpm install && pnpm --filter "@abxfs/cli..." build && node packages/cli/dist/index.js --help`.
+> `pnpm install && pnpm --filter "@artblocks/abxfs-cli..." build && node packages/cli/dist/index.js --help`.
 
 ```bash
 abxfs upload ./site --name my-site --chain <network>     # first run creates your own org

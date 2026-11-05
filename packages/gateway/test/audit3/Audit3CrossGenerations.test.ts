@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { revertError } from "../helpers.js";
-import type { AbxfsCid } from "@abxfs/sdk";
+import type { AbxfsCid } from "@artblocks/abxfs-sdk";
 
 import { __resetResolveCaches, resolveRoot } from "../../src/resolve.js";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";

@@ -6,7 +6,7 @@ import { createClient, maxFeeCapWei } from "../../src/client.js";
 import { BUILTIN_CHAINS } from "../../src/config.js";
 
 // The registry has no addresses for the production chains; these tests need a canonical address book to defend.
-vi.mock("@abxfs/sdk", async (orig) => (await import("../../../sdk/test/helpers/deployed-registry.js")).withDeployedRegistry(await orig()));
+vi.mock("@artblocks/abxfs-sdk", async (orig) => (await import("../../../sdk/test/helpers/deployed-registry.js")).withDeployedRegistry(await orig()));
 
 const PK = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
 let server: Server;

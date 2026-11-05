@@ -22,7 +22,7 @@ import {
   type PlannedDirectory,
   type PlannedUploadFile,
   type StageId,
-} from "@abxfs/sdk";
+} from "@artblocks/abxfs-sdk";
 
 export interface StageSummary {
   stage: StageId;

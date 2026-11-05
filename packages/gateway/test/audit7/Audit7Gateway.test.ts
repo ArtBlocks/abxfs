@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { asAbxfsCid, rootContentLabel, type AbxfsCid, type DirectoryEntry } from "@abxfs/sdk";
+import { asAbxfsCid, rootContentLabel, type AbxfsCid, type DirectoryEntry } from "@artblocks/abxfs-sdk";
 
 import { createGateway } from "../../src/handler.js";
 import { __resetResolveCaches, chunkBudget } from "../../src/resolve.js";

@@ -1,5 +1,5 @@
 /**
- * @abxfs/pinning — public entry point.
+ * @artblocks/abxfs-pinning — public entry point.
  */
 export * from "./types.js";
 export * from "./pin.js";

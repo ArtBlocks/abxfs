@@ -5,7 +5,7 @@
  */
 import { brotliCompressSync } from "node:zlib";
 import { beforeAll, describe, expect, it } from "vitest";
-import { CODEC_BROTLI, getFileCodec } from "@abxfs/sdk";
+import { CODEC_BROTLI, getFileCodec } from "@artblocks/abxfs-sdk";
 
 import { registerNodeCodecs } from "../../src/codecs.js";
 

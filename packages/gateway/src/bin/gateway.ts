@@ -14,7 +14,7 @@
  */
 import { parseArgs } from "node:util";
 
-import { validateTagName } from "@abxfs/sdk";
+import { validateTagName } from "@artblocks/abxfs-sdk";
 
 import {
   CHAIN_NAMES,

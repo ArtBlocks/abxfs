@@ -5,7 +5,7 @@
  * backend), so `upload`, `update` and `diff` resolve them here, from the same flags and the same config keys. A diff
  * that resolved them differently would recompute every CID and report unchanged files as changed.
  */
-import { CODEC_NONE, codecLabel, type FileCodec } from "@abxfs/sdk";
+import { CODEC_NONE, codecLabel, type FileCodec } from "@artblocks/abxfs-sdk";
 
 import type { ChainConfig } from "./config.js";
 

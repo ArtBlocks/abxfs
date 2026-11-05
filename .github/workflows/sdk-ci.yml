@@ -87,7 +87,7 @@ jobs:
       # Every workspace package that another one imports must be built first: they resolve each
       # other through `exports` maps pointing at `dist/`, so an unbuilt dependency fails to resolve
       # its entry point before a single test runs. Building recursively rather than naming packages
-      # — `@abxfs/sdk` alone was not enough, `@abxfs/cli` also needs `@abxfs/pinning`, and the next
+      # — `@artblocks/abxfs-sdk` alone was not enough, `@artblocks/abxfs-cli` also needs `@artblocks/abxfs-pinning`, and the next
       # dependency added would break this again.
       #
       # Each package's own tests import from `src/`, so they pass regardless and hide this; it only
@@ -97,15 +97,15 @@ jobs:
 
       - name: SDK tests
         if: matrix.suite == 'sdk'
-        run: pnpm --filter @abxfs/sdk exec vitest run --shard=${{ matrix.shard }}
+        run: pnpm --filter @artblocks/abxfs-sdk exec vitest run --shard=${{ matrix.shard }}
 
       - name: pinning tests
         if: matrix.suite == 'packages'
-        run: pnpm --filter @abxfs/pinning test
+        run: pnpm --filter @artblocks/abxfs-pinning test
 
       - name: gateway and mirror tests
         if: matrix.suite == 'packages'
-        run: pnpm --filter @abxfs/gateway test
+        run: pnpm --filter @artblocks/abxfs-gateway test
 
       # Packs every package as `pnpm publish` would, installs the tarballs into an empty directory and
       # runs what they ship. Inside the repo everything resolves through the workspace by direct path;
@@ -123,7 +123,7 @@ jobs:
 
       - name: CLI tests
         if: matrix.suite == 'cli'
-        run: pnpm --filter @abxfs/cli test
+        run: pnpm --filter @artblocks/abxfs-cli test
         env:
           ABXFS_REQUIRE_SHELLS: "1"
 
@@ -145,4 +145,4 @@ jobs:
       - name: Build packages
         run: pnpm -r --filter="./packages/*" build
       - name: pinning tests
-        run: pnpm --filter @abxfs/pinning test
+        run: pnpm --filter @artblocks/abxfs-pinning test

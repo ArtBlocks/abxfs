@@ -13,11 +13,11 @@
  */
 import { parseArgs } from "node:util";
 
-import { localPinningProvider, pinataPinningProvider } from "@abxfs/pinning";
+import { localPinningProvider, pinataPinningProvider } from "@artblocks/abxfs-pinning";
 
 import { CHAIN_NAMES, chainsFromEnv, parseOneChain, requireDeployed } from "../config.js";
 import { allOf, fileFilter, orgAllowlistFromArg } from "../filters.js";
-import { orgGenerations, readGlobalPublishCount } from "@abxfs/sdk";
+import { orgGenerations, readGlobalPublishCount } from "@artblocks/abxfs-sdk";
 
 import { cursorPathFor, fileCursor, parsePollSeconds, parsePositiveFlag, runMirrorGenerations } from "../mirror.js";
 import type { Filter } from "../types.js";

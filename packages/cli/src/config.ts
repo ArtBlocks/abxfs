@@ -18,7 +18,7 @@ import {
   CANONICAL_DEPLOYMENTS,
   resolveCanonicalDeployment,
   type ContractAddresses,
-} from "@abxfs/sdk";
+} from "@artblocks/abxfs-sdk";
 
 /** File layout: `{ chains: { <name>: ChainConfig } }` plus an optional `defaultChain`. */
 export interface ChainConfig {

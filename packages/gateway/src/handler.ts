@@ -9,7 +9,7 @@
  * `parseContentHost` from the SDK for per-project hosts), and the filter's subjects come from that
  * same result. There is no second parser to disagree with it.
  */
-import { parseContentHost, registerWebCodecs } from "@abxfs/sdk";
+import { parseContentHost, registerWebCodecs } from "@artblocks/abxfs-sdk";
 
 import {
   parseGatewayPath,

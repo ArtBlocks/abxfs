@@ -1,6 +1,6 @@
 /** AUDIT4 (FIXED): cold-cache stampede and root-host cost amplification, counted at the RPC client. In-flight reads are shared and an unknown root is remembered for seconds. */
 import { describe, expect, it } from "vitest";
-import { asAbxfsCid, rootContentLabel } from "@abxfs/sdk";
+import { asAbxfsCid, rootContentLabel } from "@artblocks/abxfs-sdk";
 
 import { createGateway } from "../../src/handler.js";
 import { __resetResolveCaches } from "../../src/resolve.js";

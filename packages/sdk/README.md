@@ -1,10 +1,10 @@
-# @abxfs/sdk
+# @artblocks/abxfs-sdk
 
 TypeScript SDK for reading from and writing to the ABX FS contracts ([`specs/abx-fs.md`](../../specs/abx-fs.md),
-[`specs/abx-fs-orgs.md`](../../specs/abx-fs-orgs.md)). Used by `@abxfs/cli` and `@abxfs/gateway`.
+[`specs/abx-fs-orgs.md`](../../specs/abx-fs-orgs.md)). Used by `@artblocks/abxfs-cli` and `@artblocks/abxfs-gateway`.
 
 > **Not on npm yet.** Until the packages are published, build it from a checkout:
-> `pnpm install && pnpm --filter @abxfs/sdk build`.
+> `pnpm install && pnpm --filter @artblocks/abxfs-sdk build`.
 
 ## Layout
 
@@ -39,7 +39,7 @@ repeat across orgs). The org's admin only decides who may mint into it; a projec
 `ownerOf` and nothing else.
 
 ```ts
-import { AbxfsClient, requireCanonicalAddresses } from "@abxfs/sdk";
+import { AbxfsClient, requireCanonicalAddresses } from "@artblocks/abxfs-sdk";
 
 const addresses = requireCanonicalAddresses(await publicClient.getChainId()); // the network your clients use
 const client = new AbxfsClient({ publicClient, walletClient, addresses });
@@ -87,7 +87,7 @@ but reverted transaction, so a revert is never reported as success.
 | `isSafeExternalUrl` / `externalUrlProblem` | https only, no credentials, no `localhost`, no private/loopback/link-local IP literal, at most 512 characters. `setPreferredGateway` throws on anything else. |
 | `isUsableViewUrl` | The on-chain `abxfs.view` rule: https, visible ASCII, at most 512 bytes, none of `" ' & < > \`, the backtick, `( ) [ ] { } \| ^`. |
 | `sanitizeDisplayName` / `stripTerminalControl` | Printable-ASCII display names without bidi or format characters; terminal output without C0/C1 controls or ANSI/OSC sequences. |
-| `walkDirectory`, `walkDirectoryTree`, `verifyLocalIpfsCid` (and `pinRoot` / `pinDirectory` in `@abxfs/pinning`, via its `limits` option) | Read each distinct node once however often a DAG links it; capped at 100,000 nodes and 1 GiB (`LimitExceededError`, override with `{ maxNodes, maxBytes }`; a `limits` option in `@abxfs/pinning`). |
+| `walkDirectory`, `walkDirectoryTree`, `verifyLocalIpfsCid` (and `pinRoot` / `pinDirectory` in `@artblocks/abxfs-pinning`, via its `limits` option) | Read each distinct node once however often a DAG links it; capped at 100,000 nodes and 1 GiB (`LimitExceededError`, override with `{ maxNodes, maxBytes }`; a `limits` option in `@artblocks/abxfs-pinning`). |
 | `readFile`, `readChunkSlices` | Data is capped at 1 GiB (`maxStoredBytes`) and 200,000 chunks (`maxChunks`); decoding a file codec is capped at 256 MiB (`maxInflateBytes`) and aborts. Reading the chunks has a call budget (`maxCalls`, a positive integer or `Infinity`; default `defaultMaxChunkReadCalls(n)` = `ceil(n/4) + ceil(n/256) + 8`, enough for a node that simulates 2^24 gas per `eth_call`: after a call refused for gas (`isChunkReadGasRefusal`: `RetrieveFailed`, an empty revert, or the node's own out-of-gas words; never a node's `internal error` or `header not found`) the read re-plans at half the gas, and after a result longer than the node returns (`resultLimitOf`: Erigon's `--rpc.returndata.limit`, 100,000 bytes by default) it plans within that length; `LimitExceededError` with `limit: "calls"`). |
 | `verifyOnChainIpfsCid` | Passes an explicit gas limit and remembers a failing root for the session (`clearResolverFailureCache`). |
 | `projectVersions`, `projectVersionsPage`, `tagPage`, `listTags` | 200 rows per `eth_call` by default (`limit` up to 1,000), newest first, with a cursor (`nextBefore`) for "load more". `readOrgsAdministered` and `readOrgsHeld` read 200 per call and return at most 2,000 orgs (a non-enumerable `truncated` says there are more); `readOwnedProjects` returns at most 5,000 projects (`iterateOwnedProjects` walks past that). The swap-and-pop lists (orgs, owned tokens, tags) are read at one block, so a change between pages cannot skip or repeat an entry. |
@@ -121,7 +121,7 @@ chunks; if it breaks, the chunking changed.
 ## Tests
 
 ```bash
-pnpm --filter @abxfs/sdk test
+pnpm --filter @artblocks/abxfs-sdk test
 ```
 
 ## Token links

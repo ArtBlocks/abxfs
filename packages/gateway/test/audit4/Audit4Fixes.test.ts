@@ -10,8 +10,8 @@ const state = vi.hoisted(() => ({
   bytes: new TextEncoder().encode("0123456789"),
   cidKindCalls: 0,
 }));
-vi.mock("@abxfs/sdk", async (orig) => {
-  const real = await orig<typeof import("@abxfs/sdk")>();
+vi.mock("@artblocks/abxfs-sdk", async (orig) => {
+  const real = await orig<typeof import("@artblocks/abxfs-sdk")>();
   return {
     ...real,
     // The file is one chunk holding `state.bytes`: enough for the handler's whole-file, size-cap and Range paths.
@@ -49,7 +49,7 @@ vi.mock("@abxfs/sdk", async (orig) => {
   };
 });
 
-import { LimitExceededError, ProjectKind, asAbxfsCid, rootContentLabel } from "@abxfs/sdk";
+import { LimitExceededError, ProjectKind, asAbxfsCid, rootContentLabel } from "@artblocks/abxfs-sdk";
 import { createGateway, byteRange, GatewayError } from "../../src/index.js";
 import { __resetResolveCaches } from "../../src/resolve.js";
 

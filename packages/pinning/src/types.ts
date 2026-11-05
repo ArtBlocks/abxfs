@@ -1,12 +1,12 @@
 /**
- * Public types for @abxfs/pinning.
+ * Public types for @artblocks/abxfs-pinning.
  *
  * Pinning hands a service exactly the IPFS DAG derived from chain: every raw leaf and dag-pb node under one root, as a
  * CARv1 (Content Addressable aRchive). The service imports the blocks and pins the root; it rebuilds nothing. So the
  * pinned root is the derived root by construction, for any tree: empty directories, empty files and files stored with
  * a codec (whose IPFS form is their decoded content) pin like everything else.
  */
-import type { IpfsCid } from "@abxfs/sdk";
+import type { IpfsCid } from "@artblocks/abxfs-sdk";
 
 /**
  * A service that can import a CAR and pin its root. Built-in: {@link localPinningProvider} (Kubo) and

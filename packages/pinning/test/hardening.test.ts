@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { IpfsCid } from "@abxfs/sdk";
+import type { IpfsCid } from "@artblocks/abxfs-sdk";
 
 import * as pinning from "../src/index.js";
 import { localPinningProvider, pinataPinningProvider } from "../src/index.js";

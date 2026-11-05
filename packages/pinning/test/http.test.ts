@@ -7,7 +7,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AbxfsCid, AbxfsClient, IpfsCid } from "@abxfs/sdk";
+import type { AbxfsCid, AbxfsClient, IpfsCid } from "@artblocks/abxfs-sdk";
 
 import { MAX_RESPONSE_BYTES } from "../src/http.js";
 import { pinDirectory } from "../src/pin.js";

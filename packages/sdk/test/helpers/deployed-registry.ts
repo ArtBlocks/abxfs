@@ -4,15 +4,15 @@
  * The real registry carries no addresses for a chain until a deployment has been verified there. The config tests, which
  * are about what a config file may and may not override, defend this stand-in book instead of the real one, so they do
  * not move when a chain is deployed or a contract is re-pinned. Each test
- * file (or a vitest setup file) that needs it mocks `@abxfs/sdk` through {@link withDeployedRegistry}:
+ * file (or a vitest setup file) that needs it mocks `@artblocks/abxfs-sdk` through {@link withDeployedRegistry}:
  *
- *   vi.mock("@abxfs/sdk", async (orig) => (await import("<path>/deployed-registry.js")).withDeployedRegistry(await orig()));
+ *   vi.mock("@artblocks/abxfs-sdk", async (orig) => (await import("<path>/deployed-registry.js")).withDeployedRegistry(await orig()));
  *
  * Shared by the SDK, CLI and app tests, so every one of them defends the same address book.
  *
  * The addresses are stand-ins, not predictions, so nothing here moves when contract code does.
  */
-import type * as Sdk from "@abxfs/sdk";
+import type * as Sdk from "@artblocks/abxfs-sdk";
 import type { Address } from "viem";
 
 const at = (n: number): Address => `0x${n.toString(16).padStart(40, "0")}` as Address;

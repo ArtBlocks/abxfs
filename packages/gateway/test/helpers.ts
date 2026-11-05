@@ -45,4 +45,4 @@ export const TEST_ADDRESSES = {
   lens: "0x00000000000000000000000000000000000000f3",
   projectHook: "0x00000000000000000000000000000000000000f4",
   projectEnumeration: "0x00000000000000000000000000000000000000f5",
-} as const satisfies import("@abxfs/sdk").ContractAddresses;
+} as const satisfies import("@artblocks/abxfs-sdk").ContractAddresses;

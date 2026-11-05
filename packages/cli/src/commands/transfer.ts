@@ -13,7 +13,7 @@ import { Command } from "commander";
 import kleur from "kleur";
 
 import { createOrgClient } from "../client.js";
-import { assertSafeRecipient, type ContractAddresses } from "@abxfs/sdk";
+import { assertSafeRecipient, type ContractAddresses } from "@artblocks/abxfs-sdk";
 
 import { parseTokenId } from "../args.js";
 import { loadConfig, requireOrg, resolveChain } from "../config.js";

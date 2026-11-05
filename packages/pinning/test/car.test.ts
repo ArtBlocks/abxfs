@@ -5,7 +5,7 @@
  * file).
  */
 import { describe, expect, it, vi } from "vitest";
-import { ipfsDirectoryCid, ipfsFileCidWithSize, type AbxfsCid, type AbxfsClient, type IpfsCid } from "@abxfs/sdk";
+import { ipfsDirectoryCid, ipfsFileCidWithSize, type AbxfsCid, type AbxfsClient, type IpfsCid } from "@artblocks/abxfs-sdk";
 
 const c = (n: number) => ("0x" + n.toString(16).padStart(64, "0")) as AbxfsCid;
 
@@ -28,8 +28,8 @@ const CONTENT = new Map<string, Uint8Array>([
   [c(103), new TextEncoder().encode("export const v = 1;\n")],
 ]);
 
-vi.mock("@abxfs/sdk", async (orig) => ({
-  ...(await orig<typeof import("@abxfs/sdk")>()),
+vi.mock("@artblocks/abxfs-sdk", async (orig) => ({
+  ...(await orig<typeof import("@artblocks/abxfs-sdk")>()),
   readFile: async (_pc: unknown, _a: unknown, cid: string) => {
     const bytes = CONTENT.get(cid);
     if (!bytes) throw new Error(`no file ${cid}`);

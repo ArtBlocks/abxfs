@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { looksBinary } from "../../src/commands/read.js";
-import { stripTerminalControl } from "@abxfs/sdk";
+import { stripTerminalControl } from "@artblocks/abxfs-sdk";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 

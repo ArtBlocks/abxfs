@@ -7,7 +7,7 @@ import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPublicClient, http as viemHttp } from "viem";
 import { baseSepolia } from "viem/chains";
-import { isOrg } from "@abxfs/sdk";
+import { isOrg } from "@artblocks/abxfs-sdk";
 
 import { isRevert, lookupGeneration, strictBatchFetch } from "../../src/upstream.js";
 

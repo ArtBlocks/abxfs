@@ -207,7 +207,7 @@ Abandon the throwaway org; it is permanent and harmless. Only then announce the 
 1. **`packages/sdk/src/canonical.ts` (`CANONICAL_DEPLOYMENTS`):** the chain's `addresses`. This is the single record
    of ABX FS addresses, and the change that makes every tool, and every site built on the SDK, start serving the chain.
 2. **`site/content/docs/reference/deployments.mdx`:** the same addresses.
-3. **Check them together:** `pnpm --filter @abxfs/sdk exec vitest run test/canonical.test.ts`. The docs may publish
+3. **Check them together:** `pnpm --filter @artblocks/abxfs-sdk exec vitest run test/canonical.test.ts`. The docs may publish
    no address the registry does not hold.
 4. **New chain:** update the script's allow-table and `DeployFactoryPin.t.sol` / `pinned()` with its predicted address.
 5. **Publish the sources:** `node scripts/verify-sources.mjs <chainId>`, with `ETHERSCAN_API_KEY` set (one key covers
@@ -256,7 +256,7 @@ factory is deployed to a chain that already has a live one, the old one is **not
    and the old ones stay until they have drained (see `packages/gateway/src/mirror.ts`).
 3. **Update the registry consumers.** Anything that keeps its own list of chains or factories (a site's chain
    configuration) moves in the same change.
-4. **Re-run the cross-generation tests** (`pnpm --filter @abxfs/sdk exec vitest run test/canonical.test.ts` and the
+4. **Re-run the cross-generation tests** (`pnpm --filter @artblocks/abxfs-sdk exec vitest run test/canonical.test.ts` and the
    SDK's cross-generation suite). Then check for real that the old factory still works:
    - the gateway serves an old org;
    - the CLI lists and mints in it;

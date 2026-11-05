@@ -8,7 +8,7 @@
  */
 import { Command } from "commander";
 import kleur from "kleur";
-import { isSafeExternalUrl, isUsableViewUrl } from "@abxfs/sdk";
+import { isSafeExternalUrl, isUsableViewUrl } from "@artblocks/abxfs-sdk";
 
 import { parseTokenId } from "../args.js";
 import { createOrgClient } from "../client.js";

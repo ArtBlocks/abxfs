@@ -4,7 +4,7 @@
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 
-import { parseContentHost } from "@abxfs/sdk";
+import { parseContentHost } from "@artblocks/abxfs-sdk";
 
 import type { GatewayHandler } from "./handler.js";
 

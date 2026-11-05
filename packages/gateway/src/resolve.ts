@@ -24,7 +24,7 @@ import {
   type ContractAddresses,
   type FileInfo,
   type OrgGeneration as OrgGen,
-} from "@abxfs/sdk";
+} from "@artblocks/abxfs-sdk";
 
 import { encodePathSegment, type Addressing } from "./addressing.js";
 import { GatewayError } from "./errors.js";

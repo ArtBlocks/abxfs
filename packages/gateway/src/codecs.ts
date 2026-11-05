@@ -21,7 +21,7 @@ import {
   hasFileCodec,
   registerFileCodec,
   type FileCodecImpl,
-} from "@abxfs/sdk";
+} from "@artblocks/abxfs-sdk";
 
 const LABELS = [CODEC_GZIP, CODEC_DEFLATE, CODEC_BROTLI, CODEC_ZSTD];
 

@@ -2,7 +2,7 @@
  * Unit tests for the Kubo (local) pinning provider with a stubbed fetch.
  */
 import { describe, expect, it, vi } from "vitest";
-import type { IpfsCid } from "@abxfs/sdk";
+import type { IpfsCid } from "@artblocks/abxfs-sdk";
 
 import { localPinningProvider } from "../../src/providers/local.js";
 

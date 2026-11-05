@@ -19,7 +19,7 @@ import {
   type FileDescriptor,
   type PublishProgress,
   type UploadResult,
-} from "@abxfs/sdk";
+} from "@artblocks/abxfs-sdk";
 
 import { parsePositiveInt, parseTokenId } from "../args.js";
 import { createClient } from "../client.js";

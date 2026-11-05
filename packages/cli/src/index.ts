@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { Command } from "commander";
 import kleur from "kleur";
-import { isUserRejection } from "@abxfs/sdk";
+import { isUserRejection } from "@artblocks/abxfs-sdk";
 
 import { setAllowConfigOverrides } from "./config.js";
 import { formatCliError } from "./redact.js";
