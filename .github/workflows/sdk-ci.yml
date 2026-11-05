@@ -99,6 +99,13 @@ jobs:
         if: matrix.suite == 'sdk'
         run: pnpm --filter @artblocks/abxfs-sdk exec vitest run --shard=${{ matrix.shard }}
 
+      # Every package, test files included, against the built packages it imports. Vitest does not check types, so
+      # without this a dependency bump that breaks a test's types (blockstore-core behind ipfs-unixfs-importer once)
+      # merges green and fails `pnpm run test` locally.
+      - name: Typecheck
+        if: matrix.suite == 'packages'
+        run: pnpm -r --filter="./packages/*" typecheck
+
       - name: pinning tests
         if: matrix.suite == 'packages'
         run: pnpm --filter @artblocks/abxfs-pinning test
