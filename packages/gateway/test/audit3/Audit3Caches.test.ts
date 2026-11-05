@@ -55,7 +55,7 @@ function fakeClient(state: State) {
 
 function setup(state: State) {
   const chain = { id: 84532, contracts: addresses, client: fakeClient(state) };
-  const gw = createGateway({ chains: [chain], defaultChainId: 84532, hostMode: { baseHost: BASE }, onError: () => {} });
+  const gw = createGateway({ chains: [chain], hostMode: { baseHost: BASE }, onError: () => {} });
   return (id: number) => gw(new Request(`http://${label(id)}.${BASE}/`, { headers: { host: `${label(id)}.${BASE}` } }));
 }
 

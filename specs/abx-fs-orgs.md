@@ -346,7 +346,7 @@ layer works on its own.
 
 - Default token links: `/g/p/<chain>/<org>/<tokenId>/latest/` and `/projects/<chain>/<org>/<tokenId>` on the app.
   Projects are served from their own origins, `https://<chain>-<org>-<id>[-v<n>].<content domain>/`, and raw content
-  from `https://c-<base32 root>.<content domain>/`; the app's (`https://fs.abx.io`) `/g/…` paths redirect there, except
+  from `https://<chain>-<base32 root>.<content domain>/`; the app's (`https://fs.abx.io`) `/g/…` paths redirect there, except
   a project's root under `/g/p`, which is a page framing the project's host. Addresses only, never names.
 
 ## Tests

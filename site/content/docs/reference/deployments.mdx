@@ -49,7 +49,8 @@ the exact source through solc's metadata hash):
 
 - **Content layer:** `ChunkStore`, `Sstore2Backend`, `FastLzSstore2Backend`,
   `FileStore`, `DirectoryStore`. Because the backend addresses are part of every
-  chunk id, identical bytes uploaded to any chain produce identical CIDs.
+  chunk id, identical bytes uploaded to any chain produce identical CIDs. A CID does not say which chain holds
+  it, so a content URL names the chain to read: `<chain id>-<root>.<content domain>`.
 - **IPFS:** `IpfsCidResolver`.
 - **Org layer:** `OrgMeta` (which deploys `ProjectLinks`), `OrgFactory` and
   `Lens`, each with its own salt. The factory's five components (`ProjectHook`,

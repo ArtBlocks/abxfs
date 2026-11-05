@@ -20,9 +20,9 @@ const ORG = "0x450ddacfe7ccba64abda147ffd5a888626982242";
 const OLD_COLLECTION = "0x7015Ab36fA7d62dAf286561114E7f3c250511E31"; // a real ABX collection, not an org
 
 describe.skipIf(!rpc)("live: Base Sepolia", () => {
-  const { chains, defaultChainId } = chainsFromEnv(process.env, [84532], 84532);
+  const { chains } = chainsFromEnv(process.env, [84532]);
   const BASE = "c.example";
-  const gateway = createGateway({ chains, defaultChainId, hostMode: { baseHost: BASE } });
+  const gateway = createGateway({ chains, hostMode: { baseHost: BASE } });
   const hostFor = (id: number, version?: number) => `${contentLabel({ chainId: 84532, org: ORG, tokenId: id, ...(version ? { version } : {}) })}.${BASE}`;
   const getAt = (host: string, path = "/", init?: RequestInit, gw = gateway) =>
     gw(new Request(`http://${host}${path}`, { ...init, headers: { host, ...(init?.headers as object) } }));
@@ -57,7 +57,7 @@ describe.skipIf(!rpc)("live: Base Sepolia", () => {
   it("serves the same bytes by raw CID, with no project involved", async () => {
     const byProject = await get(`/index.html`);
     const root = byProject.headers.get("x-abxfs-root")!;
-    const byCid = await getAt(`${rootContentLabel(asAbxfsCid(root as `0x${string}`))}.${BASE}`, `/index.html`);
+    const byCid = await getAt(`${rootContentLabel(84532, asAbxfsCid(root as `0x${string}`))}.${BASE}`, `/index.html`);
     expect(byCid.status).toBe(200);
     expect(await byCid.text()).toBe(await byProject.text());
     expect(byCid.headers.get("cache-control")).toContain("immutable");
@@ -77,7 +77,6 @@ describe.skipIf(!rpc)("live: Base Sepolia", () => {
   it("applies a filter before touching the chain: an org block refuses its projects, not another org's", async () => {
     const filtered = createGateway({
       chains,
-      defaultChainId,
       hostMode: { baseHost: BASE },
       filter: denylistFilter([orgSubject(84532, ORG)]),
     });

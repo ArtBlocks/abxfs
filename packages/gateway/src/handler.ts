@@ -20,7 +20,7 @@ import {
 } from "./addressing.js";
 import { GatewayError } from "./errors.js";
 import { servedType } from "./mime.js";
-import { cacheControlFor, locate, resolveRoot, serveContent, type Located, type RangeSpec, type ResolvedRequest } from "./resolve.js";
+import { cacheControlFor, locate, resolveRoot, serveContent, type Located, type RangeSpec } from "./resolve.js";
 import { rootSubject, subjectsForAddressing } from "./subjects.js";
 import type { Filter, FilterDecision, GatewayChain, GatewayOptions } from "./types.js";
 
@@ -34,13 +34,6 @@ export const DEFAULT_NOT_FOUND_TTL = 30;
  * its retries, per read, per step: 41s for a project host and 82s for a root host were measured.
  */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
-/**
- * How long the default chain gets to answer a root probe before the other served chains are asked as well.
- * A root that lives on the default chain costs one probe; one that lives elsewhere pays this once (the winner is
- * remembered) instead of waiting for the default chain's whole timeout.
- */
-export const ROOT_PROBE_HEAD_START_MS = 150;
-
 const DEFAULT_REFUSAL =
   "This content is not available from this gateway.\n\n" +
   "It has not been removed from the blockchain, and it is still readable through any other reader.\n";
@@ -53,8 +46,6 @@ interface Target {
   subpath: string;
   /** Segments of the request path, for the directory redirect. */
   pathname: string;
-  /** A raw-root host: the chain is a guess (a root names none), so other served chains may be tried. */
-  rootHost?: boolean;
 }
 
 export function createGateway(options: GatewayOptions): GatewayHandler {
@@ -88,101 +79,6 @@ export function createGateway(options: GatewayOptions): GatewayHandler {
   }
   const requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   const logError = options.onError ?? ((detail: string) => console.error(`[gateway] ${detail}`));
-  /** Chains a root host may be looked up on, the default first. A root carries no chain; content is shared. */
-  const rootChainIds = [...new Set([options.defaultChainId, ...(options.rootChains ?? [])])];
-  /** Which chain held a root, once one has. A root is immutable and never leaves the store, so this stays true. */
-  const rootWinners = new Map<string, number>();
-  const rootConfigLogged = new Set<number>();
-
-  /**
-   * A root names no chain, so a root host asks the default chain first and, when that chain does not store
-   * it, the other served chains too (a cheap `cidKind` probe each, bounded by the chain list). The probes run
-   * IN PARALLEL, the default chain with a small head start, so a hung chain costs one timeout rather than one
-   * per chain, and the first chain that HAS the root wins. A losing probe that has not started is never
-   * started; one already in flight cannot be cancelled (the SDK takes no signal) and its result is dropped.
-   * The winner is remembered. A chain that could not be asked is never read as "not stored": if nothing else
-   * has the root the answer is a retryable error, not a 404.
-   */
-  async function resolveRootHost(t: Target): Promise<ResolvedRequest> {
-    const addressing = t.addressing;
-    if (addressing.kind !== "cid") throw new GatewayError("not found", 404);
-    const known = rootWinners.get(addressing.rootCid);
-    const order = known === undefined ? rootChainIds : [known, ...rootChainIds.filter((id) => id !== known)];
-    let notFound: GatewayError | undefined;
-    let transient: unknown;
-    let configError: unknown;
-
-    const probes: Array<{ id: number; chain: GatewayChain }> = [];
-    for (const id of order) {
-      try {
-        const chain = lookup(id);
-        if (chain) probes.push({ id, chain });
-      } catch (err) {
-        if (id === t.chainId) configError = err;
-        else if (!rootConfigLogged.has(id)) {
-          rootConfigLogged.add(id);
-          logError(`root lookup skips chain ${id}: ${scrub(err)}`);
-        }
-      }
-    }
-
-    const winner = await new Promise<ResolvedRequest | null>((resolve) => {
-      let next = 0;
-      let inFlight = 0;
-      let finished = false;
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const finish = (value: ResolvedRequest | null) => {
-        if (finished) return;
-        finished = true;
-        if (timer) clearTimeout(timer);
-        resolve(value);
-      };
-      const launch = () => {
-        if (finished || next >= probes.length) return;
-        const { id, chain } = probes[next++]!;
-        inFlight++;
-        resolveRoot(chain, addressing, t.subpath).then(
-          (resolved) => {
-            inFlight--;
-            rootWinners.set(addressing.rootCid, id);
-            if (rootWinners.size > 5_000) rootWinners.delete(rootWinners.keys().next().value as string);
-            finish(resolved);
-          },
-          (err) => {
-            inFlight--;
-            if (err instanceof GatewayError && err.status === 404) notFound ??= err;
-            else transient ??= err;
-            // An answer of "not here" releases the next chain at once; no need to wait out the head start.
-            if (!finished) {
-              if (next < probes.length) {
-                if (timer) clearTimeout(timer);
-                timer = undefined;
-                launch();
-                arm();
-              } else if (inFlight === 0) finish(null);
-            }
-          },
-        );
-      };
-      // Everyone after the one just started waits only for the head start, then runs alongside it.
-      const arm = () => {
-        if (finished || next >= probes.length || timer) return;
-        timer = setTimeout(() => {
-          timer = undefined;
-          while (!finished && next < probes.length) launch();
-        }, ROOT_PROBE_HEAD_START_MS);
-      };
-      if (probes.length === 0) return finish(null);
-      launch();
-      arm();
-    });
-
-    if (winner) return winner;
-    if (transient) throw transient;
-    if (configError) throw configError;
-    throw notFound ?? new GatewayError(`root ${addressing.rootCid} is not stored on any chain this gateway serves`, 404);
-  }
-
   /** Work out what a request addresses. Pure: no filter, no chain. */
   function target(request: Request, url: URL): Target {
     const { segments } = splitPathname(url.pathname);
@@ -192,7 +88,7 @@ export function createGateway(options: GatewayOptions): GatewayHandler {
       if (!parsed) throw new GatewayError("not found", 404);
       const subpath = parseSubpath(segments);
       if (parsed.kind === "root") {
-        return { chainId: requireDefault(options.defaultChainId), addressing: { kind: "cid", rootCid: parsed.rootCid }, subpath, pathname: url.pathname, rootHost: true };
+        return { chainId: parsed.chainId, addressing: { kind: "cid", rootCid: parsed.rootCid }, subpath, pathname: url.pathname };
       }
       const org = parsed.org.toLowerCase() as `0x${string}`;
       const addressing: Addressing =
@@ -211,9 +107,7 @@ export function createGateway(options: GatewayOptions): GatewayHandler {
     }
     const inner = url.pathname.slice(basePath.length);
     const rest = splitPathname(inner === "" ? "/" : inner).segments;
-    const parsed = parseGatewayPath(rest, { defaultChainId: options.defaultChainId });
-    // `/cid/<root>` names no chain either: looked up like a root host, on every chain in `rootChains`.
-    return { ...parsed, pathname: url.pathname, ...(parsed.addressing.kind === "cid" ? { rootHost: true } : {}) };
+    return { ...parseGatewayPath(rest), pathname: url.pathname };
   }
 
   async function applyFilter(filter: Filter | undefined, subjects: string[], request: Request): Promise<Response | null> {
@@ -240,14 +134,10 @@ export function createGateway(options: GatewayOptions): GatewayHandler {
       const refused = await applyFilter(options.filter, subjects, request);
       if (refused) return refused;
 
-      let resolved: ResolvedRequest;
-      if (t.rootHost && rootChainIds.length > 1) {
-        resolved = await resolveRootHost(t);
-      } else {
-        const chain = lookup(t.chainId);
-        if (!chain) throw new GatewayError(`chain ${t.chainId} is not served by this gateway`, 404);
-        resolved = await resolveRoot(chain, t.addressing, t.subpath);
-      }
+      // Every URL names its chain, a raw root's too, so this is the one chain read.
+      const chain = lookup(t.chainId);
+      if (!chain) throw new GatewayError(`chain ${t.chainId} is not served by this gateway`, 404);
+      const resolved = await resolveRoot(chain, t.addressing, t.subpath);
 
       // The root a PROJECT resolved to is only knowable now. Ask again with it added, so a root that
       // was blocked is blocked through every project that republishes it, not only at its own URL.
@@ -510,11 +400,6 @@ export function byteRange(
   if (start >= length) return "unsatisfiable";
   const end = b === "" ? length - 1 : Math.min(Number(b), length - 1);
   return { start, end };
-}
-
-function requireDefault(id: number): number {
-  if (Number.isSafeInteger(id) && id > 0) return id;
-  throw new GatewayError("this gateway has no default chain configured for root requests", 500);
 }
 
 /** Remove anything URL-shaped from an error before it is logged anywhere. */

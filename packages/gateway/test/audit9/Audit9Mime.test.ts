@@ -86,7 +86,7 @@ describe("L2: on the wire", () => {
 
   it("every bypass from the audit is served as octet-stream with `Content-Security-Policy: sandbox`", async () => {
     const fc = new FakeChain();
-    const gw = createGateway({ chains: [{ id: 84532, contracts: fc.contracts, client: fc.client } as never], defaultChainId: 84532, hostMode: { baseHost: BASE }, onError: () => {} });
+    const gw = createGateway({ chains: [{ id: 84532, contracts: fc.contracts, client: fc.client } as never], hostMode: { baseHost: BASE }, onError: () => {} });
     const cases: Array<[string, string, string | null]> = [
       ["image/svg+xml", "image/svg+xml", "sandbox"],
       ["image/svg+xml,", "application/octet-stream", "sandbox"],
@@ -96,7 +96,7 @@ describe("L2: on the wire", () => {
     ];
     for (const [declared, contentType, csp] of cases) {
       const { cid } = fc.addFile([enc(`${SVG}<!-- ${declared} -->`)], declared);
-      const host = `${rootContentLabel(cid)}.${BASE}`;
+      const host = `${rootContentLabel(84532, cid)}.${BASE}`;
       const res = await gw(new Request(`https://${host}/`, { headers: { host } }));
       expect(res.status, declared).toBe(200);
       expect(res.headers.get("content-type"), declared).toBe(contentType);

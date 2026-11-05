@@ -83,11 +83,11 @@ chain instead, `abxfs dev` runs Anvil with the contracts deployed (see the
 
 When it finishes you get a root CID. Reading is permissionless and needs no wallet,
 no key, and no configuration. A gateway resolves any stored content by CID, whether
-or not a project points at it, from the content's own host (the root, base32-encoded,
-as one DNS label):
+or not a project points at it, from the content's own host (the chain id and the root,
+base32-encoded, as one DNS label):
 
 ```
-https://c-<base32 root>.<content domain>/index.html
+https://<chain id>-<base32 root>.<content domain>/index.html
 ```
 
 Nothing about a gateway is privileged: [run your own](/docs/using-abxfs/run-a-gateway),

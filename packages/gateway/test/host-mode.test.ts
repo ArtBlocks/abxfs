@@ -87,7 +87,6 @@ function gateway(extra: Partial<Parameters<typeof createGateway>[0]> = {}) {
   const errors: string[] = [];
   const gw = createGateway({
     chains: [chain],
-    defaultChainId: 84532,
     hostMode: { baseHost: BASE },
     onError: (d) => errors.push(d),
     ...extra,
@@ -143,7 +142,7 @@ describe("host dispatch", () => {
     const { get } = gateway();
     const { rootContentLabel, asAbxfsCid } = await import("@abxfs/sdk");
     const root = asAbxfsCid(`0x${"ab".repeat(32)}`);
-    const res = await get(`${rootContentLabel(root)}.${BASE}`);
+    const res = await get(`${rootContentLabel(84532, root)}.${BASE}`);
     // A root with no project: kind is probed on chain (the fake store says "a file"), and it is routed as a
     // ROOT: no org check, no readProject.
     expect(res.status).toBe(200);
@@ -362,7 +361,7 @@ describe("the owner's abxfs.gateway is never fetched through", () => {
 
 describe("path mode is explicit and strict too", () => {
   it("routes /g/... only when asked, and refuses the old spellings", async () => {
-    const gw = createGateway({ chains: [chain], defaultChainId: 84532, pathMode: {} });
+    const gw = createGateway({ chains: [chain], pathMode: {} });
     const ok = await gw(new Request(`http://gw.test/g/p/84532/${ORG}/1/latest/`));
     expect(ok.status).toBe(200);
     for (const chainSpelling of ["+84532", "0x14a34", "84532.0", "8.4532e4", "084532"]) {
@@ -373,15 +372,15 @@ describe("path mode is explicit and strict too", () => {
 
   it("single-project mode refuses, at construction, a project on a chain it does not serve", () => {
     const project = { chainId: 8453, org: ORG, tokenId: 1 };
-    expect(() => createGateway({ chains: [chain], defaultChainId: 84532, project })).toThrow(
+    expect(() => createGateway({ chains: [chain], project })).toThrow(
       /the project is on chain 8453, which is not among the chains this gateway serves/,
     );
-    expect(() => createGateway({ chains: [chain], defaultChainId: 84532, project: { ...project, chainId: 84532 } })).not.toThrow();
+    expect(() => createGateway({ chains: [chain], project: { ...project, chainId: 84532 } })).not.toThrow();
   });
 
   it("single-project mode cannot be turned into an open redirect by /.//host", async () => {
     state.kind = ProjectKind.Directory;
-    const gw = createGateway({ chains: [chain], defaultChainId: 84532, project: { chainId: 84532, org: ORG, tokenId: 1 } });
+    const gw = createGateway({ chains: [chain], project: { chainId: 84532, org: ORG, tokenId: 1 } });
     const server = createGatewayServer({ handler: gw, projectMode: true });
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
     const port = (server.address() as AddressInfo).port;

@@ -47,16 +47,16 @@ function setup(blocked: (ids: { I: string; D: string; W: string }) => string[] =
     calls.push(ctx.subjects);
     return deny(ctx);
   };
-  const gw = createGateway({ chains: [chain as never], defaultChainId: 84532, hostMode: { baseHost: BASE }, filter, onError: () => {} });
+  const gw = createGateway({ chains: [chain as never], hostMode: { baseHost: BASE }, filter, onError: () => {} });
   const get = (label: string, path = "/") => gw(new Request(`https://${label}.${BASE}${path}`, { headers: { host: `${label}.${BASE}` } }));
   return { fc, chain, I, D, W, get, calls };
 }
 
 describe("M2: a bare directory block holds through a wrapper's index courtesy", () => {
-  it("refuses the blocked directory's page at c-<W>/site/ and through a project, as at its own root host", async () => {
+  it("refuses the blocked directory's page at <chain>-<W>/site/ and through a project, as at its own root host", async () => {
     const { get, D, W } = setup(({ D }) => [rootSubject(D)]);
-    expect((await get(rootContentLabel(D))).status).toBe(451); // its own root host
-    const wrapped = await get(rootContentLabel(W), "/site/");
+    expect((await get(rootContentLabel(84532, D))).status).toBe(451); // its own root host
+    const wrapped = await get(rootContentLabel(84532, W), "/site/");
     expect(wrapped.status).toBe(451);
     expect(await wrapped.text()).not.toContain("PHISHING");
     state.projectRoot = W;
@@ -67,35 +67,35 @@ describe("M2: a bare directory block holds through a wrapper's index courtesy", 
 
   it("the redirect from /site to /site/ is refused too (it names the same directory)", async () => {
     const { get, W } = setup(({ D }) => [rootSubject(D)]);
-    expect((await get(rootContentLabel(W), "/site")).status).toBe(451);
+    expect((await get(rootContentLabel(84532, W), "/site")).status).toBe(451);
   });
 
   it("an unblocked wrapper still serves, and the file named outright is a different subject (documented)", async () => {
     const { get, W } = setup(({ D }) => [rootSubject(D)]);
     // The file inside a blocked directory is its own CID: a bare directory block does not cover it by path. A list that
     // should cover it names it too.
-    expect((await get(rootContentLabel(W), "/site/index.html")).status).toBe(200);
-    expect((await get(rootContentLabel(W), "/")).status).toBe(200); // W's own listing names D and serves nothing of it
+    expect((await get(rootContentLabel(84532, W), "/site/index.html")).status).toBe(200);
+    expect((await get(rootContentLabel(84532, W), "/")).status).toBe(200); // W's own listing names D and serves nothing of it
   });
 
   it("the filter sees [file, directory] for a courtesy, never the request's own root twice", async () => {
     const { get, I, D, W, calls } = setup();
-    await get(rootContentLabel(W), "/site/");
+    await get(rootContentLabel(84532, W), "/site/");
     expect(calls).toEqual([[rootSubject(W)], [rootSubject(W), rootSubject(I), rootSubject(D)]]);
     calls.length = 0;
     // The root's own courtesy: the directory IS the root, already checked, so only the file is added.
-    await get(rootContentLabel(D), "/");
+    await get(rootContentLabel(84532, D), "/");
     expect(calls).toEqual([[rootSubject(D)], [rootSubject(D), rootSubject(I)]]);
   });
 
   it("costs no extra RPC call", async () => {
     const plain = setup();
     plain.fc.reset();
-    await plain.get(rootContentLabel(plain.W), "/site/");
+    await plain.get(rootContentLabel(84532, plain.W), "/site/");
     const without = plain.fc.calls.length;
     const filtered = setup(() => [`root:0x${"ee".repeat(32)}`]);
     filtered.fc.reset();
-    await filtered.get(rootContentLabel(filtered.W), "/site/");
+    await filtered.get(rootContentLabel(84532, filtered.W), "/site/");
     expect(filtered.fc.calls.length).toBe(without);
   });
 
@@ -106,6 +106,6 @@ describe("M2: a bare directory block holds through a wrapper's index courtesy", 
     const root = await resolveRoot(chain as never, { kind: "cid", rootCid: D as AbxfsCid }, "");
     expect(await locate(root)).toEqual({ type: "file", cid: I, path: "index.html", dirCid: D });
     // D's own page is not D itself (it is I): short-lived, as before.
-    expect((await get(rootContentLabel(D))).headers.get("cache-control")).toContain("s-maxage=60");
+    expect((await get(rootContentLabel(84532, D))).headers.get("cache-control")).toContain("s-maxage=60");
   });
 });

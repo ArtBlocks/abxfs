@@ -49,7 +49,7 @@ export function allowlistFilter(subjects: Iterable<string>): Filter {
  * orgs and nothing else".
  *
  * An org is named by address alone, on whichever chain the gateway serves. A request is served when
- * the org it names is listed. `/g/cid/<root>` URLs are refused: a raw root names content, not an org,
+ * the org it names is listed. `/g/cid/<chain>/<root>` URLs are refused: a raw root names content, not an org,
  * so there is nothing to check it against. That is the point of an orgs-only gateway, and it is why
  * a project's own pages (`/g/p/…`) keep working while a bare CID does not.
  */

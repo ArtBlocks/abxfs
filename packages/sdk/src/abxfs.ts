@@ -782,7 +782,7 @@ export class AbxfsClient {
    * The ABX collection + hook pair every project method needs.
    *
    * Both are optional on {@link ContractAddresses} because the content layer is independently
-   * useful — `/cid/<root>` resolves content whether or not any token points at it — so a
+   * useful — `/cid/<chain>/<root>` resolves content whether or not any token points at it — so a
    * content-only deployment is a legitimate configuration rather than a misconfiguration.
    */
   private _project(): ProjectContracts {

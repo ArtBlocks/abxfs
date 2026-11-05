@@ -14,13 +14,12 @@ beforeEach(() => {
 function gateway(extra: Partial<Parameters<typeof createGateway>[0]> = {}) {
   const gw = createGateway({
     chains: [{ id: 84532, contracts: chain.contracts, client: chain.client }],
-    defaultChainId: 84532,
     hostMode: { baseHost: BASE },
     onError: () => {},
     ...extra,
   });
   return (root: AbxfsCid, path = "/", headers: Record<string, string> = {}, method = "GET") => {
-    const host = `${rootContentLabel(asAbxfsCid(root))}.${BASE}`;
+    const host = `${rootContentLabel(84532, asAbxfsCid(root))}.${BASE}`;
     return gw(new Request(`http://${host}${path}`, { method, headers: { host, ...headers } }));
   };
 }

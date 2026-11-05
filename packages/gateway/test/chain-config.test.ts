@@ -1,8 +1,8 @@
 /**
- * Chain names and the default chain for the standalone gateway and mirror.
+ * Chain names for the standalone gateway and mirror.
  *
  * Names are derived from the registry by the CLI's rule, so `--chain arbitrum-one` means the same chain in
- * both tools. No network is preferred by name: the default is the first chain served, in the operator's order.
+ * both tools. No network is preferred: every URL names its chain, so there is no default one.
  */
 import { describe, expect, it } from "vitest";
 
@@ -18,18 +18,14 @@ describe("gateway chain config", () => {
     expect(() => parseChainList("not-a-chain")).toThrow(/unknown chain/);
   });
 
-  it("serves every chain by default, the first in the registry as the default", () => {
-    const { chains, defaultChainId } = chainsFromEnv({});
+  it("serves every chain by default", () => {
+    const { chains } = chainsFromEnv({});
     expect(chains.map((c) => c.id).sort((a, b) => a - b)).toEqual([1, 8453, 42161, 84532, 421614, 11155111]);
-    expect(defaultChainId).toBe(chains[0]!.id);
   });
 
-  it("defaults to the first chain named, in the order named", () => {
-    expect(chainsFromEnv({}, [421614, 42161]).defaultChainId).toBe(421614);
+  it("serves the chains named, in the order named, once each", () => {
     expect(chainsFromEnv({}, [421614, 42161]).chains.map((c) => c.id)).toEqual([421614, 42161]);
-    expect(chainsFromEnv({}, [42161, 1]).defaultChainId).toBe(42161);
     expect(chainsFromEnv({}, [84532, 84532]).chains.map((c) => c.id)).toEqual([84532]);
-    expect(chainsFromEnv({}, [421614], 421614).defaultChainId).toBe(421614);
   });
 
   it("lists every registry name in its messages", () => {
@@ -41,7 +37,7 @@ describe("gateway chain config", () => {
 });
 
 describe("chains with no deployment", () => {
-  const loaded = chainsFromEnv({}, [8453, 84532], 8453);
+  const loaded = chainsFromEnv({}, [8453, 84532]);
 
   it("refuses with 'not deployed' when no requested chain has addresses, as ONE error with no per-chain notes", () => {
     const none = { ...loaded, chains: loaded.chains.map((c) => ({ ...c, contracts: undefined as never })) };
@@ -50,18 +46,15 @@ describe("chains with no deployment", () => {
     expect(notes).toEqual([]);
   });
 
-  it("keeps a default chain that is deployed, and drops nothing that is", () => {
+  it("drops nothing that is deployed", () => {
     const notes: string[] = [];
     const both = { ...loaded, chains: loaded.chains.map((c) => ({ ...c, contracts: {} as never })) };
     const out = requireDeployed(both, (m) => notes.push(m));
-    expect(out.defaultChainId).toBe(8453);
     expect(out.chains.map((c) => c.id)).toEqual([8453, 84532]);
     expect(notes).toEqual([]);
-    // The default is kept even when it is not the first chain listed.
-    expect(requireDeployed({ ...both, defaultChainId: 84532 }).defaultChainId).toBe(84532);
   });
 
-  it("drops an undeployed chain with a note, and moves the default to a deployed one", () => {
+  it("drops an undeployed chain with a note", () => {
     const notes: string[] = [];
     const partial = {
       ...loaded,
@@ -69,7 +62,6 @@ describe("chains with no deployment", () => {
     };
     const out = requireDeployed(partial, (m) => notes.push(m));
     expect(out.chains.map((c) => c.id)).toEqual([84532]);
-    expect(out.defaultChainId).toBe(84532);
     expect(notes).toEqual([expect.stringMatching(/chain 8453 \(.*\) is not deployed yet/)]);
   });
 });

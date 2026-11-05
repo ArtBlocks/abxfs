@@ -31,7 +31,7 @@ describe("denylistFilter", () => {
     const f = denylistFilter([projectSubject(84532, ORG, 2), orgSubject(84532, OTHER), rootSubject(ROOT)]);
     expect(await f(ctx(`/g/p/84532/${ORG}/2/latest/`))).toMatchObject({ allow: false });
     expect(await f(ctx(`/g/p/84532/${OTHER}/9/latest/`))).toMatchObject({ allow: false }); // via its org
-    expect(await f(ctx(`/g/cid/${ROOT}/index.html`))).toMatchObject({ allow: false });
+    expect(await f(ctx(`/g/cid/84532/${ROOT}/index.html`))).toMatchObject({ allow: false });
   });
 
   it("serves everything else, and the same token id in another org", async () => {
@@ -67,8 +67,8 @@ describe("allowlistFilter", () => {
 
   it("does not admit an org's raw-CID URLs: those name a root, not an org", async () => {
     const f = allowlistFilter([orgSubject(84532, ORG)]);
-    expect(await f(ctx(`/g/cid/${ROOT}/`))).toMatchObject({ allow: false });
-    expect(await allowlistFilter([rootSubject(ROOT)])(ctx(`/g/cid/${ROOT}/`))).toEqual({ allow: true });
+    expect(await f(ctx(`/g/cid/84532/${ROOT}/`))).toMatchObject({ allow: false });
+    expect(await allowlistFilter([rootSubject(ROOT)])(ctx(`/g/cid/84532/${ROOT}/`))).toEqual({ allow: true });
   });
 
   /** The point of an allowlist: what it cannot classify is refused, not waved through. */
@@ -165,7 +165,7 @@ describe("orgAllowlistFilter", () => {
   /** A raw root names content, not an org: an orgs-only gateway has nothing to check it against. */
   it("refuses a bare CID URL, and what it cannot classify", async () => {
     const f = orgAllowlistFilter([ORG]);
-    expect(await f(ctx(`/g/cid/${ROOT}/index.html`))).toMatchObject({ allow: false });
+    expect(await f(ctx(`/g/cid/84532/${ROOT}/index.html`))).toMatchObject({ allow: false });
     expect(await f({ subjects: [] })).toMatchObject({ allow: false });
   });
 

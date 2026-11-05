@@ -1,5 +1,5 @@
 /**
- * AUDIT4 fixes in the handler: a deadline on every request, parallel root probes, a cached 413 that reads no
+ * AUDIT4 fixes in the handler: a deadline on every request, a root read on its own chain only, a cached 413 that reads no
  * chunks the second time, a generic body for a configuration fault, and `Range`.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -69,17 +69,16 @@ beforeEach(() => {
 });
 
 const projectGw = (extra: Record<string, unknown> = {}) =>
-  createGateway({ chains: [{ id: 84532, contracts, client: {} as never }], defaultChainId: 84532, hostMode: { baseHost: BASE }, onError: () => {}, ...extra });
+  createGateway({ chains: [{ id: 84532, contracts, client: {} as never }], hostMode: { baseHost: BASE }, onError: () => {}, ...extra });
 const get = (gw: ReturnType<typeof createGateway>, host: string, path = "/", headers: Record<string, string> = {}, method = "GET") =>
   gw(new Request(`http://${host}${path}`, { method, headers: { host, ...headers } }));
 const PROJECT_HOST = `84532-${ORG.slice(2)}-1.${BASE}`;
-const ROOT_HOST = `${rootContentLabel(ROOT)}.${BASE}`;
+const ROOT_HOST = `${rootContentLabel(84532, ROOT)}.${BASE}`;
 
 describe("per-request deadline", () => {
   it("a read that never answers becomes a 503 with no-store and Retry-After at the deadline", async () => {
     const hung = createGateway({
       chains: [{ id: 84532, contracts, client: {} as never }],
-      defaultChainId: 84532,
       hostMode: { baseHost: BASE },
       requestTimeoutMs: 150,
       onError: () => {},
@@ -94,47 +93,23 @@ describe("per-request deadline", () => {
   });
 });
 
-describe("root host probes run in parallel", () => {
+describe("a root host reads the chain it names, and no other", () => {
   const mk = (id: number, kind: () => Promise<number>) => ({ id, contracts, client: { kind } as never });
 
-  it("a hung default chain does not hold a root that another chain stores (it waits the head start, not the hang)", async () => {
+  it("a hung chain the URL does not name cannot hold the request", async () => {
     const gw = createGateway({
-      chains: [mk(84532, never), mk(8453, async () => ProjectKind.File)],
-      defaultChainId: 84532,
-      rootChains: [84532, 8453],
-      hostMode: { baseHost: BASE },
-      onError: () => {},
-    });
-    const t = Date.now();
-    const res = await get(gw, ROOT_HOST);
-    const ms = Date.now() - t;
-    expect(res.status).toBe(200);
-    expect(ms).toBeGreaterThanOrEqual(140);
-    expect(ms).toBeLessThan(1500);
-    // and it is remembered: the winner is asked first next time
-    const t2 = Date.now();
-    expect((await get(gw, ROOT_HOST)).status).toBe(200);
-    expect(Date.now() - t2).toBeLessThan(140);
-  });
-
-  it("an answer of 'not here' from the default chain releases the others at once", async () => {
-    const gw = createGateway({
-      chains: [mk(84532, async () => ProjectKind.Unset), mk(8453, async () => { await delay(5); return ProjectKind.File; })],
-      defaultChainId: 84532,
-      rootChains: [84532, 8453],
+      chains: [mk(84532, async () => ProjectKind.File), mk(8453, never)],
       hostMode: { baseHost: BASE },
       onError: () => {},
     });
     const t = Date.now();
     expect((await get(gw, ROOT_HOST)).status).toBe(200);
-    expect(Date.now() - t).toBeLessThan(120);
+    expect(Date.now() - t).toBeLessThan(1000);
   });
 
-  it("a chain that errors is never read as 'not stored': nothing else has it, so 503", async () => {
+  it("a chain that errors is never read as 'not stored': 503, not 404", async () => {
     const gw = createGateway({
-      chains: [mk(84532, async () => { throw new Error("socket hang up"); }), mk(8453, async () => ProjectKind.Unset)],
-      defaultChainId: 84532,
-      rootChains: [84532, 8453],
+      chains: [mk(84532, async () => { throw new Error("socket hang up"); }), mk(8453, async () => ProjectKind.File)],
       hostMode: { baseHost: BASE },
       onError: () => {},
     });
@@ -143,19 +118,16 @@ describe("root host probes run in parallel", () => {
     expect(res.status).not.toBe(404);
   });
 
-  it("an unknown root is remembered for seconds: a repeat costs no probe", async () => {
+  it("an unknown root costs one probe, and is remembered for seconds: a repeat costs none", async () => {
     const gw = createGateway({
-      chains: [mk(84532, async () => ProjectKind.Unset), mk(8453, async () => ProjectKind.Unset)],
-      defaultChainId: 84532,
-      rootChains: [84532, 8453],
+      chains: [mk(84532, async () => ProjectKind.Unset), mk(8453, async () => ProjectKind.File)],
       hostMode: { baseHost: BASE },
       onError: () => {},
     });
     expect((await get(gw, ROOT_HOST)).status).toBe(404);
-    const first = state.cidKindCalls;
-    expect(first).toBe(2);
+    expect(state.cidKindCalls).toBe(1);
     for (let i = 0; i < 5; i++) expect((await get(gw, ROOT_HOST)).status).toBe(404);
-    expect(state.cidKindCalls).toBe(first);
+    expect(state.cidKindCalls).toBe(1);
   });
 });
 
@@ -164,7 +136,6 @@ describe("a file over the limit", () => {
     state.readError = new LimitExceededError("bytes", 10, "file");
     const gw = createGateway({
       chains: [{ id: 84532, contracts, client: { kind: async () => ProjectKind.File } as never }],
-      defaultChainId: 84532,
       hostMode: { baseHost: BASE },
       maxFileBytes: 10,
       onError: () => {},
@@ -192,7 +163,6 @@ describe("a configuration fault is the operator's to read", () => {
       chains: () => {
         throw new GatewayError("no RPC configured for chain 84532 — set ABXFS_RPC_URL_84532 or ABXFS_RPC_URL", 500);
       },
-      defaultChainId: 84532,
       hostMode: { baseHost: BASE },
       onError: (d) => logged.push(d),
     });

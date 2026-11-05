@@ -25,12 +25,11 @@ beforeEach(() => {
 function gateway() {
   const gw = createGateway({
     chains: [{ id: 84532, contracts: chain.contracts, client: chain.client }],
-    defaultChainId: 84532,
     hostMode: { baseHost: BASE },
     onError: () => {},
   });
   return (root: AbxfsCid, path: string) => {
-    const host = `${rootContentLabel(asAbxfsCid(root))}.${BASE}`;
+    const host = `${rootContentLabel(84532, asAbxfsCid(root))}.${BASE}`;
     return gw(new Request(`http://${host}${path}`, { headers: { host } }));
   };
 }

@@ -481,7 +481,7 @@ async function maybeCreateProject(
   }
 
   if (!target) {
-    // Content-only upload. The root is already addressable at /g/cid/<root> whether or not a token
+    // Content-only upload. The root is already addressable at /g/cid/<chain>/<root> whether or not a token
     // ever points at it, so this is a complete outcome rather than a half-finished one.
     console.log(
       kleur.gray("  no --name or --project-id — content is stored and addressable by CID"),

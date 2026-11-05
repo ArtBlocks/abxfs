@@ -42,7 +42,7 @@ const ORG = "0x00000000000000000000000000000000000000a1";
 const mk = (timeout = 4000, requestTimeoutMs = 300) => {
   const client = createPublicClient({ chain: baseSepolia, transport: viemHttp(url, { timeout, retryCount: 1, batch: true }) }) as never;
   const chain = { id: 84532, contracts: TEST_ADDRESSES, client };
-  return createGateway({ chains: [chain], defaultChainId: 84532, hostMode: { baseHost: "content.example" }, requestTimeoutMs, onError: () => {} });
+  return createGateway({ chains: [chain], hostMode: { baseHost: "content.example" }, requestTimeoutMs, onError: () => {} });
 };
 const req = (n = 1) => new Request(`http://84532-${ORG.slice(2)}-${n}.content.example/`, { headers: { host: `84532-${ORG.slice(2)}-${n}.content.example` } });
 

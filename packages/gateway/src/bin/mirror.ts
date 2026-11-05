@@ -138,7 +138,7 @@ if (values.allow) filters.push(flagAtStartup("allow", () => fileFilter(values.al
 if (values["allow-orgs"]) filters.push(flagAtStartup("allow-orgs", () => orgAllowlistFromArg(values["allow-orgs"]!, fileOpts)));
 
 // Then the chain. Until the SDK registry has its addresses, it is "not deployed": one line, exit 2.
-const chain = atStartup(() => requireDeployed(chainsFromEnv(process.env, [chainId], chainId)).chains[0]!);
+const chain = atStartup(() => requireDeployed(chainsFromEnv(process.env, [chainId])).chains[0]!);
 
 function provider() {
   switch (values.provider) {

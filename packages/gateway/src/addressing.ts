@@ -173,7 +173,7 @@ export function parseTag(raw: string | undefined): string {
 
 /** The path form's `/cid/…` and `/p/…` shapes, parsed but with the sub-path left raw. */
 export type PathRoute =
-  | { kind: "cid"; rootCid: AbxfsCid; rest: string[] }
+  | { kind: "cid"; chainId: number; rootCid: AbxfsCid; rest: string[] }
   | {
       kind: "project";
       chainId: number;
@@ -186,7 +186,7 @@ export type PathRoute =
 /**
  * Parse the segments after the mount point of the path form:
  *
- *     cid/<root>/<subpath…>
+ *     cid/<chainId>/<root>/<subpath…>
  *     p/<chainId>/<org>/<tokenId>[/latest|/v/<n>|/tag/<tag>]/<subpath…>
  *
  * This form puts every project on one origin, so it is a redirect on the site and an explicit opt-in
@@ -195,8 +195,8 @@ export type PathRoute =
 export function parsePathSegments(segments: readonly string[]): PathRoute {
   const [head, ...tail] = segments;
   if (head === "cid") {
-    const [rawCid, ...rest] = tail;
-    return { kind: "cid", rootCid: parseRoot(rawCid), rest };
+    const [rawChain, rawCid, ...rest] = tail;
+    return { kind: "cid", chainId: parseChainId(rawChain), rootCid: parseRoot(rawCid), rest };
   }
   if (head === "p") {
     const [rawChain, rawOrg, rawToken, selector, ...more] = tail;
@@ -219,18 +219,12 @@ export function parsePathSegments(segments: readonly string[]): PathRoute {
   throw new GatewayError(`unknown gateway route — expected /cid or /p`, 400);
 }
 
-/**
- * Parse gateway segments (after the mount point) into an addressing mode and a sub-path.
- * `defaultChainId` is the chain a bare root resolves against; a root carries none.
- */
-export function parseGatewayPath(
-  segments: string[],
-  opts: { defaultChainId?: number } = {},
-): { chainId: number; addressing: Addressing; subpath: string } {
+/** Parse gateway segments (after the mount point) into a chain, an addressing mode and a sub-path. */
+export function parseGatewayPath(segments: string[]): { chainId: number; addressing: Addressing; subpath: string } {
   const route = parsePathSegments(segments);
   const subpath = parseSubpath(route.rest);
   if (route.kind === "cid") {
-    return { chainId: requireDefaultChainId(opts.defaultChainId), addressing: { kind: "cid", rootCid: route.rootCid }, subpath };
+    return { chainId: route.chainId, addressing: { kind: "cid", rootCid: route.rootCid }, subpath };
   }
   const { chainId, org, tokenId, selector } = route;
   const addressing: Addressing =
@@ -240,14 +234,4 @@ export function parseGatewayPath(
         ? { kind: "version", org, tokenId, version: selector.version }
         : { kind: "tag", org, tokenId, tag: selector.tag };
   return { chainId, addressing, subpath };
-}
-
-/**
- * Which chain a bare root resolves against. A CID carries no chain, so the operator names one.
- * Failing loudly beats guessing: resolving a CID against a chain the operator did not intend returns
- * "not found" for content that exists, which is indistinguishable from the content being absent.
- */
-export function requireDefaultChainId(configured: number | undefined): number {
-  if (configured !== undefined && Number.isSafeInteger(configured) && configured > 0) return configured;
-  throw new GatewayError("this gateway has no default chain configured for root requests", 500);
 }

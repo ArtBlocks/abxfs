@@ -74,7 +74,7 @@ const transport = () => Object.assign(new Error("HTTP request failed."), { name:
 
 function projectGateway() {
   const chain = { id: 84532, contracts: { chunkStore: "0x00000000000000000000000000000000000000c1", directoryStore: "0x00000000000000000000000000000000000000d2", sstore2Backend: "0x00000000000000000000000000000000000000b1", fastLzBackend: "0x00000000000000000000000000000000000000b2", fileStore: ORG, orgFactory: FACTORY, projectHook: HOOK } as never, client: { readContract: async () => ({ mimeType: "text/plain" }) } as never };
-  const gw = createGateway({ chains: [chain], defaultChainId: 84532, hostMode: { baseHost: BASE }, onError: () => {} });
+  const gw = createGateway({ chains: [chain], hostMode: { baseHost: BASE }, onError: () => {} });
   return (path: string, init?: RequestInit) => gw(new Request(`http://${label}.${BASE}${path}`, { ...init, headers: { host: `${label}.${BASE}` } }));
 }
 
@@ -125,9 +125,8 @@ describe("the chain could not be read: a retryable 503, never a 404", () => {
   });
 });
 
-describe("S3: a raw-root host tries every served chain, default first, and remembers the winner", () => {
+describe("S3: a raw root names its chain, and only that chain is read", () => {
   const ROOT = asAbxfsCid(`0x${"ab".repeat(32)}`);
-  const host = `${rootContentLabel(ROOT)}.${BASE}`;
 
   /** A chain whose stores say `stored` (or throw `fail`) and that counts its probes. */
   function chain(id: number, mode: "has" | "lacks" | "down") {
@@ -150,50 +149,52 @@ describe("S3: a raw-root host tries every served chain, default first, and remem
       },
     };
   }
-  const make = (a: ReturnType<typeof chain>, b: ReturnType<typeof chain>, rootChains = true) => {
-    const gw = createGateway({ chains: [a.chain, b.chain], defaultChainId: a.chain.id, hostMode: { baseHost: BASE }, ...(rootChains ? { rootChains: [a.chain.id, b.chain.id] } : {}), onError: () => {} });
+  const make = (a: ReturnType<typeof chain>, b: ReturnType<typeof chain>, chainId: number) => {
+    const gw = createGateway({ chains: [a.chain, b.chain], hostMode: { baseHost: BASE }, onError: () => {} });
+    const host = `${rootContentLabel(chainId, ROOT)}.${BASE}`;
     return () => gw(new Request(`http://${host}/`, { headers: { host } }));
   };
 
-  it("serves a root the default chain lacks from the next chain, then asks that chain first", async () => {
+  it("serves a root from the chain its host names, and never asks another", async () => {
     const a = chain(84532, "lacks");
     const b = chain(8453, "has");
-    const get = make(a, b);
-    const first = await get();
-    expect(first.status).toBe(200);
-    expect(first.headers.get("x-abxfs-root")).toBe(ROOT);
-    const aAfterFirst = a.probes.n;
-    expect(aAfterFirst).toBeGreaterThan(0);
-    await get();
-    expect(a.probes.n).toBe(aAfterFirst); // the winner is remembered: the default is not probed again
-  });
-
-  it("in path mode, `/cid/<root>` is looked up the same way: the default chain decides only who is asked first", async () => {
-    const a = chain(84532, "lacks");
-    const b = chain(8453, "has");
-    const gw = createGateway({ chains: [a.chain, b.chain], defaultChainId: a.chain.id, pathMode: {}, rootChains: [a.chain.id, b.chain.id], onError: () => {} });
-    const res = await gw(new Request(`http://gw.example/g/cid/${ROOT}/`));
+    const res = await make(a, b, 8453)();
     expect(res.status).toBe(200);
     expect(res.headers.get("x-abxfs-root")).toBe(ROOT);
-    expect(b.probes.n).toBeGreaterThan(0);
+    expect(a.probes.n).toBe(0);
   });
 
-  it("without `rootChains` only the default chain is asked (old behaviour)", async () => {
+  it("in path mode, `/cid/<chain>/<root>` reads that chain alone too", async () => {
     const a = chain(84532, "lacks");
     const b = chain(8453, "has");
-    expect((await make(a, b, false)()).status).toBe(404);
+    const gw = createGateway({ chains: [a.chain, b.chain], pathMode: {}, onError: () => {} });
+    const res = await gw(new Request(`http://gw.example/g/cid/8453/${ROOT}/`));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-abxfs-root")).toBe(ROOT);
+    expect(a.probes.n).toBe(0);
+    const bProbes = b.probes.n;
+    expect((await gw(new Request(`http://gw.example/g/cid/84532/${ROOT}/`))).status).toBe(404);
+    expect(b.probes.n).toBe(bProbes);
+  });
+
+  it("a root the named chain does not store is a 404, even when another served chain stores it (not cached by a shared cache)", async () => {
+    const a = chain(84532, "lacks");
+    const b = chain(8453, "has");
+    const res = await make(a, b, 84532)();
+    expect(res.status).toBe(404);
+    expect(res.headers.get("cache-control")).toBe("no-store");
     expect(b.probes.n).toBe(0);
   });
 
-  it("a root no chain stores is a 404 (not cached by a shared cache)", async () => {
-    const res = await make(chain(84532, "lacks"), chain(8453, "lacks"))();
-    expect(res.status).toBe(404);
-    expect(res.headers.get("cache-control")).toBe("no-store");
+  it("a chain this gateway does not serve is a 404 without a read", async () => {
+    const a = chain(84532, "has");
+    const b = chain(8453, "has");
+    expect((await make(a, b, 1)()).status).toBe(404);
+    expect(a.probes.n + b.probes.n).toBe(0);
   });
 
-  it("a default chain that could not be asked is NOT 'not stored': another chain's yes wins, and with no yes it is a 503", async () => {
-    expect((await make(chain(84532, "down"), chain(8453, "has"))()).status).toBe(200);
-    const none = await make(chain(84532, "down"), chain(8453, "lacks"))();
+  it("a named chain that could not be asked is a 503, never 'not stored'", async () => {
+    const none = await make(chain(84532, "down"), chain(8453, "has"), 84532)();
     expect(none.status).toBe(503);
     expect(none.headers.get("retry-after")).toBeTruthy();
     expect(none.headers.get("cache-control")).toBe("no-store");

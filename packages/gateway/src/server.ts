@@ -69,8 +69,8 @@ export function createGatewayServer(options: ServerOptions): Server {
       if (url.pathname === "/" && !options.projectMode && !onContentHost) {
         status = 200;
         const body = options.hostMode
-          ? `ABX FS gateway\n\n  https://<chain>-<org>-<id>.${options.hostMode.baseHost}/\n  https://c-<root>.${options.hostMode.baseHost}/\n`
-          : `ABX FS gateway\n\n  ${base}/p/<chainId>/<org>/<tokenId>/latest/…\n  ${base}/cid/<root>/…\n`;
+          ? `ABX FS gateway\n\n  https://<chain>-<org>-<id>.${options.hostMode.baseHost}/\n  https://<chain>-<root>.${options.hostMode.baseHost}/\n`
+          : `ABX FS gateway\n\n  ${base}/p/<chainId>/<org>/<tokenId>/latest/…\n  ${base}/cid/<chainId>/<root>/…\n`;
         return send(res, 200, { "content-type": "text/plain; charset=utf-8" }, body, req.method);
       }
 

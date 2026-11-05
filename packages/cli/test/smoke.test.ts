@@ -120,7 +120,7 @@ describe.skipIf(SHOULD_SKIP)("cli smoke", () => {
     console.log = (...args: unknown[]) => void logs.push(args.map(String).join(" "));
     try {
       // No --name: uploading content is complete on its own. The root is addressable at
-      // /g/cid/<root> whether or not a project token ever points at it.
+      // /g/cid/<chain>/<root> whether or not a project token ever points at it.
       await buildProgram().parseAsync(["node", "abxfs", "upload", sourceDir, "--yes"]);
     } finally {
       console.log = origLog;

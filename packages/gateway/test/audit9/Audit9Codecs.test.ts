@@ -34,8 +34,8 @@ function setup(chunks: Uint8Array[], codec: string, outputHash: string, mime = "
   };
   const chain = { id: 84532, contracts: { ...(fc.contracts as object), orgFactory: "0x00000000000000000000000000000000000000e1", projectHook: "0x00000000000000000000000000000000000000f1" }, client };
   const errors: string[] = [];
-  const gw = createGateway({ chains: [chain as never], defaultChainId: 84532, hostMode: { baseHost: BASE }, maxFileBytes: 4 * 1024 * 1024, onError: (e) => errors.push(e) });
-  const host = `${rootContentLabel(cid)}.${BASE}`;
+  const gw = createGateway({ chains: [chain as never], hostMode: { baseHost: BASE }, maxFileBytes: 4 * 1024 * 1024, onError: (e) => errors.push(e) });
+  const host = `${rootContentLabel(84532, cid)}.${BASE}`;
   const get = (headers: Record<string, string> = {}, h = host) => gw(new Request(`https://${h}/`, { headers: { host: h, ...headers } }));
   return { fc, cid, get, errors, gw };
 }
@@ -86,7 +86,7 @@ describe("L1: a codec this gateway cannot decode", () => {
     const inner = fc.client as { readContract: (a: { functionName: string }) => Promise<unknown> };
     const client = { ...(inner as object), readContract: async (a: { functionName: string }) => { const r = await inner.readContract(a); return a.functionName === "getFileInfo" ? { ...(r as object), codec: codecLabel("zstd"), outputHash: OUT } : r; } };
     const chain = { id: 84532, contracts: { ...(fc.contracts as object), orgFactory: "0x00000000000000000000000000000000000000e1", projectHook: "0x00000000000000000000000000000000000000f1" }, client };
-    const gw = createGateway({ chains: [chain as never], defaultChainId: 84532, hostMode: { baseHost: BASE }, onError: () => {} });
+    const gw = createGateway({ chains: [chain as never], hostMode: { baseHost: BASE }, onError: () => {} });
     const host = `84532-${ORG.slice(2)}-1.${BASE}`;
     const res = await gw(new Request(`https://${host}/`, { headers: { host } }));
     expect(res.status).toBe(501);

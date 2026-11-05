@@ -32,8 +32,8 @@ describe("sniffed declared types are sandboxed", () => {
     __resetResolveCaches();
     const fc = new FakeChain();
     const cid = fc.addFile([new TextEncoder().encode("<script>alert(1)</script>")], "unknown/unknown").cid;
-    const gw = createGateway({ chains: [{ id: 84532, contracts: fc.contracts, client: fc.client } as never], defaultChainId: 84532, hostMode: { baseHost: "content.example" } });
-    const label = rootContentLabel(cid);
+    const gw = createGateway({ chains: [{ id: 84532, contracts: fc.contracts, client: fc.client } as never], hostMode: { baseHost: "content.example" } });
+    const label = rootContentLabel(84532, cid);
     const res = await gw(new Request(`https://${label}.content.example/`, { headers: { host: `${label}.content.example` } }));
     expect(res.status).toBe(200);
     expect(res.headers.get("content-security-policy")).toBe("sandbox");

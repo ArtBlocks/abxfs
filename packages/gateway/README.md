@@ -38,12 +38,14 @@ workers) and anything else on that host. So each project gets its own origin, na
 ```text
 https://<chain>-<org>-<id>.<content domain>/            a project's head
 https://<chain>-<org>-<id>-v<n>.<content domain>/       a fixed version
-https://c-<root>.<content domain>/                      raw content by root, no project needed
+https://<chain>-<root>.<content domain>/                raw content by root, no project needed
 GET /healthz                                            on any host that is not a content host
 ```
 
-`<org>` is 40 lowercase hex digits (no `0x`), `<root>` is 52 characters of lowercase base32, and the whole
-label is at most 63 characters, so one wildcard certificate covers every project. Parsing is strict and
+`<chain>` is the chain id, `<org>` is 40 lowercase hex digits (no `0x`), `<root>` is 52 characters of lowercase
+base32, and the whole label is at most 63 characters, so one wildcard certificate covers every project. Every URL names
+its chain, a raw root's too: the same bytes have the same root on every chain, so the chain says where to read them,
+and that chain is the only one asked. Parsing is strict and
 canonical (it is `parseContentHost` in `@abxfs/sdk`): `+84532`, `0x14a34`, leading
 zeros, a `0x` prefix on the address, or a nested label are all a 404. Hostnames are case-insensitive, so the `Host`
 is lowercased before it is parsed: an uppercase spelling is the same project, with the same filter subjects.
@@ -104,7 +106,7 @@ to 256 segments (8 calls) per request; a longer path is a `404`, like any other 
 
 | Response | `Cache-Control` |
 | --- | --- |
-| a **root** host (`c-<root>.…`) serving the root itself | `public, max-age=31536000, immutable` (or `rootMaxAge`) |
+| a **root** host (`<chain>-<root>.…`) serving the root itself | `public, max-age=31536000, immutable` (or `rootMaxAge`) |
 | a **root** host serving anything else (`index.html`, a sub-path) | `public, max-age=60, s-maxage=60, stale-while-revalidate=30` |
 | a **project** host, latest | `public, max-age=10, s-maxage=60, stale-while-revalidate=30` |
 | a **project** host, `-v<n>` | `public, max-age=60, s-maxage=60, stale-while-revalidate=30` |
@@ -146,7 +148,7 @@ Two ways to run one, and you pick by which question you are answering:
 
 With neither, nothing is filtered. `--allow-orgs` takes addresses (comma separated, or a file with one
 per line and `#` comments) and serves only the projects of those orgs, on any chain. A root host
-(`c-<root>.…`) is refused under it: a root names content rather than an org, so there is nothing to
+(`<chain>-<root>.…`) is refused under it: a root names content rather than an org, so there is nothing to
 check it against. That is the point of an orgs-only gateway. It works the same on `abxfs-mirror`, so a
 mirror can pin only the orgs you trust.
 
@@ -182,10 +184,9 @@ As a library, a filter is a function:
 ```ts
 import { createGateway, chainsFromEnv, allOf, fileFilter } from "@abxfs/gateway";
 
-const { chains, defaultChainId } = chainsFromEnv(); // ABXFS_DEFAULT_CHAIN as the bin reads it: one chain, or it throws
+const { chains } = chainsFromEnv();
 const gateway = createGateway({
   chains,
-  defaultChainId,
   hostMode: { baseHost: "content.example" }, // exactly one of hostMode, project, pathMode
   filter: allOf(fileFilter("denylist.txt", "deny"), (ctx) => myPolicy(ctx.subjects)),
 });
@@ -200,7 +201,6 @@ const gateway = createGateway({
 | `ABXFS_RPC_URL_<chainId>` / `ABXFS_RPC_URL` | RPC endpoint. **Give it one.** Without it the registry's public endpoints are used, which are rate limited, and reading a large file costs gas in proportion to its size — more than some public nodes will execute. `ABXFS_RPC_URL_<chainId>` sets one chain; the unsuffixed `ABXFS_RPC_URL` applies to **every** chain this process serves. Each endpoint is asked `eth_chainId` before its first read, and one that answers for another chain fails every read from it (`WrongChainError`, logged; asked again after five minutes, so a fixed endpoint recovers without a restart), so a bare URL falling through to the wrong chain is refused rather than served. Still set a per-chain URL for each served chain, and use the bare form only with `--chains <one chain>`. |
 | `--chains` / `ABXFS_CHAINS` | Network names (as the deployments page gives them) or chain ids, comma separated. Default (or blank): every canonical chain, or with `--project` the project's own chain. A value that names none (`,`) is refused, and so is one that leaves out `--project`'s chain. |
 | `--content-domain` / `ABXFS_CONTENT_DOMAIN` | Serve per-project origins under this host (`host[:port]`). |
-| `--default-chain` / `ABXFS_DEFAULT_CHAIN` | One chain: which chain a raw root (`c-<root>.…`, or `/g/cid/<root>` in path mode) is looked up on first; a CID carries none. Default: the first chain served (the first of `--chains`, else the lowest chain id). It decides only who is asked first: if it does not store the root, the other chains this gateway serves are probed alongside it (the default chain gets a 150 ms head start); the first chain that has the root wins and is remembered. |
 | `--port`, `--host` / `PORT`, `HOST` | Default `8080` on `127.0.0.1`. The host is an IP address (`0.0.0.0`, `::`) or a host name. |
 | `--deny`, `--allow` / `ABXFS_DENYLIST`, `ABXFS_ALLOWLIST` | Filter files. |
 | `--allow-orgs` / `ABXFS_ALLOW_ORGS` | Serve only these orgs: addresses or a file of them. |

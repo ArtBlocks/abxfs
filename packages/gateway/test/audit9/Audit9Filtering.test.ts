@@ -45,7 +45,7 @@ function setup(blocked: (ids: ReturnType<typeof tree>) => string[] = () => [], e
     contracts: { ...(fc.contracts as object), orgFactory: "0x00000000000000000000000000000000000000e1", projectHook: "0x00000000000000000000000000000000000000f1" },
     client: fc.client,
   };
-  const gw = createGateway({ chains: [chain as never], defaultChainId: 84532, hostMode: { baseHost: BASE }, filter, onError: () => {}, ...extra });
+  const gw = createGateway({ chains: [chain as never], hostMode: { baseHost: BASE }, filter, onError: () => {}, ...extra });
   const get = (label: string, path = "/", headers: Record<string, string> = {}) =>
     gw(new Request(`https://${label}.${BASE}${path}`, { headers: { host: `${label}.${BASE}`, ...headers } }));
   return { fc, ...ids, get, calls };
@@ -75,9 +75,9 @@ const PROJECT = `84532-${ORG.slice(2)}-7`;
 describe("M1: a blocked file is refused wherever it is served", () => {
   it("a blocked FILE served as a wrapper directory's index.html is a 451, at no chunk read", async () => {
     const { get, F, W, fc } = setup(({ F }) => [rootSubject(F)]);
-    expect((await get(rootContentLabel(F))).status).toBe(451);
+    expect((await get(rootContentLabel(84532, F))).status).toBe(451);
     fc.reset();
-    const wrapped = await get(rootContentLabel(W));
+    const wrapped = await get(rootContentLabel(84532, W));
     expect(wrapped.status).toBe(451);
     expect(await wrapped.text()).not.toContain("BLOCKED");
     expect(fc.count("multicall:read")).toBe(0);
@@ -91,32 +91,32 @@ describe("M1: a blocked file is refused wherever it is served", () => {
     expect(await res.text()).not.toContain("BLOCKED");
   });
 
-  it("…and by path under any root that holds it (c-<ROOT>/index.html)", async () => {
+  it("…and by path under any root that holds it (<chain>-<ROOT>/index.html)", async () => {
     const { get, ROOT } = setup(({ F }) => [rootSubject(F)]);
-    expect((await get(rootContentLabel(ROOT), "/index.html")).status).toBe(451);
+    expect((await get(rootContentLabel(84532, ROOT), "/index.html")).status).toBe(451);
     // the rest of that root is still served
-    expect((await get(rootContentLabel(ROOT), "/sub/secret.html")).status).toBe(200);
+    expect((await get(rootContentLabel(84532, ROOT), "/sub/secret.html")).status).toBe(200);
   });
 
   it("a blocked SUBDIRECTORY's listing is refused under any parent", async () => {
     const { get, ROOT, D } = setup(({ D }) => [rootSubject(D)]);
-    expect((await get(rootContentLabel(D))).status).toBe(451);
-    expect((await get(rootContentLabel(ROOT), "/sub/")).status).toBe(451);
+    expect((await get(rootContentLabel(84532, D))).status).toBe(451);
+    expect((await get(rootContentLabel(84532, ROOT), "/sub/")).status).toBe(451);
     // a file inside it is a different CID: covered only if that CID is blocked too
-    expect((await get(rootContentLabel(ROOT), "/sub/secret.html")).status).toBe(200);
+    expect((await get(rootContentLabel(84532, ROOT), "/sub/secret.html")).status).toBe(200);
   });
 
   it("a blocked SUBDIRECTORY's index courtesy is refused under any parent (delta audit M2)", async () => {
     // DI has an index.html, so `/site/` serves a FILE (P): the directory travels with it and is checked too.
     const { get, ROOT, DI } = setup(({ DI }) => [rootSubject(DI)]);
-    expect((await get(rootContentLabel(DI))).status).toBe(451);
-    const res = await get(rootContentLabel(ROOT), "/site/");
+    expect((await get(rootContentLabel(84532, DI))).status).toBe(451);
+    const res = await get(rootContentLabel(84532, ROOT), "/site/");
     expect(res.status).toBe(451);
     expect(await res.text()).not.toContain("BLOCKED");
     state.projectRoot = ROOT;
     expect((await get(PROJECT, "/site/")).status).toBe(451);
     // the file named outright is its own CID, as above
-    expect((await get(rootContentLabel(ROOT), "/site/index.html")).status).toBe(200);
+    expect((await get(rootContentLabel(84532, ROOT), "/site/index.html")).status).toBe(200);
   });
 
   it("a directory root blocked WITH its descendants leaves nothing reachable", async () => {
@@ -130,17 +130,17 @@ describe("M1: a blocked file is refused wherever it is served", () => {
       [F, "/"],
       [W, "/"],
     ] as const) {
-      const res = await get(rootContentLabel(label), path);
+      const res = await get(rootContentLabel(84532, label), path);
       expect(res.status, `${label} ${path}`).toBe(451);
     }
   });
 
   it("asks the filter a third time only when the served CID is not the root, and with every subject so far", async () => {
     const { get, ROOT, F, S, calls } = setup();
-    await get(rootContentLabel(F)); // a file root: serves itself
+    await get(rootContentLabel(84532, F)); // a file root: serves itself
     expect(calls).toEqual([[rootSubject(F)]]);
     calls.length = 0;
-    await get(rootContentLabel(ROOT), "/sub/secret.html");
+    await get(rootContentLabel(84532, ROOT), "/sub/secret.html");
     expect(calls).toEqual([[rootSubject(ROOT)], [rootSubject(ROOT), rootSubject(S)]]);
     calls.length = 0;
     state.projectRoot = ROOT;
@@ -152,11 +152,11 @@ describe("M1: a blocked file is refused wherever it is served", () => {
   it("the extra pass costs no RPC call", async () => {
     const plain = setup();
     plain.fc.reset();
-    await plain.get(rootContentLabel(plain.ROOT), "/sub/secret.html");
+    await plain.get(rootContentLabel(84532, plain.ROOT), "/sub/secret.html");
     const without = plain.fc.calls.length;
     const filtered = setup(() => [`root:0x${"ee".repeat(32)}`]);
     filtered.fc.reset();
-    await filtered.get(rootContentLabel(filtered.ROOT), "/sub/secret.html");
+    await filtered.get(rootContentLabel(84532, filtered.ROOT), "/sub/secret.html");
     expect(filtered.fc.calls.length).toBe(without);
   });
 });
@@ -164,15 +164,15 @@ describe("M1: a blocked file is refused wherever it is served", () => {
 describe("M1: what a root host may cache forever", () => {
   it("the root itself (a file root, a directory root's own listing) is immutable", async () => {
     const { fc, get, F } = setup();
-    expect((await get(rootContentLabel(F))).headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect((await get(rootContentLabel(84532, F))).headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
     const bare = fc.addDirectory([{ name: "a.txt", cid: F, isDirectory: false }]); // no index.html: its own listing
-    expect((await get(rootContentLabel(bare))).headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect((await get(rootContentLabel(84532, bare))).headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
   });
 
   it("anything else on a root host (index.html, a sub-path, a nested listing) is short-lived, never immutable", async () => {
     const { get, ROOT } = setup();
     for (const path of ["/", "/index.html", "/sub/", "/sub/secret.html"]) {
-      const res = await get(rootContentLabel(ROOT), path);
+      const res = await get(rootContentLabel(84532, ROOT), path);
       expect(res.status, path).toBe(200);
       const cc = res.headers.get("cache-control")!;
       expect(cc, path).not.toContain("immutable");
@@ -182,18 +182,18 @@ describe("M1: what a root host may cache forever", () => {
 
   it("a Range answer keeps the short policy (no-transform added, never immutable)", async () => {
     const { get, ROOT } = setup();
-    const res = await get(rootContentLabel(ROOT), "/index.html", { range: "bytes=0-3" });
+    const res = await get(rootContentLabel(84532, ROOT), "/index.html", { range: "bytes=0-3" });
     expect(res.status).toBe(206);
     expect(res.headers.get("cache-control")).not.toContain("immutable");
   });
 
   it("`rootMaxAge` shortens the root's own lifetime, and validates", async () => {
     const { get, F, ROOT } = setup(() => [], { rootMaxAge: 120 });
-    expect((await get(rootContentLabel(F))).headers.get("cache-control")).toBe("public, max-age=120, s-maxage=120");
-    expect((await get(rootContentLabel(ROOT))).headers.get("cache-control")).toContain("s-maxage=60");
+    expect((await get(rootContentLabel(84532, F))).headers.get("cache-control")).toBe("public, max-age=120, s-maxage=120");
+    expect((await get(rootContentLabel(84532, ROOT))).headers.get("cache-control")).toContain("s-maxage=60");
     const zero = setup(() => [], { rootMaxAge: 0 });
-    expect((await zero.get(rootContentLabel(zero.F))).headers.get("cache-control")).toBe("no-cache");
-    expect((await zero.get(rootContentLabel(zero.ROOT))).headers.get("cache-control")).toBe("no-cache");
+    expect((await zero.get(rootContentLabel(84532, zero.F))).headers.get("cache-control")).toBe("no-cache");
+    expect((await zero.get(rootContentLabel(84532, zero.ROOT))).headers.get("cache-control")).toBe("no-cache");
     for (const bad of [-1, 1.5, Number.NaN]) expect(() => setup(() => [], { rootMaxAge: bad }), String(bad)).toThrow(/rootMaxAge/);
   });
 });

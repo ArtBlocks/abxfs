@@ -77,14 +77,26 @@ describe("parseContentLabel is strict and canonical", () => {
 describe("root labels", () => {
   const root = `0x${"ab".repeat(16)}${"01".repeat(16)}` as AbxfsCid;
 
-  it("fit one label and round-trip", () => {
-    const l = rootContentLabel(root);
-    expect(l).toMatch(/^c-[a-z2-7]{52}$/);
-    expect(parseContentLabel(l)).toEqual({ kind: "root", rootCid: root });
+  it("name their chain, fit one label and round-trip", () => {
+    const l = rootContentLabel(84532, root);
+    expect(l).toMatch(/^84532-[a-z2-7]{52}$/);
+    expect(parseContentLabel(l)).toEqual({ kind: "root", chainId: 84532, rootCid: root });
+    // A ten-digit chain id is the longest a label holds: exactly 63 characters.
+    const longest = rootContentLabel(4_294_967_295, root);
+    expect(longest).toHaveLength(63);
+    expect(parseContentLabel(longest)).toEqual({ kind: "root", chainId: 4_294_967_295, rootCid: root });
+    expect(() => rootContentLabel(10_000_000_000, root)).toThrow(/chain id out of range/);
+    expect(() => rootContentLabel(0, root)).toThrow(/chain id out of range/);
+  });
+
+  it("the same root on two chains is two labels, and the chain-less form is gone", () => {
+    expect(rootContentLabel(1, root)).not.toBe(rootContentLabel(8453, root));
+    const bare = rootContentLabel(1, root).slice(2);
+    for (const old of [`c-${bare}`, bare, `1-c-${bare}`, `01-${bare}`, `+1-${bare}`]) expect(parseContentLabel(old), old).toBeNull();
   });
 
   it("refuse non-canonical base32 (non-zero padding bits would be a second spelling)", () => {
-    const l = rootContentLabel(root);
+    const l = rootContentLabel(84532, root);
     // The last character carries 1 data bit and 4 padding bits. Flipping a padding bit leaves the
     // decoded bytes unchanged, so accepting it would give one root two spellings.
     const flipped = "abcdefghijklmnopqrstuvwxyz234567"["abcdefghijklmnopqrstuvwxyz234567".indexOf(l.slice(-1)) ^ 1];

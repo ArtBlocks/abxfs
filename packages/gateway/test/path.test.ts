@@ -20,17 +20,17 @@ const CID = asAbxfsCid(`0x${"ab".repeat(32)}`);
 /** The parser folds whatever case the URL carried to lowercase. */
 const ORG = "0x00000000000000000000000000000000000000a1";
 const ORG_URL = ORG;
-const parse = (segments: string[]) => parseGatewayPath(segments, { defaultChainId: 84532 });
+const parse = (segments: string[]) => parseGatewayPath(segments);
 
 describe("parseGatewayPath", () => {
-  it("parses a bare CID", () => {
-    const r = parse(["cid", CID]);
+  it("parses a CID on its chain", () => {
+    const r = parse(["cid", "84532", CID]);
     expect(r.addressing).toEqual({ kind: "cid", rootCid: CID });
     expect(r.subpath).toBe("");
   });
 
   it("parses a CID with a sub-path", () => {
-    const r = parse(["cid", CID, "lib", "utils.js"]);
+    const r = parse(["cid", "84532", CID, "lib", "utils.js"]);
     expect(r.subpath).toBe("lib/utils.js");
   });
 
@@ -69,7 +69,7 @@ describe("parseGatewayPath", () => {
    * true of every filesystem.
    */
   it("decodes each sub-path segment independently", () => {
-    const r = parse(["cid", CID, "my%20dir", "a%23b.txt"]);
+    const r = parse(["cid", "84532", CID, "my%20dir", "a%23b.txt"]);
     expect(r.subpath).toBe("my dir/a#b.txt");
   });
 
@@ -100,7 +100,11 @@ describe("parseGatewayPath", () => {
       ["unknown route", ["nope", "x"]],
       ["empty path", []],
       ["missing CID", ["cid"]],
-      ["malformed CID", ["cid", "0xdeadbeef"]],
+      ["a CID with no chain", ["cid", CID]],
+      ["a chain with no CID", ["cid", "84532"]],
+      ["a non-canonical chain", ["cid", "084532", CID]],
+      ["a hex chain", ["cid", "0x14a34", CID]],
+      ["malformed CID", ["cid", "84532", "0xdeadbeef"]],
       ["non-numeric token id", ["p", "84532", ORG_URL, "seven", "latest"]],
       ["unknown selector", ["p", "84532", ORG_URL, "7", "head"]],
       ["version zero", ["p", "84532", ORG_URL, "7", "v", "0"]],
@@ -124,14 +128,14 @@ describe("parseGatewayPath", () => {
       ["a signed token id", ["p", "84532", ORG_URL, "+7", "latest"]],
       ["a zero-padded version", ["p", "84532", ORG_URL, "7", "v", "01"]],
       ["a chain id of zero", ["p", "0", ORG_URL, "7", "latest"]],
-      ["a 64-hex root with no 0x", ["cid", "ab".repeat(32)]],
-      ["a sub-path of dot-dot", ["cid", CID, ".."]],
-      ["a sub-path with an encoded dot-dot", ["cid", CID, "%2e%2e"]],
-      ["a sub-path with an encoded slash", ["cid", CID, "a%2f..%2fb"]],
-      ["a sub-path with a backslash", ["cid", CID, "a%5cb"]],
-      ["a sub-path with a NUL", ["cid", CID, "a%00b"]],
-      ["a sub-path with a single dot", ["cid", CID, "."]],
-      ["a malformed percent-escape", ["cid", CID, "%E0%A4%A"]],
+      ["a 64-hex root with no 0x", ["cid", "84532", "ab".repeat(32)]],
+      ["a sub-path of dot-dot", ["cid", "84532", CID, ".."]],
+      ["a sub-path with an encoded dot-dot", ["cid", "84532", CID, "%2e%2e"]],
+      ["a sub-path with an encoded slash", ["cid", "84532", CID, "a%2f..%2fb"]],
+      ["a sub-path with a backslash", ["cid", "84532", CID, "a%5cb"]],
+      ["a sub-path with a NUL", ["cid", "84532", CID, "a%00b"]],
+      ["a sub-path with a single dot", ["cid", "84532", CID, "."]],
+      ["a malformed percent-escape", ["cid", "84532", CID, "%E0%A4%A"]],
     ];
 
     for (const [label, segments] of cases) {
@@ -197,17 +201,10 @@ describe("cacheControlFor", () => {
 });
 
 
-describe("a bare /cid request", () => {
-  /**
-   * A CID names no chain, so the operator must. Guessing would resolve it against a chain the operator
-   * did not intend and answer "not found" for content that exists.
-   */
-  it("fails loudly when the gateway has no default chain, rather than guessing", () => {
-    expect(() => parseGatewayPath(["cid", CID])).toThrow(GatewayError);
-    expect(() => parseGatewayPath(["cid", CID])).toThrow(/no default chain/);
-  });
-
-  it("uses the configured default", () => {
-    expect(parse(["cid", CID]).chainId).toBe(84532);
+describe("a /cid request names its chain", () => {
+  /** A CID names content, not where it is stored: the URL says which chain to read, so nothing guesses. */
+  it("reads the chain from the URL", () => {
+    expect(parse(["cid", "8453", CID]).chainId).toBe(8453);
+    expect(parse(["cid", "84532", CID]).chainId).toBe(84532);
   });
 });
