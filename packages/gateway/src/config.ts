@@ -184,9 +184,9 @@ export interface LoadedChains {
 }
 
 /**
- * Every canonical chain, or the ones named, in the order named. The default for bare `/cid/` requests (and the
- * chain a root host asks first) is the one named by `ABXFS_DEFAULT_CHAIN`, else the first chain served. No network
- * is preferred by name: which one an operator serves first is theirs to choose.
+ * Every canonical chain (in chain-id order), or the ones named, in the order named. The chain a raw root is looked up
+ * on FIRST is the one named by `ABXFS_DEFAULT_CHAIN`, else the first chain served; every other served chain is asked
+ * too, so it decides only who answers first. No network is preferred by name.
  */
 export function chainsFromEnv(
   env: NodeJS.ProcessEnv = process.env,

@@ -538,7 +538,8 @@ that validates roots against `FileStore` and `DirectoryStore`, and the token met
   1. Contracts, with unit, fuzz and invariant tests, adversarial backends, golden vectors in TS and Solidity, address
      pins, the fork test against real ABX, and gas tables under both schedules.
   2. Code freeze: a final comment and NatSpec pass, then re-pin.
-  3. A dedicated audit, then fixes and a re-pin.
+  3. An internal audit (`docs/internal-audit-summary.md`), then fixes and a re-pin. An independent audit has not been
+     done.
   4. Testnets at the final addresses, with a rehearsal.
   5. Production networks, each after its testnet.
 - **Token links:** the default is a path on `https://fs.abx.io`, frozen into every org (`OrgMeta`); where content is

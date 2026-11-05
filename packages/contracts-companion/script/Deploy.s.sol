@@ -54,7 +54,7 @@ contract Deploy is LocalChain {
         console2.log("IpfsCidResolver", resolver);
     }
 
-    /// @notice Where the build under audit lands over the pinned content layer (`CoreDeploy.pinned()`).
+    /// @notice Where the pinned build lands over the pinned content layer (`CoreDeploy.pinned()`).
     ///         `test/DeployPin.t.sol` fails when the prediction drifts from this, and `runWith` refuses to broadcast.
     ///         The content layer's addresses are constructor arguments, so a re-pinned content layer moves this too.
     ///         Re-pin deliberately, and only before a deployment.

@@ -42,7 +42,7 @@ store, so the same bytes resolve whatever org points at them.
 | Get started locally | [`site/content/docs/using-abxfs/quickstart.mdx`](./site/content/docs/using-abxfs/quickstart.mdx) |
 | Change anything a user reads | `site/content/docs/` — the docs site, published at docs.fs.abx.io. There is no second copy; `docs/` holds operator runbooks and the audit record only |
 | Deploy to a network | [`docs/deploy-runbook.md`](./docs/deploy-runbook.md) — every step in order, the irreversible ones marked; add one when you invent it |
-| Use the CLI | `packages/cli/src/commands/` — config in `.abxfs.json`, key in `ABXFS_PRIVATE_KEY` (never on disk); project commands take `--org` |
+| Use the CLI | `packages/cli/src/commands/` — config in `~/.config/abxfs/config.json` (a project's `.abxfs.json` is untrusted), key in `ABXFS_PRIVATE_KEY` (never on disk); project commands take `--org` |
 | Index everything that is published | `Lens.publishRange` + `hook.globalPublishCount` — one address, one cursor ([`specs/abx-fs-orgs.md`](./specs/abx-fs-orgs.md#indexing-everything)) |
 
 The website at fs.abx.io is Art Blocks' hosted service, built on these packages and maintained separately; nothing here
@@ -93,7 +93,7 @@ Every contract is deployed with CREATE2 through the keyless deployer (`0x4e59…
 changed code means a changed address, and for a backend or a store that silently forks the content-address space
 rather than failing.
 
-The build keeps solc's metadata hash (owner decision: NatSpec is frozen with the code), so the bytecode commits to the
+The build keeps solc's metadata hash (by design: NatSpec is frozen with the code), so the bytecode commits to the
 exact source text, comments included, to the source paths and to the remappings. Three consequences: every comment edit
 in a pinned contract moves its address; `auto_detect_remappings = false` in every `foundry.toml`, because auto-detection
 adds absolute paths of the checkout to the metadata and addresses would then depend on where the repo lives; and the
@@ -117,7 +117,7 @@ it. Things that bite:
 - A chunk id is `keccak256(0x30 ‖ backend ‖ keccak256(input) ‖ dataHash ‖ size:6)`. A backend that is EVM-readable
   is read back and checked at write and on every read; for one that is not, the claims are bound into the id. The
   record is 3 slots (backend|size, pointer, dataHash); `keccak256(input)` is in the id and the `ChunkWritten` event but
-  is not stored. Readers trust their RPC (owner decision): a stored input hash only helps a reader that also checks the
+  is not stored. Readers trust their RPC (by design): a stored input hash only helps a reader that also checks the
   chunk-id list against the root node by node, which nothing does, so do not add a per-chunk client-side check that
   looks like verification without being it.
 - Compression lives in two places. A backend may decode what it stores (`FastLzSstore2Backend` inflates on every
@@ -204,7 +204,7 @@ chain without addresses and refuses commands on it (`requireAddresses`); a site 
 cannot leave the record pointing at an old build. Tests that need an address book mock `@abxfs/sdk` through
 `packages/sdk/test/helpers/deployed-registry.ts` (a test setup file can do it for a whole suite), so they defend stand-in
 addresses on every chain, so they do not move when a chain is deployed. Deploying anything to a production chain
-needs the owner's explicit go-ahead.
+needs the maintainers' explicit go-ahead.
 
 **Packages read each other from `dist`.** The CLI and the gateway import `@abxfs/sdk` (and a site imports the SDK and
 the gateway) through their package exports, so after changing one of those, rebuild it
@@ -319,7 +319,7 @@ org" — because both hooks are vetoes. `test/OrgHeld.t.sol` drives each of thos
 **The org name is immutable and printable ASCII only, on purpose.** It is the ABX collection name, which
 freezes at renounce, and it renders in the card header. The factory only accepts 0x20..0x7e, 1..64 bytes, not all
 spaces: no bidi, zero-width, control, homoglyph or invalid-UTF-8 name can ever be minted into someone's wallet. HTML
-characters (`< > & " '` and the backtick) ARE allowed, so `A & B` is a valid name (owner decision): ABX escapes JSON but
+characters (`< > & " '` and the backtick) ARE allowed, so `A & B` is a valid name (by design): ABX escapes JSON but
 not HTML, so everything that renders a name as markup must escape it, as `ProjectCard` does. A rename would let an org
 pass as another after it had built a reputation. The name is also self-declared and copyable: nothing resolves one, nothing is
 keyed by one, and no URL contains one. The address is the identity.
@@ -404,8 +404,9 @@ the check on the CID actually served happens after resolution.
 
 ## No infrastructure
 
-There is no indexer, pinner, gateway service, database, droplet, or basic auth. A site's only backend dependency is a
-JSON-RPC endpoint, and `@abxfs/pinning` is purely a CLI-side option for people who want to pin.
+ABX FS needs no indexer, database or hosted service: a site's only backend dependency is a JSON-RPC endpoint. The
+gateway and the mirror are tools anyone may run, and `@abxfs/pinning` is an opt-in library (`abxfs pin`,
+`abxfs-mirror`) for people who want to pin.
 
 If a change starts to need a database or a background service, that is a signal to re-read
 [`specs/abx-fs-orgs.md`](./specs/abx-fs-orgs.md) ("Reading a project: no indexer") first — the whole point is that the

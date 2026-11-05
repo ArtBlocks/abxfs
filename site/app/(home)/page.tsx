@@ -33,7 +33,7 @@ export default function HomePage() {
         <h1 className="mt-5 text-4xl font-medium sm:text-5xl">Drop a folder. Put it on chain.</h1>
         <p className="mt-5 max-w-xl text-lg text-fd-muted-foreground">
           ABX FS is a permissionless, content-addressed file system built and stored entirely on
-          blockchain.
+          chain.
         </p>
 
         <div className="mt-8 flex flex-wrap items-center gap-3">

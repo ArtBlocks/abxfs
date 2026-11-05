@@ -5,8 +5,8 @@
  * project's value is written by someone else. A client that fetches or links it must not be pointed
  * at the user's own machine or network, nor at credentials embedded in the URL.
  *
- * This is deliberately a CLIENT check. The gateway server applies its own (resolving DNS, redirects);
- * a syntactic check cannot defeat DNS rebinding and is not offered as if it could.
+ * This is deliberately a CLIENT check: a server that fetches such a URL must resolve and check it itself
+ * (DNS, redirects). A syntactic check cannot defeat DNS rebinding and is not offered as if it could.
  */
 
 /** Generous for a gateway prefix; the on-chain view URL cap is 512. */

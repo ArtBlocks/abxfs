@@ -10,7 +10,7 @@ here is cosmetic.
 
 ## Prerequisites
 
-- **The build:** the working tree is the tagged, audited commit, clean, and built with the repo's pinned compiler
+- **The build:** the working tree is the tagged commit (`abx-fs-freeze-3`, internally audited), clean, and built with the repo's pinned compiler
   (`solc_version` in each `foundry.toml`).
   - The bytecode commits to the exact source text through solc's metadata hash, so **any edit under a contract
     package's `src/`, a comment included, moves addresses**.
@@ -19,8 +19,8 @@ here is cosmetic.
 - **ABX:** ABX supports the chain (`abx capabilities --json`), and its addresses match the table below.
 - **RPC and key:**
   - a keyed RPC for the chain (public endpoints lag, and cap the gas an `eth_call` may use);
-  - a funded deployer EOA whose key is only in an env var or a hardware wallet, never on disk or on a command line
-    you paste.
+  - a funded deployer EOA whose key is only in an env var, an encrypted keystore or a hardware wallet, never on disk
+    in plain text or on a command line you paste.
 - **The allow-table:** the chain has an entry in the projects script's allow-table (`script/Deploy.s.sol`:
   `_isListedChain`, `expected()`, `_gatewayAllowed`).
   - Listed today: every network in the SDK registry, all with the same ABX addresses, the same stores and
@@ -131,7 +131,7 @@ All of this runs before anything is broadcast (`DeployProjects.preflight`), then
 3. **Allow-table:** every ABX and store address equals the table entry for `block.chainid`. A chain not in the table,
    or any address that differs, needs `ABXFS_ALLOW_UNLISTED_CHAIN=1`.
    **Pins:** on a listed chain, every address the run would deploy to (`OrgMeta`, the factory, its five components and
-   the lens: `predict(inputs)`) must equal the script's `pinned()`, the build under audit, or nothing is broadcast
+   the lens: `predict(inputs)`) must equal the script's `pinned()`, the pinned build, or nothing is broadcast
    (`UnexpectedAddress` names the first that differs). `test/DeployFactoryPin.t.sol` holds the same check, so a pin
    that drifted fails CI first.
 4. **Gateway:** it must pass the format rules (`https://` + host, no trailing slash, no whitespace or markup/JSON

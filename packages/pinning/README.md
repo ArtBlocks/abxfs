@@ -70,17 +70,3 @@ Pinning is opt-in: the content is on chain and the gateway serves it from there.
 
 See [the IPFS docs](https://docs.fs.abx.io/docs/using-abxfs/ipfs) for how a pinned root can be advertised
 (a project's `abxfs.gateway`, a hint the ABX FS gateway itself does not fetch through).
-
-## API changes
-
-- **Removed: `MAX_FLAT_DIRECTORY_BLOCK_BYTES`** (a 1 MiB constant). Its documentation said the mirror pre-screened
-  directories with it; nothing did, and it was never the rule this package applies. A directory is refused
-  (`DirectoryTooLargeForFlatIpfsError`) exactly when IPFS would shard it: use `ipfsDirectoryNeedsSharding` and
-  `IPFS_SHARD_THRESHOLD_BYTES` (262,144) from `@abxfs/sdk` to screen for that, which is far sooner than 1 MiB.
-- The progress-timeout dispatcher is found on Node 26 too: Node's global dispatcher is read under
-  `Symbol.for("undici.globalDispatcher.2")` first, then `.1` (Node 26 keeps only a compatibility wrapper there, so
-  the replacement silently did nothing and uploads ran with undici's fixed 300 s header timeout). That `.2` read
-  happens only when Node's own undici is 7 or later (`process.versions.undici`, Node 24 and 26). On Node 22 (undici 6)
-  only `.1` is read: a newer undici merely loaded into the same process puts its own `Agent` under `.2`, and a dispatcher
-  of that class failed every request through Node 22's `fetch` (`UND_ERR_INVALID_ARG`). In that process the uploads
-  now run with `fetch`'s own dispatcher and timeouts, as with any global dispatcher that is not Node's own.

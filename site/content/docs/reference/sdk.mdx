@@ -134,8 +134,8 @@ someone they own no projects when the truth is their projects are not indexed.
 publish, `abxfs upload` and `abxfs update`. It reads the version count first and **throws before
 sending anything** if it cannot; takes the version number from the publish receipt's own
 `ProjectVersionPublished` event (or, without one, polls the history); and writes a tag only after a
-settled read shows `versionAt(v).cid` equals the root it just published. A stale replica can no
-longer tag the previous version.
+settled read shows `versionAt(v).cid` equals the root it just published, so a stale replica cannot
+tag the previous version.
 
 Every wait on a transaction goes through `waitForSuccessfulReceipt`, which throws
 `TransactionRevertedError` for a mined-but-reverted transaction. `mintInOrg` and `mintProject`

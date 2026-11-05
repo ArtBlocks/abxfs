@@ -401,8 +401,7 @@ export function isRevertFailure(e: unknown): boolean {
  *
  * A viem error is decided by type and code anywhere in its cause chain, never by its message: a revert's message
  * quotes the call's arguments, whose hex can spell `429`. A JSON-RPC error's own words (`details`) are read for a rate
- * limit or a timeout (freeze-2 read them too: a provider's HTTP 200 `-32603 "request timed out"` is the connection, not
- * an answer), unless the error is a revert ({@link isRevertFailure}: code 3, revert data, `execution reverted`, anywhere
+ * limit or a timeout (a provider's HTTP 200 `-32603 "request timed out"` is the connection, not an answer), unless the error is a revert ({@link isRevertFailure}: code 3, revert data, `execution reverted`, anywhere
  * in the chain): a revert reason that says "rate limit exceeded" stays a revert. Any other error (another client, a
  * wrapper, a test double) by its HTTP status, then its own words, again unless it (or its cause) carries code 3 or
  * revert data.

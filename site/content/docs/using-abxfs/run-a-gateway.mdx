@@ -16,7 +16,7 @@ ABXFS_RPC_URL_<chainId>=https://… abxfs-gateway --content-domain content.examp
 
 <Callout type="warn">
 The packages are not on npm yet, so `abxfs-gateway` and `abxfs-mirror` are not installable by name. Run
-them from a checkout: build with `pnpm --filter "@abxfs/gateway..." build`, then
+them from a checkout of [the repository](https://github.com/ArtBlocks/abxfs): build with `pnpm --filter "@abxfs/gateway..." build`, then
 `node packages/gateway/dist/bin/gateway.js` and `…/mirror.js`.
 </Callout>
 
@@ -38,7 +38,7 @@ strict: there is exactly one spelling of each project, and a host that is not th
 
 You provide the wildcard: DNS for `*.content.example` and a wildcard certificate in front of the gateway
 (Caddy with a DNS challenge, a load balancer, or a CDN). **Use a domain that holds nothing else**, ideally a
-separate registrable domain from your app, and list it in the Public Suffix List so one project cannot set
+separate registrable domain from your app, and list it in the Public Suffix List once it qualifies, so one project cannot set
 cookies for its siblings: sibling subdomains of one registrable domain are same-site, so `SameSite` cookies do not
 separate them. Give the content origin no secret, no session and no cookie of your app's. To try it locally, browsers
 resolve `*.localhost` to loopback:
@@ -97,7 +97,7 @@ to verify on a preview deployment. A request whose
 **There is no IPFS shortcut.** A project's owner can name an `abxfs.gateway` URL where it is pinned. The
 gateway does not fetch through it: bytes from an IPFS gateway can only be trusted once checked against the IPFS
 CID of the on-chain content, and deriving that reads the whole file from chain, which is the work the shortcut
-would exist to avoid. Every file is served from chain. There is no `--ipfs` option: the gateway rejects it as an unknown option.
+would exist to avoid. Every file is served from chain.
 
 ## Hosting one project at the root of your own domain
 
@@ -166,4 +166,5 @@ cursor moves on. The same `--deny`, `--allow` and `--allow-orgs` lists as the ga
 every CID inside its root, so a root that holds a listed file or directory is skipped too. `--poll-seconds` (how long to wait when caught up) must be a positive number. Give the mirror its
 key in `PINATA_JWT`, not `--api-key`, which lands in shell history.
 
-Before you expose a gateway, read the package README: RPC limits and caching.
+Before you expose a gateway, read [the package README](https://github.com/ArtBlocks/abxfs/tree/main/packages/gateway#before-you-expose-one): RPC
+limits and caching.

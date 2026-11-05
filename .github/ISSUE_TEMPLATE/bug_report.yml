@@ -18,7 +18,7 @@ body:
         - CLI
         - Gateway or content origin
         - Pinning
-        - Site (fs.abx.io)
+        - Hosted site (fs.abx.io, maintained separately)
         - Documentation
         - Other
     validations:

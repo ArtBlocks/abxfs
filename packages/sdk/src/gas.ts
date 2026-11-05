@@ -77,15 +77,14 @@ export const GAS_ESTIMATES = {
    * FastLZ inflation at the write-time read-back, from the stream itself (`flzDecodeWork`): Solady's loop costs about
    * 110-130 gas a literal run, 250 a back-reference and 53 a copy step, plus about 4-5 a data byte for memory and
    * hashing (least squares over the 290 receipts below: 110-128, 247-256, 53 and 3.6-5.3 by how the base cost is
-   * taken; the delta audit's round 3, 2026-10-30). A copy step moves `min(distance, 32)` bytes, so a run or a short
+   * taken). A copy step moves `min(distance, 32)` bytes, so a run or a short
    * repeating pattern (an RGBA fill, sparse data) inflates at up to ~60 gas a byte where text inflates at 5-8. The
    * per-token figures carry headroom for streams of many short tokens: at 40 a literal run and 280 a back-reference the
    * model was up to 1.7% BELOW 16 receipts of a fresh adversarial corpus (3-byte dictionary matches between literals,
-   * sparse data with two zeros in every 3..5 bytes, short runs; the delta audit, 2026-10-30).
+   * sparse data with two zeros in every 3..5 bytes, short runs).
    *
-   * Refit over all 290 `ChunkStore.write` receipts on anvil (legacy, Cancun) of both delta-audit rounds: the 162 of the
-   * first, and 128 of the second (consecutive short matches, CSV, hex, DNA, SVG paths, noisy bitmaps, FastCDC chunks of
-   * real files, fuzzed mixtures). At 140 a literal run, 270 a back-reference and 58 a copy step the model is 1.035x to
+   * Refit over 290 `ChunkStore.write` receipts on anvil (legacy, Cancun), from two corpora (consecutive short
+   * matches, CSV, hex, DNA, SVG paths, noisy bitmaps, FastCDC chunks of real files, fuzzed mixtures). At 140 a literal run, 270 a back-reference and 58 a copy step the model is 1.035x to
    * 1.123x of every one, never below one and always within the repo's 15% + 60k (`test/fixtures/flz-write-receipts.json`,
    * checked in `gas-schedule.test.ts`). 60 / 320 / 60 was as safe but priced back-references where a literal run's cost
    * is: token-dense data such as a 4 MB CSV planned 160 transactions where 141 fit.

@@ -87,9 +87,9 @@ rather than copying it from here:
 ```ts
 import { requireCanonicalDeployment, isCanonicallyDeployed } from "@abxfs/sdk";
 
-isCanonicallyDeployed(8453);                        // true
+isCanonicallyDeployed(chainId);                     // true for every network above
 isCanonicallyDeployed(137);                         // false: not a network ABX FS supports
-const { name, addresses, publicRpc } = requireCanonicalDeployment(8453);
+const { name, addresses, publicRpc } = requireCanonicalDeployment(chainId);
 ```
 
 `requireCanonicalAddresses(chainId)` throws for a chain with no addresses on
@@ -104,7 +104,7 @@ included, so the source Sourcify shows is exactly the source that was compiled.
 For example, the factory on Base:
 [repo.sourcify.dev/8453/0xC5aB…2798](https://repo.sourcify.dev/8453/0xC5aBF9fBd94659cdfc173AF30c6052700Fa62798).
 
-## Other networks
+## Gas schedules and local chains
 
 Sepolia (11155111) is the first chain with the Glamsterdam gas schedule
 (EIP-8037), which reprices state creation: there, deploying `ProjectHook` took
@@ -122,7 +122,7 @@ config for it.
 Every ABX FS read is an `eth_call`, and reading a large file or deriving its IPFS
 CID on chain costs gas in proportion to its size. Public endpoints differ by more
 than an order of magnitude in what they will execute, so the choice is
-load-bearing rather than cosmetic.
+load-bearing rather than cosmetic. Two measured on one testnet, for example:
 
 | Endpoint | `eth_call` cap |
 | --- | --- |

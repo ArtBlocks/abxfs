@@ -4,7 +4,7 @@
  * Matches byte-for-byte:
  *   - `ChunkStore.chunkId` (below)
  *   - `FileStore.fileCid` / `DirectoryStore.directoryCid` (`nodes.ts`)
- *   - `IpfsCidResolver` and the IPFS profile (companion spec §4.1): CIDv1, sha2-256, raw(0x55) single-block,
+ *   - `IpfsCidResolver` and the IPFS profile (`specs/abx-fs.md` §8): CIDv1, sha2-256, raw(0x55) single-block,
  *     dag-pb(0x70) directories, 256 KiB chunks, balanced DAG, raw leaves, 174 links max, byte-lexicographic order.
  */
 import { keccak256, sha256, type Address } from "viem";
@@ -141,8 +141,7 @@ export interface IpfsFileResult {
    * subtree (target node + all descendant blocks). For a raw leaf (≤ 256 KB file) that's
    * just `bytes.length`; for a chunked dag-pb file it's the dag-pb root's encoded size plus
    * every descendant block. Using the wrong Tsize changes the encoded bytes of the parent
-   * and therefore changes the parent's CID — i.e. the pinner sees a verification mismatch
-   * and the gateway reports "no IPFS mapping". See `pinner.ts` for the directory analogue.
+   * and therefore changes the parent's CID, which then matches nothing `ipfs add` produces.
    */
   tsize: number;
 }

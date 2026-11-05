@@ -76,7 +76,7 @@ function printDir(
 }
 
 /** C1 controls (a lone U+009B is a CSI on many terminals) and bidi / invisible formatting characters. */
-const UNSAFE_TEXT = /[\u0080-\u009f؜​-‏‪-‮⁠-⁩﻿￹-￻\u{e0000}-\u{e01ef}]/u;
+const UNSAFE_TEXT = /[\u0080-\u009f\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff\ufff9-\ufffb\u{e0000}-\u{e01ef}]/u;
 
 /**
  * Whether bytes are unsafe to print to a terminal: anything but valid UTF-8 text with no C0 controls

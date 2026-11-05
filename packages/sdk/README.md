@@ -130,4 +130,4 @@ pnpm --filter @abxfs/sdk test
 marketplace links become exactly that URL. `""` clears it and the default (a path on `https://fs.abx.io`) applies
 again. `readProject(...).viewUrl` reads it. `isUsableViewUrl(url)` is the check the token itself applies, but
 `setViewUrl` also applies `externalUrlProblem` (https, no credentials, no localhost or private IP), so validate with
-`viewUrlProblem(url)` (null means OK) before sending. See the docs page "Token links and your own gateway".
+`viewUrlProblem(url)` (null means OK) before sending. See [Token links and your own gateway](https://docs.fs.abx.io/docs/using-abxfs/token-links).

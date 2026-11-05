@@ -40,7 +40,7 @@ import {OrgComponents} from "./OrgComponents.sol";
 ///           ABXFS_GATEWAY_BASE      the site tokens link to: https://fs.abx.io — no trailing
 ///                                   slash. FROZEN into every org's metadata, so it must be a domain
 ///                                   this project owns for as long as any org exists.
-///         The three ABX values come from the ABX SDK deployment registry, never from memory.
+///         The three ABX values come from the ABX SDK deployment registry.
 ///
 ///         Everything is validated BEFORE anything is broadcast, because all of it is frozen into every
 ///         org. `preflight` is the whole gate on the inputs:
@@ -51,7 +51,7 @@ import {OrgComponents} from "./OrgComponents.sol";
 ///           4. the gateway base is on the chain's allow-list and has a valid format (`https://` + a
 ///              host, no trailing slash, whitespace or markup/JSON breakers, at most 128 bytes).
 ///         and on a listed chain `runWith` then refuses to broadcast unless every address it would deploy to is
-///         `pinned()` (the build under audit): a changed source, library or remapping is refused, not deployed.
+///         `pinned()`: a changed source, library or remapping is refused, not deployed.
 ///         Escape hatches are explicit env flags, never defaults:
 ///           ABXFS_ALLOW_UNLISTED_CHAIN=1    chain not in the table, an address that differs from it, or a build
 ///                                           whose addresses are not the pinned ones
@@ -311,7 +311,7 @@ contract DeployProjects is Script {
         a.lens = _predict(SALT_LENS, abi.encodePacked(type(Lens).creationCode, abi.encode(a.factory, a.hook)));
     }
 
-    /// @notice Where the build under audit lands on every listed chain: they all bind the same table (`expected()`),
+    /// @notice Where the pinned build lands on every listed chain: they all bind the same table (`expected()`),
     ///         so `predict(expected())` is one set of addresses. `test/DeployFactoryPin.t.sol` fails when it drifts from
     ///         this, and `runWith` refuses to broadcast on a listed chain unless it holds. Re-pin deliberately, and only
     ///         before a deployment.

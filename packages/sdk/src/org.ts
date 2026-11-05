@@ -313,7 +313,7 @@ export function projectNameShowsOnMarketplaces(name: string): boolean {
  * for a personal org forever. It is also never mistakable for a brand, which is a feature.
  *
  * ASCII on purpose. The card renders the name through a sanitizer that keeps printable ASCII only, so
- * a typographic ellipsis here would be silently dropped and the card would show `0x666314aF` — a
+ * a typographic ellipsis here would be silently dropped and the card would show `0x1234abcd` — a
  * string that looks like a truncated address but is neither the name nor an address.
  */
 export function defaultOrgName(account: Address): string {

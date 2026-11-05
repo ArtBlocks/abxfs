@@ -36,8 +36,8 @@ export const DEFAULT_NOT_FOUND_TTL = 30;
 export const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 /**
  * How long the default chain gets to answer a root probe before the other served chains are asked as well.
- * Most roots live on the default chain, so most requests cost one probe; a root that lives elsewhere pays
- * this once instead of waiting for the default chain's whole timeout.
+ * A root that lives on the default chain costs one probe; one that lives elsewhere pays this once (the winner is
+ * remembered) instead of waiting for the default chain's whole timeout.
  */
 export const ROOT_PROBE_HEAD_START_MS = 150;
 
@@ -212,7 +212,8 @@ export function createGateway(options: GatewayOptions): GatewayHandler {
     const inner = url.pathname.slice(basePath.length);
     const rest = splitPathname(inner === "" ? "/" : inner).segments;
     const parsed = parseGatewayPath(rest, { defaultChainId: options.defaultChainId });
-    return { ...parsed, pathname: url.pathname };
+    // `/cid/<root>` names no chain either: looked up like a root host, on every chain in `rootChains`.
+    return { ...parsed, pathname: url.pathname, ...(parsed.addressing.kind === "cid" ? { rootHost: true } : {}) };
   }
 
   async function applyFilter(filter: Filter | undefined, subjects: string[], request: Request): Promise<Response | null> {

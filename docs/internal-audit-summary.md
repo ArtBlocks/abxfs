@@ -17,7 +17,8 @@ This was an internal review. It replaces nothing an independent audit would give
   second found a Medium, none after the fifth found a Low that the change under review had introduced, and the last
   found nothing that needed changing.
 - **The fixed build is tagged `abx-fs-freeze-3`.** Its contracts are those of `abx-fs-freeze-2`, so an independent
-  audit of the contracts can start from either tag.
+  audit of the contracts can start from it. `abx-fs-freeze-1` and `-2` are tags in the history before this
+  repository; only `abx-fs-freeze-3` is here.
 
 ## Timeline
 
@@ -31,8 +32,8 @@ This was an internal review. It replaces nothing an independent audit would give
 
 ## Delta rounds
 
-Rounds 1 to 5 gave each area (contracts and CI; SDK, pinning and CLI; gateway and the hosted site) its own
-reviewer; from round 6, when each round's fixes were a few commits, one reviewer took them all. Each read only the
+Rounds 1 to 5 gave each area (contracts and CI; SDK, pinning and CLI; gateway and Art Blocks' hosted website, which
+is maintained separately) its own reviewer; from round 6, when each round's fixes were a few commits, one reviewer took them all. Each read only the
 diff since the last round and asked one question: did the fixes introduce a regression,
 a new bug, a new attack surface, a weakened test, two implementations of one rule that now disagree, docs the change
 made false, or a branch that no test runs? Every finding came with a reproduction, and every fix with a test.
@@ -65,13 +66,13 @@ CI.
    from about 0.6 MB could not be read through such a node. The read now re-plans at half its gas budget when, and
    only when, a call fails in a gas-refusal shape.
 
-One more Medium, in round 1, was in the hosted site, and is recorded with the site.
+One more Medium, in round 1, was in Art Blocks' hosted website, which is not part of this repository.
 
 ### What the later rounds found
 
 The Lows of rounds 2 to 5 were mostly the edges of round 1's fixes: a refusal that was not remembered, a budget that
 halved on a transient error, a Node release with a different undici, an Erigon node that refuses a result longer than
-100,000 bytes, a recovery command that ksh93 decodes to another path, and the edges of the hosted site's fixes.
+100,000 bytes, a recovery command that ksh93 decodes to another path, and the edges of the hosted website's fixes.
 Every one was found with a reproduction and fixed with a test, and each round's count fell.
 
 Round 6 found nothing at Low or above. Its four Infos were fixed anyway: the mirror's `--api-key` warning could print
@@ -112,7 +113,7 @@ loudly, in a checkout whose path contains a backslash.
   and the lens's creation-code hashes and every predicted address.
 - Golden vectors unchanged (`packages/sdk/test/nodes.test.ts`, `GoldenVectors.t.sol`).
 - The four `.gas-snapshot` files match.
-- Every suite passes, and the docs site and the hosted site's apps build.
+- Every suite passes, and the docs site builds.
 - From round 7, the pack-and-install smoke test passes: the published packages, installed from their tarballs alone.
 - The fork suite against the real ABX contracts on Base Sepolia passes (625 tests, round 4).
 
@@ -130,7 +131,7 @@ The last full run, on the frozen build:
 | gateway and mirror | 537 |
 
 The four snapshot checks pass, the golden vectors hash to `dbee33f`, the pack-and-install smoke test passes, and the
-docs site and the hosted site's apps build.
+docs site builds.
 
 ## Decisions
 
@@ -158,7 +159,7 @@ contract redeploy, or dropped with its reason given below.
 | Notifying an address of an admin offer | Dropped | Offers are kept by org; the offer link is the mechanism |
 | Content proven from another chain | Future exploration | A new factory whose hook accepts proven roots; the stores never change (D1) |
 
-**Cross-chain is future exploration, not supported at launch** (owner decision 2026-10-30). The content stores need
+**Cross-chain is future exploration, not supported at launch** (decided 2026-10-30). The content stores need
 nothing more: their storage layout is fixed, so another chain can prove a root exists with a storage proof and a
 trusted bridge or light client. Using that would take a new factory whose hook accepts proven roots, and new orgs
 under it; existing orgs and every content address stay as they are.
