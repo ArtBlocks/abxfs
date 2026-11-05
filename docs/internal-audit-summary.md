@@ -187,13 +187,13 @@ the node's own error.
 ## Still open
 
 - **An independent audit** has not been done yet.
-- **Etherscan verification** is still queued on every chain; every source is verified on Sourcify.
 
 ## Addresses of the frozen build
 
 Unchanged since `abx-fs-freeze-2`. Every contract is deployed by CREATE2 through
 `0x4e59b44847b379578588920cA78FbF26c0B4956C` and is identical on every chain. They are deployed at these addresses on
-every network in the SDK registry.
+every network in the SDK registry, and on every one of them each contract's source is verified on Sourcify (an exact
+match) and on the chain's Etherscan explorer (`scripts/verify-sources.mjs`).
 
 | Contract | Address |
 | --- | --- |
