@@ -33,7 +33,8 @@ The two layers are independent on purpose. A root's own host (`https://c-<base32
 resolves any stored content whether or not a token points at it, so the content layer is usable on its own
 and anyone can build a different project abstraction on top of it. Every project is served from its own
 host (`https://<chain>-<org>-<id>.<content domain>/`) and the app's origin serves no project bytes; the
-`/g/cid/…` and `/g/p/…` paths on the app redirect to those hosts. See
+`/g/cid/…` and `/g/p/…` paths on the app redirect to those hosts (a project's root, its `animation_url`, is a page that
+frames it). See
 [Run a gateway](https://docs.fs.abx.io/docs/using-abxfs/run-a-gateway).
 
 ## Why a project is an NFT
