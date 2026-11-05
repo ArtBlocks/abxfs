@@ -8,8 +8,8 @@ Use a GitHub Issue for a bug report or a proposal that needs design discussion. 
 directly to a pull request. Security vulnerabilities belong in the private process described in
 [SECURITY.md](SECURITY.md), never in a public issue.
 
-Until the packages are published to npm, a maintainer applies an accepted pull request rather than merging it, so it
-lands as a maintainer's commit that credits you as a co-author.
+Pull requests are reviewed and merged here: this repository is the source of every ABX FS package, contract and
+document.
 
 Keep pull requests focused. Explain the behavior being changed, how it was verified, and whether it
 affects contracts, deployed addresses, content addresses (CIDs), package APIs, the CLI, the site, or

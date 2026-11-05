@@ -11,10 +11,9 @@
  * `_MAX_TAG_BYTES`) — the contract is the source of truth.
  *
  * **Project names have no on-chain grammar at all.** `abxfs.name` is a `String` PostParam; the hook
- * bounds its SIZE (128 bytes) and nothing else. `ProjectStore` used to force
- * `^[a-z0-9][a-z0-9_-]*$` because the name sat next to an identifier, but the handle is now
- * `(chainId, tokenId)` and the name is pure display metadata — so "My Cool Art" is a perfectly good
- * project name and forcing "my-cool-art" would be inventing a restriction the protocol dropped.
+ * bounds its SIZE (128 bytes) and nothing else. A project is named by chain, org and token id, and the
+ * name is pure display metadata — so "My Cool Art" is a perfectly good project name and forcing
+ * "my-cool-art" would be inventing a restriction the protocol does not have.
  * {@link validateProjectName} therefore checks only what actually fails: byte length, and control
  * characters that would corrupt a rendered document. Use {@link suggestProjectName} when a slug is
  * wanted for a URL.

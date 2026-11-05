@@ -1,11 +1,8 @@
 import Image from "next/image";
 import type { BaseLayoutProps } from "fumadocs-ui/layouts/shared";
-import { appUrl } from "./shared";
+import { appUrl, repoUrl } from "./shared";
 
-/**
- * Shared chrome for every layout. Deliberately no `githubUrl` — the repo is
- * private, so a source link would 404 for everyone who is not on the team.
- */
+/** Shared chrome for every layout. */
 export function baseOptions(): BaseLayoutProps {
   return {
     nav: {
@@ -17,6 +14,7 @@ export function baseOptions(): BaseLayoutProps {
         </span>
       ),
     },
+    githubUrl: repoUrl,
     links: [{ type: "main", text: "App", url: appUrl, external: true }],
   };
 }

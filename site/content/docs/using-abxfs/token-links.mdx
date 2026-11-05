@@ -31,8 +31,8 @@ abxfs view https://my-site.example/ --project-id 3 --org 0x…   # both links no
 abxfs view --clear --project-id 3 --org 0x…                    # back to the default
 ```
 
-Or in the SDK, `await client.setViewUrl(tokenId, "https://my-site.example/")`, and `readProject(...).viewUrl`
-to read it. In the site it is **Settings → Where your token links point**.
+Or in the SDK, `await (await client.resolveOrg(org)).setViewUrl(tokenId, "https://my-site.example/")`, and
+`readProject(...).viewUrl` to read it. In the site it is **Settings → Where your token links point**.
 
 The URL must be `https://` (lowercase), at most 512 bytes of visible ASCII, with none of `"` `'` `&` `<` `>` `\`, the
 backtick, `(` `)` `[` `]` `{` `}` `|` or `^`. Write any of those percent-encoded (`(` is `%28`, `&` is `%26`), paths
@@ -57,7 +57,7 @@ copy shows the project live from its own origin, relative links and all.
 A URL you set with `abxfs.view` is copied as it is. There, a page that loads `style.css` or `img/a.png` by a relative
 path asks the marketplace's storage for them instead, and gets an error: keep such a page self-contained (inline its
 styles and scripts), load each file by its full URL, or make the URL a page that frames your site. A directory listing
-from the gateway works either way, because it writes each link as a full URL back to the host that served it.
+from the gateway works either way, because each of its links names the host that served it (`//<host>/<dir>/<name>`).
 
 ## This is not how the project is *read*
 

@@ -63,7 +63,7 @@ contract Deploy is LocalChain {
         console2.log("DirectoryStore", a.directoryStore);
     }
 
-    /// @notice Where the build under audit lands. `test/Deploy.t.sol` fails when `predict()` drifts from this, and
+    /// @notice Where the pinned build lands. `test/Deploy.t.sol` fails when `predict()` drifts from this, and
     ///         `run` refuses to broadcast. Re-pin deliberately, and only before a deployment.
     function pinned() public pure returns (Addresses memory a) {
         a.chunkStore = 0x56317b1F45E4c15310135Ea72Fa4d768ca902BCc;

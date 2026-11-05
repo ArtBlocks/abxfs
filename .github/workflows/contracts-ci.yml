@@ -20,9 +20,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # contracts-projects was missing, so the project hook, the enumeration hook and both
-        # field renderers had no CI at all — the contracts where a bug is least recoverable,
-        # since both hooks are vetoes.
+        # Every Solidity package. contracts-projects holds the project hook, the enumeration hook and
+        # the renderers: the contracts where a bug is least recoverable, since both hooks are vetoes.
         package: [protobuf-sol, contracts-core, contracts-companion, contracts-projects]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

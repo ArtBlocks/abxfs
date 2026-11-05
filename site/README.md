@@ -32,16 +32,3 @@ runbooks and the audit record, which are not part of the docs site.
 Root Directory `site`, with "Include files outside the Root Directory" on — it
 is a pnpm workspace package and resolves dependencies from the repo root.
 Framework preset Next.js; everything else is default.
-
-## While the repo is private
-
-Nothing user-facing links to this repository — a source link would 404 for everyone
-outside the team. Two things turn on when the repo opens:
-
-- `githubUrl` in `lib/layout.shared.tsx`, and the per-page "edit this page"
-  affordance in `app/docs/[[...slug]]/page.tsx`.
-- The in-repo paths that appear as plain text in the MDX (`specs/…`,
-  `packages/…`) can become links.
-
-No page carries an author, organisation, or "built by" line. Leave it that way
-unless asked.

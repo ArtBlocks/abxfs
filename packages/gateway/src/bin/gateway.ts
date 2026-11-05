@@ -130,6 +130,12 @@ if (values.help) {
   --path-mode   the shared-origin /g/p/… and /g/cid/… layout. UNSAFE for content you do not trust: every
                 project shares ONE origin, so any project's script can read and impersonate every other.
 
+  --chains <network>,…
+                the networks to serve (names, or chain ids). Default: every network with a deployment.
+  --default-chain <network>
+                the network a raw root (which names none) is looked up on first; every other served network
+                is asked too. Default: the first of --chains, else the lowest chain id.
+
   --project <chain>/<org>/<id>
                 serve ONE project at the root of this host, for a website that uses root-absolute
                 links (/style.css). [--tag name | --version n] to pin it; default follows latest.
@@ -245,8 +251,9 @@ const handler = atStartup(() =>
   createGateway({
     chains,
     defaultChainId,
-    // A raw-root host names no chain: try the default first, then every other chain this gateway serves.
-    ...(contentDomain ? { hostMode: { baseHost: contentDomain }, rootChains: chains.map((c) => c.id) } : {}),
+    // A raw root names no chain: try the default first, then every other chain this gateway serves.
+    rootChains: chains.map((c) => c.id),
+    ...(contentDomain ? { hostMode: { baseHost: contentDomain } } : {}),
     ...(values["path-mode"] ? { pathMode: { basePath } } : {}),
     ...(project ? { project } : {}),
     maxFileBytes,

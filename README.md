@@ -106,7 +106,7 @@ The website at [fs.abx.io](https://fs.abx.io) is Art Blocks' hosted service on t
 ## Quick start
 
 The SDK ships every network's addresses, so reading needs no config file, no API key, and no local chain. Every command
-takes `--chain <network>`, the production or test network of your choice (the
+(except `abxfs dev`, which runs its own local chain) takes `--chain <network>`, the production or test network of your choice (the
 [deployments](https://docs.fs.abx.io/docs/reference/deployments) page lists them):
 
 ```bash

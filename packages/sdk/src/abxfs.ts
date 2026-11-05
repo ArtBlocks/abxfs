@@ -333,16 +333,16 @@ export class AbxfsClient {
   /**
    * Publish a root CID as the project's current version.
    *
-   * There is no `createProject` any more: a project IS an ABX token, so it is brought into existence
-   * by MINTING (open and free on the canonical collection), not by an ABX FS call. Mint, then publish
-   * into the token you own — which is also what lets you publish into a token you bought.
+   * A project IS an ABX token, so it is brought into existence by MINTING (`mintInOrg`: the org's admin,
+   * or anyone while the org is open), not by an ABX FS call. Mint, then publish into the token you own —
+   * which is also what lets you publish into a token you bought.
    */
   publishVersion(tokenId: bigint, rootCid: AbxfsCid) {
     this._requireWallet();
     return this._confirmed(publishVersion(this.walletClient!, this._project(), tokenId, rootCid), "publishVersion");
   }
 
-  /** Set `abxfs.name`. Metadata only — the handle is always `(chainId, tokenId)`. */
+  /** Set `abxfs.name`. Metadata only — a project is always named by chain, org and token id. */
   setProjectName(tokenId: bigint, name: string) {
     assertValidPublishInputs({ name });
     this._requireWallet();

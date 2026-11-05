@@ -16,7 +16,7 @@ canonical deployments and public RPC endpoints are built in, though you should s
 `ABXFS_RPC_URL_<chainId>` to your own — the public ones are rate limited and cap `eth_call` gas. The unsuffixed
 `ABXFS_RPC_URL` applies only to the chain a command selects (and never over a configured `rpcUrl` or an
 `ABXFS_RPC_URL_<chainId>`); the CLI says which chain it applied to. A custom chain in your config with no `rpcUrl` is
-refused when selected (give it an `rpcUrl` or `ABXFS_RPC_URL_<chainId>`; the unsuffixed variable no longer applies to
+refused when selected (give it an `rpcUrl` or `ABXFS_RPC_URL_<chainId>`; the unsuffixed variable does not apply to
 it), and never stops commands on other chains.
 
 **Every paid write shows its plan and asks first.** Before the first transaction the CLI prints the chain, the org,
@@ -25,7 +25,8 @@ terminal you type `yes`. Without a terminal it refuses unless you pass `--yes`. 
 cost is gas only: on an OP-stack rollup each transaction also pays an L1 data fee for its calldata, which it does
 not include (the plan says so there).
 
-**Every command takes `--chain <network>`**: the production or test network of your choice, by the name the
+**Every command takes `--chain <network>`** (except `dev`, which runs its own local chain): the production or test
+network of your choice, by the name the
 [deployments](https://docs.fs.abx.io/docs/reference/deployments) page gives it. There is no default, and a command
 without one lists the names; to stop passing it, set `ABXFS_CHAIN`, or `defaultChain` in
 `~/.config/abxfs/config.json`. On a production network every write
@@ -127,7 +128,7 @@ Everything uploaded is **public and permanent**, and what a project or org looks
   permanent, refuse an account with no ETH, and then ask you to type `yes`. Without a terminal they refuse unless
   `--yes` is passed. `upload --dry-run` sends nothing and asks nothing.
 - **Fee ceiling.** Every write caps `maxFeePerGas` and `maxPriorityFeePerGas` at `ABXFS_MAX_FEE_GWEI` (default 50
-  gwei; 200 on Ethereum L1 and testnets) and refuses, signing nothing, if the node quotes above it. The check
+  gwei; 200 on Ethereum L1 and its testnets) and refuses, signing nothing, if the node quotes above it. The check
   covers `eth_sendRawTransaction` and `eth_sendRawTransactionSync`, and the refusal prints gwei and names the
   ceiling (`above the 50 gwei ceiling (ABXFS_MAX_FEE_GWEI)`). Chain, RPC host
   and account are printed before the first write.
@@ -166,7 +167,7 @@ Everything uploaded is **public and permanent**, and what a project or org looks
   attached (localhost excepted). The provider is checked first, before anything is read from chain (Kubo
   `/api/v0/version`, the Pinata key), uploads
   time out on lack of progress rather than a fixed clock, replies are read up to 1 MiB and redirects are never
-  followed. `--project-version <n>` pins an older version (it was `--version`, which `abxfs --version` swallowed).
+  followed. `--project-version <n>` pins an older version.
 - **Printed text.** File, project, org and tag names come from chain; control characters and escape sequences are
   stripped before printing. An `abxfs.gateway` / `abxfs.view` that is not a public https URL is shown as ignored.
 - **Large histories.** `info` prints at most 200 versions (newest) by default; widen with `--max-versions`.

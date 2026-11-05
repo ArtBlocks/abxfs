@@ -168,6 +168,16 @@ describe("S3: a raw-root host tries every served chain, default first, and remem
     expect(a.probes.n).toBe(aAfterFirst); // the winner is remembered: the default is not probed again
   });
 
+  it("in path mode, `/cid/<root>` is looked up the same way: the default chain decides only who is asked first", async () => {
+    const a = chain(84532, "lacks");
+    const b = chain(8453, "has");
+    const gw = createGateway({ chains: [a.chain, b.chain], defaultChainId: a.chain.id, pathMode: {}, rootChains: [a.chain.id, b.chain.id], onError: () => {} });
+    const res = await gw(new Request(`http://gw.example/g/cid/${ROOT}/`));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-abxfs-root")).toBe(ROOT);
+    expect(b.probes.n).toBeGreaterThan(0);
+  });
+
   it("without `rootChains` only the default chain is asked (old behaviour)", async () => {
     const a = chain(84532, "lacks");
     const b = chain(8453, "has");

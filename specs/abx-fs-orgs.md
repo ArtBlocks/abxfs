@@ -244,8 +244,8 @@ contract.** `test/OrgHeld.t.sol` drives each of those failure modes.
 | `animation_url` | `ProjectLinks` | `abxfs.view`, else `https://fs.abx.io/g/p/<chain>/<org>/<id>/latest/` |
 | `external_url` | `ProjectLinks` | `abxfs.view`, else `https://fs.abx.io/projects/<chain>/<org>/<id>` |
 
-The collection surface links to the site itself, `https://fs.abx.io` (the org's own page is reached by direct link
-only, and is linked from nowhere), and so does the collection document's `external_link`. These paths must answer for as
+The collection surface links to the site itself, `https://fs.abx.io`, and so does the collection document's
+`external_link`. These paths must answer for as
 long as tokens exist; redirects are fine, and what is served there is off-chain configuration.
 
 **`abxfs.view`.** A usable value is `https://` followed by visible ASCII, at most 512 bytes, with none of
@@ -346,7 +346,8 @@ layer works on its own.
 
 - Default token links: `/g/p/<chain>/<org>/<tokenId>/latest/` and `/projects/<chain>/<org>/<tokenId>` on the app.
   Projects are served from their own origins, `https://<chain>-<org>-<id>[-v<n>].<content domain>/`, and raw content
-  from `https://c-<base32 root>.<content domain>/`; the app's `/g/…` paths redirect there. Addresses only, never names.
+  from `https://c-<base32 root>.<content domain>/`; the app's (`https://fs.abx.io`) `/g/…` paths redirect there, except
+  a project's root under `/g/p`, which is a page framing the project's host. Addresses only, never names.
 
 ## Tests
 

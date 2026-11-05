@@ -107,14 +107,14 @@ export type PathClassification =
   | { kind: "subjects"; subjects: string[] };
 
 /**
- * Every subject an APP path implicates, or a verdict that it is not canonical.
+ * Every subject a SITE path implicates, or a verdict that it is not canonical.
  *
- * The app's own trees are `/g/…` (gateway URLs, which redirect to the content origin), `/projects/<chain>/<org>/<id>/…`
- * and `/orgs/<chain>/<org>/…`. One URL can touch two subjects: a project request is a request for the
- * project and for its namespace, blocked if EITHER is, the project first.
+ * For a site that mounts the gateway's path layout at `/g/…` and its own project and org pages at
+ * `/projects/<chain>/<org>/<id>/…` and `/orgs/<chain>/<org>/…`. One URL can touch two subjects: a project request is
+ * a request for the project and for its namespace, refused if EITHER is, the project first.
  *
  * Strict by construction: `/projects/084532/…`, `/g/p/+84532/…` and `/orgs/8453/<short address>` do not
- * parse, so they are `invalid` and middleware answers 404 rather than serving a page that some other
+ * parse, so they are `invalid` and the site should answer 404 rather than serve a page that some other
  * parser would read differently. Matching is by prefix on purpose: `/projects/8453/<org>/2/files/a.html`
  * is still that project.
  */

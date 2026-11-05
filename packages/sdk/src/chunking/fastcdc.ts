@@ -38,8 +38,7 @@ export interface FastCDCParams {
 
 /**
  * Default chunking parameters relative to a backend's reported `maxChunkSize()`.
- * Returns `{ min: floor(max * 0.50), target: floor(max * 0.75), hardMax: max }` —
- * see [project-edit-publish plan, Phase 0] for the gas/dedup tradeoff rationale.
+ * Returns `{ min: floor(max * 0.50), target: floor(max * 0.75), hardMax: max }`.
  *
  * For a typical SSTORE2-backed `maxChunkSize() = 24_575`:
  *   - min     = 12_287 bytes  (50%)

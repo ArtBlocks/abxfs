@@ -57,8 +57,8 @@ export interface GatewayOptions {
   /** The chain a root request resolves against first. A root CID carries none. */
   defaultChainId: number;
   /**
-   * Host mode only. Other chains a raw-root host (`c-<root>.<base>`) may be looked up on when the default
-   * does not store the root. Content is shared by every chain (the stores are CREATE2-deployed, so the CID
+   * Other chains a raw root (`c-<root>.<base>` in host mode, `<basePath>/cid/<root>` in path mode) may be looked up
+   * on when the default does not store it. Content is shared by every chain (the stores are CREATE2-deployed, so the CID
    * space is the same), and the bytes are verified against the root either way. Each is one cheap probe,
    * bounded by this list, and a chain that answers is remembered per root. Default: the default chain only.
    */
@@ -95,7 +95,7 @@ export interface GatewayOptions {
   filter?: Filter;
   /** The body of a 451. Default is a short, neutral sentence. */
   refusalMessage?: string;
-  /** Extra headers on a 451 (the content origin sends `Clear-Site-Data` here). */
+  /** Extra headers on a 451 (for example `Clear-Site-Data`). */
   refusalHeaders?: Record<string, string>;
   /**
    * Most bytes one file may be: stored bytes, and inflated bytes for a compressed one. Default 64 MiB.

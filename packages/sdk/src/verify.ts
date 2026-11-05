@@ -150,10 +150,8 @@ interface LocalCtx {
  * Walk an ABX FS subtree and return both its IPFS CID **and** the cumulative serialized
  * subtree size needed for the parent's `PBLink.Tsize`. Per the dag-pb spec, Tsize is the
  * cumulative size of the linked object and all of its descendants (raw leaves: byte
- * count; dag-pb nodes: encoded block + sum of child Tsizes). Pre-fix this helper returned
- * the immediate-block size for sub-directories, which is the very bug the on-chain
- * resolver and ZK guest also had — producing CIDs Kubo did not recognize for any nested
- * directory.
+ * count; dag-pb nodes: encoded block + sum of child Tsizes). Using the immediate block's
+ * size instead produces CIDs Kubo does not recognise for any nested directory.
  */
 function resolveLocal(
   publicClient: PublicClient,

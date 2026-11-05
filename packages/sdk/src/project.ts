@@ -543,8 +543,8 @@ export async function listTags(
  * saying *when* a project republished but not *to what*. A scalar param carries the raw `bytes32`,
  * and an ABX FS root CID is exactly that.
  *
- * Reverts (from the collection, then the hook) when: the caller is not the token owner or its
- * delegate (`ParamAuth`), the CID is in neither store (`RootNotFound`), the root kind differs from
+ * Reverts (from the collection, then the hook) when: the caller is not the token owner (`ParamAuth`;
+ * delegation is disabled in every org), the CID is in neither store (`RootNotFound`), the root kind differs from
  * the project's locked kind (`RootKindLocked`), or the CID already is the head (`SameRoot`).
  */
 export async function publishVersion(
@@ -569,8 +569,7 @@ export async function publishVersion(
  *
  * A project comes into existence as an ABX token, and an org mints only through `OrgMinter`:
  * the org has no owner to mint directly, and the minter asks the factory who may. So this is
- * allowed for the org's admin, anyone the admin has allowed, and anyone at all if the org is open —
- * and refused before sending, with the reason, otherwise. Minting is free; a project costs gas alone.
+ * allowed for the org's admin, and for anyone at all while the org is open — and refused before sending, with the reason, otherwise. Minting is free; a project costs gas alone.
  *
  * Minting is deliberately separate from publishing. Keeping them apart is what lets a caller publish
  * into a token they already hold or were minted, and it means "create a project" has no

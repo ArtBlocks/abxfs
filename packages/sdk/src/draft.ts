@@ -1,7 +1,7 @@
 /**
- * Draft semantics for the web app's "edit + publish" UX. This module is purely
- * client-side compute — no on-chain writes — and is the bridge between the
- * web app's `ProjectDraft` data model and the SDK's `planUpload` flow.
+ * Edit a project and publish the result: apply edit operations to an on-chain base tree and plan
+ * the publish. This module is purely client-side compute — no on-chain writes — so any UI, the CLI
+ * and tests share it.
  *
  * Two-step flow:
  *
@@ -69,9 +69,8 @@ import { inferMimeType, validateRelativePath } from "./util.js";
 export type { PublishPhase, PublishProgress } from "./content-write.js";
 
 /**
- * One operation a draft applies to the base tree. Same shape as the web app's
- * `DraftOpRuntime` but without web-only fields — keeping the SDK web-agnostic
- * means CLI / tests can reuse this directly.
+ * One operation a draft applies to the base tree. UI-agnostic, so a site, the CLI and tests can
+ * all use it directly.
  */
 export type DraftOp =
   | { kind: "add"; path: string; bytes: Uint8Array; mimeType?: string }
@@ -276,11 +275,6 @@ async function planNewFile(
 
 
 
-/**
- * Pure-compute version of `buildDirectoryTree`. We re-implement it here rather
- * than importing the upload-side helper because that one writes to chain; this
- * one only computes CIDs (which is exactly what the diff preview wants).
- */
 /**
  * Root CID for a set of staged files, or a zero sentinel when nothing is left.
  *
@@ -565,8 +559,8 @@ export interface ExecuteDraftPublishOptions {
   /** Optional tag to assign to the new version after `publishVersion` succeeds. */
   tag?: string;
   /**
-   * Per-bundle gas budget for `multicall` packing. Defaults to 24M, mirroring
-   * the SDK's existing publish path so behaviour is identical across flows.
+   * Per-bundle gas budget for `multicall` packing. Defaults to 12M, the same as the
+   * SDK's other publish paths, so behaviour is identical across flows.
    */
   maxBundleGas?: number;
   /** Block gas cap. Forwarded to `resolveBundleLimits`. */
@@ -741,10 +735,8 @@ async function publishRoot(
  * (`RootKindLocked`), so such a project can never be "migrated" to a directory to make the normal
  * path work — a file-kind project is either editable as a file or not editable at all.
  *
- * The web only ever creates directory projects, so this exists purely for compatibility with
- * projects made elsewhere. Returns the same {@link AppliedDraft} shape, with a single `replace`
- * entry and the file's own CID as the root; `collectDirEntries` recognises that shape and registers
- * no directories.
+ * Returns the same {@link AppliedDraft} shape, with a single `replace` entry and the file's own CID
+ * as the root; `collectDirectories` recognises that shape and registers no directories.
  */
 export async function applyFileReplacement(
   publicClient: PublicClient,
@@ -855,7 +847,7 @@ export interface ExecuteNewProjectPublishResult {
  * multicall packing and phase callbacks with the delta-publish path.
  *
  * Nothing is created on-chain here any more. A project IS an ABX token, so it exists before this
- * runs — minting is an ABX mint (open and free on the canonical collection) and is deliberately a
+ * runs — minting is `mintInOrg` (the org's admin, or anyone while the org is open) and is deliberately a
  * separate step, which is also what lets a caller publish into a token they already own or bought.
  * What makes this "new" rather than an update is only that the base tree is empty and the name gets
  * written alongside the first root.
@@ -1062,7 +1054,7 @@ export async function diffRoots(
  * Loses the chunk-reuse optimisation (those callers re-chunk + re-upload every
  * file's bytes), so this is only useful when the draft includes ALL files —
  * not merged with a base tree. Provided for completeness; the recommended
- * path is `applyDraftToBase` → `planPublish` → `executePlan` (Phase 3 cont).
+ * path is `applyDraftToBase` → `planPublish` → `executeDraftPublish`.
  */
 export function draftFilesToDescriptors(
   ops: Extract<DraftOp, { kind: "add" | "edit" | "replace" }>[],

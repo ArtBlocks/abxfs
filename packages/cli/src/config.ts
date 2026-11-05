@@ -734,8 +734,8 @@ export function requireOrg(chain: ChainConfig, flag?: string): Address {
   const org = resolveOrg(chain, flag);
   if (org) return org;
   throw new Error(
-    "no org specified — projects live in orgs. Pass --org <address>, set ABXFS_ORG, or put `org` on " +
-      "the chain in .abxfs.json. `abxfs org list` shows yours; `abxfs org create <name>` makes one. " +
+    "no org specified — projects live in orgs. Pass --org <address>, set ABXFS_ORG, or set `org` for the chain " +
+      "in ~/.config/abxfs/config.json. `abxfs org list` shows yours; `abxfs org create <name>` makes one. " +
       (chain.addresses?.orgFactory
         ? ""
         : "(This chain has no org factory deployed: choose a network that has one.)"),
