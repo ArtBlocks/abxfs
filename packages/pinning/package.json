@@ -44,10 +44,10 @@
   },
   "dependencies": {
     "@artblocks/abxfs-sdk": "workspace:*",
-    "viem": "^2.57.1"
+    "viem": "^2.57.14"
   },
   "devDependencies": {
-    "@ipld/dag-pb": "^4.1.2",
+    "@ipld/dag-pb": "^4.2.0",
     "@types/node": "^22.9.0",
     "multiformats": "^13.3.1",
     "typescript": "^5.6.3",

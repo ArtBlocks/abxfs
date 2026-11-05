@@ -62,7 +62,7 @@
   "dependencies": {
     "@artblocks/abxfs-pinning": "workspace:*",
     "@artblocks/abxfs-sdk": "workspace:*",
-    "viem": "^2.57.1"
+    "viem": "^2.57.14"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
