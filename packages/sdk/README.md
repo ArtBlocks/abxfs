@@ -1,7 +1,7 @@
 # @artblocks/abxfs-sdk
 
-TypeScript SDK for reading from and writing to the ABX FS contracts ([`specs/abx-fs.md`](../../specs/abx-fs.md),
-[`specs/abx-fs-orgs.md`](../../specs/abx-fs-orgs.md)). Used by `@artblocks/abxfs-cli` and `@artblocks/abxfs-gateway`.
+TypeScript SDK for reading from and writing to the ABX FS contracts ([`specs/abx-fs.md`](https://github.com/ArtBlocks/abxfs/blob/main/specs/abx-fs.md),
+[`specs/abx-fs-orgs.md`](https://github.com/ArtBlocks/abxfs/blob/main/specs/abx-fs-orgs.md)). Used by `@artblocks/abxfs-cli` and `@artblocks/abxfs-gateway`.
 
 ```bash
 npm install @artblocks/abxfs-sdk viem    # Node 22.13 or later
