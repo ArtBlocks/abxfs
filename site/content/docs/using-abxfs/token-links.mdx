@@ -17,10 +17,11 @@ By default both are a path on the ABX FS app:
 
 That default is computed on chain from the token's own address and id, and the domain is frozen into every
 org's link renderer (it is a constructor argument of `OrgMeta`, which the factory reads), so every org uses it. It is only a fallback. The app serves no project bytes
-itself, so the `animation_url` **redirects** (308) to the project's own origin,
-`https://<chain>-<org>-<id>.<content domain>/`, with the path and query intact. Every token ever minted keeps
-working, because those URLs are frozen into them and the redirect is what keeps them alive. A `tag/<name>` URL redirects (307) to the version the tag points at
-right now. **Set `abxfs.view` and both links are exactly the URL you give, with
+itself: the `animation_url` answers with a page that frames the project's own origin,
+`https://<chain>-<org>-<id>.<content domain>/` (opened directly, it sends you on there), and any path inside the
+project **redirects** (308) there with the path and query intact. Every token ever minted keeps working, because
+those URLs are frozen into them and the app is what keeps them alive. A `tag/<name>` URL goes (307) to the version the
+tag points at right now. **Set `abxfs.view` and both links are exactly the URL you give, with
 nothing appended.** It assumes nothing about what serves it: your own gateway, your own domain, a
 single-project host, a different ABX FS-compatible reader.
 
@@ -50,10 +51,13 @@ reads as unset everywhere.
 ## In a marketplace's viewer
 
 Not every marketplace frames `animation_url` itself. OpenSea saves a copy of the page it finds there and shows the
-copy, from its own storage. A directory listing still works in that viewer, because the gateway writes each of its
-links as a full URL back to the host that served it. A page of your own that loads `style.css` or `img/a.png` by a
-relative path asks the marketplace's storage for them instead, and gets an error. For a page that has to work there,
-keep it self-contained (inline its styles and scripts), or load each file by its full URL on the project's host.
+copy, from its own storage. The default `animation_url` is made for that: it is a page that frames the project, so the
+copy shows the project live from its own origin, relative links and all.
+
+A URL you set with `abxfs.view` is copied as it is. There, a page that loads `style.css` or `img/a.png` by a relative
+path asks the marketplace's storage for them instead, and gets an error: keep such a page self-contained (inline its
+styles and scripts), load each file by its full URL, or make the URL a page that frames your site. A directory listing
+from the gateway works either way, because it writes each link as a full URL back to the host that served it.
 
 ## This is not how the project is *read*
 
@@ -89,7 +93,7 @@ chosen orgs and refusing what you name.
 The hosted gateway already works this way. Every project is served from its own host on a separate content domain,
 `https://<chain>-<org>-<id>.<content domain>/`, so a root-absolute link such as `/style.css` resolves inside
 the project, one project's script cannot reach another's, and none of it shares an origin with the app. The
-default `animation_url` redirects there. A project that sets `abxfs.view` is unaffected either way.
+default `animation_url` frames it there. A project that sets `abxfs.view` is unaffected either way.
 
 ## What the site and the SDK refuse on top
 

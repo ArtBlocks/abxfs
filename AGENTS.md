@@ -370,7 +370,10 @@ content domain should be a SEPARATE registrable domain from the app (sibling sub
 cookies do not isolate them), and on the Public Suffix List once it qualifies (the list wants thousands of publishers
 first). `/g/p/…` and `/g/cid/…` on the app origin are strict redirects to the content origin, which is how the
 `gatewayBase` frozen into every token's `animation_url` keeps working: the on-chain default stays a path on a site we
-own, and WHERE content is served is off-chain configuration (`ABXFS_CONTENT_DOMAIN`). Never let a content host reach an
+own, and WHERE content is served is off-chain configuration (`ABXFS_CONTENT_DOMAIN`). The one exception is a project's
+ROOT, which is what `animation_url` is: it answers with a page framing the project's origin, because a marketplace may
+show a COPY of that page from its own storage (OpenSea does), where a redirect target's relative links would break; it
+names nothing but the project URL, and replaces itself with it when nobody frames it. Never let a content host reach an
 app route or carry app cookies. Nor may the APP origin hold chain content as an active document: a `blob:` URL belongs
 to the origin that made it, so an SVG blob opened in a tab runs there; only passive raster types may become `blob:`
 URLs on an app origin, and an SVG previews from the content origin.
