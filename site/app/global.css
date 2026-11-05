@@ -1,6 +1,6 @@
 @import "tailwindcss";
-@import "fumadocs-ui/css/neutral.css";
-@import "fumadocs-ui/css/preset.css";
+@import "@fumadocs/base-ui/css/neutral.css";
+@import "@fumadocs/base-ui/css/preset.css";
 
 /*
  * The ABX FS palettes (the brand kit's tokens): paper and ink in light, deep blue-black and white in dark, the same

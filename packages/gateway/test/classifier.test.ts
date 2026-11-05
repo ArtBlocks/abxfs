@@ -19,11 +19,12 @@ describe("strictBatchFetch", () => {
       expect(res.status).toBe(502);
     }
   });
-  it("leaves a non-batch request and a non-array answer alone", async () => {
+  it("leaves a non-batch request alone, and refuses a batch answered with something other than an array", async () => {
     const { strictBatchFetch } = await import("../src/upstream.js");
     const single = await strictBatchFetch((async () => new Response("{}")) as never)("http://x", { body: JSON.stringify({ id: 1 }) });
     expect(single.status).toBe(200);
+    // viem (since 2.57) would hand a non-array answer's error to every call in the batch.
     const html = await strictBatchFetch((async () => new Response("<html>")) as never)("http://x", { body: JSON.stringify([{ id: 1 }]) });
-    expect(html.status).toBe(200);
+    expect(html.status).toBe(502);
   });
 });

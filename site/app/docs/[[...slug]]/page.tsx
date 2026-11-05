@@ -7,8 +7,8 @@ import {
   DocsTitle,
   EditOnGitHub,
   MarkdownCopyButton,
-} from "fumadocs-ui/layouts/docs/page";
-import { createRelativeLink } from "fumadocs-ui/mdx";
+} from "@fumadocs/base-ui/layouts/docs/page";
+import { createRelativeLink } from "@fumadocs/base-ui/mdx";
 import { getMDXComponents } from "@/components/mdx";
 import { repoUrl } from "@/lib/shared";
 import { getPageImageUrl, getPageMarkdownUrl, source } from "@/lib/source";
