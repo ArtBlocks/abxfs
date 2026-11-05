@@ -50,8 +50,8 @@ export function parseChainList(raw: string | undefined): number[] | undefined {
 }
 
 /**
- * A setting that names ONE chain (`--default-chain` / `ABXFS_DEFAULT_CHAIN`, the mirror's `--chain`), read the same way
- * by the library and both bins. Blank is unset (`undefined`), unless `required`; a list, or a value that names no chain
+ * A setting that names ONE chain (`--project`'s chain, the mirror's `--chain`), read the same way by the library and
+ * both bins. Blank is unset (`undefined`), unless `required`; a list, or a value that names no chain
  * (`,`), is refused, never read as its first chain or as none. `name` is the setting as the operator gave it.
  */
 export function parseOneChain(raw: string | undefined, name: string, opts: { required?: boolean } = {}): number | undefined {
@@ -159,7 +159,7 @@ export function parseBasePath(raw: string): string {
  * until a deployment there is verified (`packages/sdk/src/canonical.ts`), and a chain without them has nothing to
  * read: serving or mirroring it would fail on its first read. A chain that is not deployed is dropped with a note
  * (`onSkip`) while others are served; if none is left, this throws "not deployed" (and notes nothing: the one error says
- * it). The default chain moves to the first deployed one when its own is not.
+ * it).
  */
 export function requireDeployed(loaded: LoadedChains, onSkip: (msg: string) => void = () => {}): LoadedChains {
   const deployed = loaded.chains.filter((c) => c.contracts !== undefined);
@@ -174,25 +174,18 @@ export function requireDeployed(loaded: LoadedChains, onSkip: (msg: string) => v
         "addresses in the SDK registry yet",
     );
   }
-  const defaultChainId = deployed.some((c) => c.id === loaded.defaultChainId) ? loaded.defaultChainId : deployed[0]!.id;
-  return { chains: deployed, defaultChainId };
+  return { chains: deployed };
 }
 
 export interface LoadedChains {
   chains: GatewayChain[];
-  defaultChainId: number;
 }
 
 /**
- * Every canonical chain (in chain-id order), or the ones named, in the order named. The chain a raw root is looked up
- * on FIRST is the one named by `ABXFS_DEFAULT_CHAIN`, else the first chain served; every other served chain is asked
- * too, so it decides only who answers first. No network is preferred by name.
+ * Every canonical chain (in chain-id order), or the ones named, in the order named. Every URL names its chain, so no
+ * network is preferred, by name or by order.
  */
-export function chainsFromEnv(
-  env: NodeJS.ProcessEnv = process.env,
-  only?: number[],
-  defaultChain?: number,
-): LoadedChains {
+export function chainsFromEnv(env: NodeJS.ProcessEnv = process.env, only?: number[]): LoadedChains {
   const deployments = only
     ? [...new Set(only)].flatMap((id) => CANONICAL_DEPLOYMENTS[id] ?? [])
     : Object.values(CANONICAL_DEPLOYMENTS);
@@ -200,12 +193,5 @@ export function chainsFromEnv(
     throw new Error("no chains to serve: none of the requested chains has a canonical deployment");
   }
 
-  const chains = deployments.map((d) => gatewayChainFor(d, env));
-  const requested = defaultChain ?? parseOneChain(env["ABXFS_DEFAULT_CHAIN"], "ABXFS_DEFAULT_CHAIN");
-  const defaultChainId = requested ?? deployments[0]!.chainId;
-
-  if (!chains.some((c) => c.id === defaultChainId)) {
-    throw new Error(`default chain ${defaultChainId} is not among the chains being served`);
-  }
-  return { chains, defaultChainId };
+  return { chains: deployments.map((d) => gatewayChainFor(d, env)) };
 }

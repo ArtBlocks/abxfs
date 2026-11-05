@@ -40,7 +40,6 @@ const run = (bin: string, args: string[], env: Record<string, string | undefined
       ABXFS_DENYLIST: "",
       ABXFS_ALLOWLIST: "",
       ABXFS_ALLOW_ORGS: "",
-      ABXFS_DEFAULT_CHAIN: "",
       ABXFS_ROOT_MAX_AGE: "",
       ABXFS_MAX_FILE_BYTES: "",
       ABXFS_CHAIN: undefined,
@@ -108,8 +107,8 @@ describe.skipIf(!built)("abxfs-gateway: every flag before any chain", () => {
     refusedWith(run("gateway.js", ["--content-domain"]), "[abxfs-gateway] NOT STARTED:", /--content-domain <value>' argument missing/);
   });
 
-  it("--default-chain with a bad value, and --project with an unknown chain, name the flag", () => {
-    refusedWith(run("gateway.js", ["--content-domain", "c.example", "--default-chain", "nope"]), "[abxfs-gateway] NOT STARTED:", /NOT STARTED: --default-chain: unknown chain "nope"$/m);
+  it("--project with an unknown chain names the flag; --default-chain is gone, since every URL names its chain", () => {
+    refusedWith(run("gateway.js", ["--content-domain", "c.example", "--default-chain", "base"]), "[abxfs-gateway] NOT STARTED:", /Unknown option '--default-chain'/);
     refusedWith(run("gateway.js", ["--project", `nope/0x${"a1".repeat(20)}/3`]), "[abxfs-gateway] NOT STARTED:", /NOT STARTED: --project: unknown chain "nope"$/m);
     // Named once, as the variable it came from (DELTA-8: a doubled "--project: --project:" passed an unanchored match).
     refusedWith(run("gateway.js", [], { ABXFS_PROJECT: `nope/0x${"a1".repeat(20)}/3` }), "[abxfs-gateway] NOT STARTED:", /NOT STARTED: ABXFS_PROJECT: unknown chain "nope"$/m);
@@ -179,7 +178,6 @@ describe.skipIf(!built)("abxfs-gateway: every flag before any chain", () => {
     refusedWith(run("gateway.js", ["--content-domain", "c.example"], { ABXFS_ROOT_MAX_AGE: "soon" }), "[abxfs-gateway] NOT STARTED:", /ABXFS_ROOT_MAX_AGE expects a whole number of seconds/);
     refusedWith(run("gateway.js", ["--content-domain", "c.example"], { PORT: "http" }), "[abxfs-gateway] NOT STARTED:", /PORT expects a port number/);
     refusedWith(run("gateway.js", ["--content-domain", "c.example"], { HOST: "bad host" }), "[abxfs-gateway] NOT STARTED:", /HOST expects an IP address/);
-    refusedWith(run("gateway.js", ["--content-domain", "c.example"], { ABXFS_DEFAULT_CHAIN: "nope" }), "[abxfs-gateway] NOT STARTED:", /NOT STARTED: ABXFS_DEFAULT_CHAIN: unknown chain "nope"$/m);
     refusedWith(run("gateway.js", ["--content-domain", "c.example"], { ABXFS_DENYLIST: "/nonexistent/abxfs-list.txt" }), "[abxfs-gateway] NOT STARTED:", /ABXFS_DENYLIST: ENOENT/);
     refusedWith(run("gateway.js", [], { ABXFS_PROJECT: "base-sepolia/0x12/x" }), "[abxfs-gateway] NOT STARTED:", /ABXFS_PROJECT expects <chain>\/<org>\/<id>/);
     // The flag, given, is what the refusal names, whatever the environment says.
@@ -195,10 +193,6 @@ describe.skipIf(!built)("abxfs-gateway: every flag before any chain", () => {
     }
     refusedWith(run("gateway.js", ["--content-domain", "c.example", "--chains", ","]), "[abxfs-gateway] NOT STARTED:", /--chains expects chains, comma separated: .* \(got ","\)/);
     refusedWith(run("gateway.js", ["--content-domain", "c.example"], { ABXFS_CHAINS: " , " }), "[abxfs-gateway] NOT STARTED:", /ABXFS_CHAINS expects chains/);
-    for (const d of [",", "base,ethereum"]) {
-      refusedWith(run("gateway.js", ["--content-domain", "c.example", "--default-chain", d]), "[abxfs-gateway] NOT STARTED:", /--default-chain expects one chain: /);
-    }
-    refusedWith(run("gateway.js", ["--content-domain", "c.example"], { ABXFS_DEFAULT_CHAIN: "," }), "[abxfs-gateway] NOT STARTED:", /ABXFS_DEFAULT_CHAIN expects one chain/);
   });
 
   // DELTA-6 I-2: `--project base,ethereum/…` took Base.

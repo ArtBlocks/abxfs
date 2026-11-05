@@ -62,7 +62,7 @@ const mkChain = () => ({
   client: {} as never,
 });
 function gateway() {
-  const gw = createGateway({ chains: [mkChain()], defaultChainId: 84532, hostMode: { baseHost: BASE }, onError: () => {} });
+  const gw = createGateway({ chains: [mkChain()], hostMode: { baseHost: BASE }, onError: () => {} });
   return (headers: Record<string, string> = {}) => gw(new Request(`http://${host}/`, { headers: { host, ...headers } }));
 }
 

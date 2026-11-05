@@ -31,7 +31,6 @@ describe("what is refused before the chain is read", () => {
     const lookup = vi.fn(() => untouchableChain());
     const gw = createGateway({
       chains: lookup,
-      defaultChainId: 84532,
       pathMode: {},
       filter: denylistFilter([projectSubject(84532, ORG, 2)]),
     });
@@ -46,7 +45,6 @@ describe("what is refused before the chain is read", () => {
   it("refuses a whole org by its namespace", async () => {
     const gw = createGateway({
       chains: () => untouchableChain(),
-      defaultChainId: 84532,
       pathMode: {},
       filter: denylistFilter([orgSubject(84532, ORG)]),
     });
@@ -57,18 +55,16 @@ describe("what is refused before the chain is read", () => {
   it("uses the operator's refusal message", async () => {
     const gw = createGateway({
       chains: () => untouchableChain(),
-      defaultChainId: 84532,
       pathMode: {},
       filter: () => ({ allow: false }),
       refusalMessage: "Not served here. Questions: ops@example.org",
     });
-    expect(await (await gw(req(`/g/cid/0x${"ab".repeat(32)}/`))).text()).toBe("Not served here. Questions: ops@example.org");
+    expect(await (await gw(req(`/g/cid/84532/0x${"ab".repeat(32)}/`))).text()).toBe("Not served here. Questions: ops@example.org");
   });
 
   it("derives subjects the same way wherever the gateway is mounted", async () => {
     const gw = createGateway({
       chains: () => untouchableChain(),
-      defaultChainId: 84532,
       pathMode: { basePath: "/content" },
       filter: denylistFilter([projectSubject(84532, ORG, 2)]),
     });
@@ -77,10 +73,10 @@ describe("what is refused before the chain is read", () => {
 });
 
 describe("requests it can turn away without a chain", () => {
-  const gw = createGateway({ chains: () => undefined, defaultChainId: 84532, pathMode: {} });
+  const gw = createGateway({ chains: () => undefined, pathMode: {} });
 
   it("rejects methods other than GET and HEAD", async () => {
-    const res = await gw(req(`/g/cid/0x${"ab".repeat(32)}/`, { method: "POST" }));
+    const res = await gw(req(`/g/cid/84532/0x${"ab".repeat(32)}/`, { method: "POST" }));
     expect(res.status).toBe(405);
     expect(res.headers.get("allow")).toBe("GET, HEAD");
   });
@@ -106,12 +102,12 @@ describe("requests it can turn away without a chain", () => {
 
 describe("choosing a mode", () => {
   it("refuses to be built with no addressing mode: how projects are separated is not a default", () => {
-    expect(() => createGateway({ chains: [], defaultChainId: 84532 })).toThrow(/exactly one/);
+    expect(() => createGateway({ chains: [] })).toThrow(/exactly one/);
   });
 
   it("refuses to be built with two", () => {
     expect(() =>
-      createGateway({ chains: [], defaultChainId: 84532, pathMode: {}, hostMode: { baseHost: "c.example" } }),
+      createGateway({ chains: [], pathMode: {}, hostMode: { baseHost: "c.example" } }),
     ).toThrow(/exactly one/);
   });
 });
@@ -123,7 +119,6 @@ describe("single-project mode", () => {
     const seen: string[][] = [];
     const gw = createGateway({
       chains: [untouchableChain()],
-      defaultChainId: 84532,
       project,
       filter: ({ subjects }) => {
         seen.push(subjects);
@@ -146,7 +141,7 @@ describe("single-project mode", () => {
 
   it("serves nothing else: a raw CID path is a path inside the project, not the CID namespace", async () => {
     const { seen, get } = probe({ chainId: 84532, org: ORG, tokenId: 3 });
-    await get(`/g/cid/0x${"ab".repeat(32)}/index.html`);
+    await get(`/g/cid/84532/0x${"ab".repeat(32)}/index.html`);
     expect(seen[0]!.some((s) => s.startsWith("root:"))).toBe(false);
   });
 
@@ -162,14 +157,13 @@ describe("cors option", () => {
   const req = () => new Request(`http://${host}/`, { headers: { host } });
 
   it("is off by default", async () => {
-    const gw = createGateway({ chains: [], defaultChainId: 84532, hostMode: { baseHost: "c.example" }, filter: () => ({ allow: false }) });
+    const gw = createGateway({ chains: [], hostMode: { baseHost: "c.example" }, filter: () => ({ allow: false }) });
     expect((await gw(req())).headers.get("access-control-allow-origin")).toBeNull();
   });
 
   it("adds allow-origin and exposes the x-abxfs headers on every response, errors included", async () => {
     const gw = createGateway({
       chains: [],
-      defaultChainId: 84532,
       hostMode: { baseHost: "c.example" },
       cors: "*",
       filter: () => ({ allow: false }),

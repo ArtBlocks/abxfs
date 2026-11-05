@@ -26,12 +26,11 @@ beforeEach(() => {
 function gateway() {
   const gw = createGateway({
     chains: [{ id: 84532, contracts: chain.contracts, client: chain.client }],
-    defaultChainId: 84532,
     hostMode: { baseHost: BASE },
     onError: () => {},
   });
   return (root: AbxfsCid, headers: Record<string, string> = {}, method = "GET") => {
-    const host = `${rootContentLabel(asAbxfsCid(root))}.${BASE}`;
+    const host = `${rootContentLabel(84532, asAbxfsCid(root))}.${BASE}`;
     return gw(new Request(`http://${host}/`, { method, headers: { host, ...headers } }));
   };
 }
@@ -114,11 +113,10 @@ describe("audit8 gateway ranges", () => {
     } as never;
     const gw = createGateway({
       chains: [{ id: 84532, contracts: chain.contracts, client: counted }],
-      defaultChainId: 84532,
       hostMode: { baseHost: BASE },
       onError: () => {},
     });
-    const host = `${rootContentLabel(asAbxfsCid(cid))}.${BASE}`;
+    const host = `${rootContentLabel(84532, asAbxfsCid(cid))}.${BASE}`;
     const req = (range: string) => gw(new Request(`http://${host}/`, { headers: { host, range } }));
 
     for (const range of ["bytes=0-12286", "bytes=0-", "bytes=-4000"]) {

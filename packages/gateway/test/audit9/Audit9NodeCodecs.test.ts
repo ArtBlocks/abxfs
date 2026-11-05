@@ -23,8 +23,8 @@ function serve(stored: Uint8Array, outputHash: string) {
   const inner = fc.client as { readContract: (a: { functionName: string }) => Promise<unknown> };
   const client = { ...(inner as object), readContract: async (a: { functionName: string }) => { const r = await inner.readContract(a); return a.functionName === "getFileInfo" ? { ...(r as object), codec: codecLabel("br"), outputHash } : r; } };
   // createGateway puts the platform's streaming gzip/deflate back on top; br stays the capped Node one.
-  const gw = createGateway({ chains: [{ id: 84532, contracts: fc.contracts, client } as never], defaultChainId: 84532, hostMode: { baseHost: "c.example" }, maxFileBytes: 4 * 1024 * 1024, onError: () => {} });
-  const host = `${rootContentLabel(cid)}.c.example`;
+  const gw = createGateway({ chains: [{ id: 84532, contracts: fc.contracts, client } as never], hostMode: { baseHost: "c.example" }, maxFileBytes: 4 * 1024 * 1024, onError: () => {} });
+  const host = `${rootContentLabel(84532, cid)}.c.example`;
   return { fc, get: () => gw(new Request(`https://${host}/`, { headers: { host } })) };
 }
 

@@ -115,12 +115,12 @@ describe("server edges", () => {
     expect(health).toMatchObject({ status: 200, body: "ok\n" });
     const landing = await raw(port, "GET / HTTP/1.1\r\nHost: content.example\r\nConnection: close\r\n\r\n");
     expect(landing.status).toBe(200);
-    expect(landing.body).toContain("https://c-<root>.content.example/");
+    expect(landing.body).toContain("https://<chain>-<root>.content.example/");
     const head = await raw(port, "HEAD /healthz HTTP/1.1\r\nHost: 10.0.0.1\r\nConnection: close\r\n\r\n");
     expect(head).toMatchObject({ status: 200, body: "" });
     expect(seen).toEqual([]);
     // on a content host both paths belong to the project
-    const label = `c-${"a".repeat(52)}`;
+    const label = `84532-${"a".repeat(52)}`;
     await raw(port, `GET /healthz HTTP/1.1\r\nHost: ${label}.content.example\r\nConnection: close\r\n\r\n`);
     expect(seen).toHaveLength(1);
   });

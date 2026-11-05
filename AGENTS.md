@@ -12,8 +12,8 @@ testnets, with real funds at stake on the production ones: see "Deployed network
 There are **two independent layers**, and conflating them is the mistake that produces wrong changes:
 
 - **The content layer** (`packages/contracts-core`) is permissionless and immutable. Anyone can write
-  bytes; nothing is owned; nothing can be changed. Any stored content is served at `c-<root>.<content domain>/` (see
-  "Every project is its own origin" below).
+  bytes; nothing is owned; nothing can be changed. Any stored content is served at `<chain>-<root>.<content domain>/`
+  (see "Every project is its own origin" below).
 - **The project layer** is an **ABX NFT inside an org**. `ownerOf` is the authorization model for a
   project, in full. Project state lives in ABX PostParams (`abxfs.cid`, `abxfs.name`, `abxfs.gateway`,
   `abxfs.view` and the reserved `abxfs.meta`), and integrity is enforced by `ProjectHook`.
@@ -364,8 +364,11 @@ Things that are easy to undo by accident:
 
 **Every project is its own origin, and the app origin serves no project bytes.** Project code is attacker
 controlled and websites use root-absolute links, so a project is served at
-`https://<chain>-<org>-<id>[-v<n>].<content domain>/` and raw content at `https://c-<base32 root>.<content
-domain>/` (`packages/sdk/src/content-host.ts`), from an origin that holds no secret, no session and no cookie. The
+`https://<chain>-<org>-<id>[-v<n>].<content domain>/` and raw content at `https://<chain>-<base32 root>.<content
+domain>/` (`packages/sdk/src/content-host.ts`), from an origin that holds no secret, no session and no cookie. Every URL
+names its chain, a raw root's too, and a gateway reads only that chain: a root is the same on every chain, so a URL
+without one made the gateway ask every chain it served, and a made-up root cost one read per chain. Do not add a
+chain-less form or a default chain back. The
 content domain should be a SEPARATE registrable domain from the app (sibling subdomains are same-site, so SameSite
 cookies do not isolate them), and on the Public Suffix List once it qualifies (the list wants thousands of publishers
 first). `/g/p/…` and `/g/cid/…` on the app origin are strict redirects to the content origin, which is how the

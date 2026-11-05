@@ -81,7 +81,7 @@ beforeEach(() => {
 
 const errors: string[] = [];
 /** The path layout reaches every addressing kind, tags included (a host cannot carry a tag). */
-const gw = () => createGateway({ chains: [{ id: 84532, contracts, client: {} as never }], defaultChainId: 84532, pathMode: {}, onError: (e) => errors.push(e) });
+const gw = () => createGateway({ chains: [{ id: 84532, contracts, client: {} as never }], pathMode: {}, onError: (e) => errors.push(e) });
 const get = (path: string, headers: Record<string, string> = {}) => gw()(new Request(`http://gw.example/g/p/84532/${ORG}/1/${path}`, { headers }));
 
 describe("resolve: a tag", () => {

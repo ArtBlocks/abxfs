@@ -56,7 +56,6 @@ const ENV = {
   port: "PORT",
   host: "HOST",
   chains: "ABXFS_CHAINS",
-  "default-chain": "ABXFS_DEFAULT_CHAIN",
   deny: "ABXFS_DENYLIST",
   allow: "ABXFS_ALLOWLIST",
   "allow-orgs": "ABXFS_ALLOW_ORGS",
@@ -73,7 +72,6 @@ const { values, tokens } = atStartup(() => parseArgs({
     port: { type: "string", short: "p", default: process.env[ENV.port] ?? "8080" },
     host: { type: "string", default: process.env[ENV.host] ?? "127.0.0.1" },
     chains: { type: "string", default: process.env[ENV.chains] },
-    "default-chain": { type: "string", default: process.env[ENV["default-chain"]] },
     deny: { type: "string", default: process.env[ENV.deny] },
     allow: { type: "string", default: process.env[ENV.allow] },
     "allow-orgs": { type: "string", default: process.env[ENV["allow-orgs"]] },
@@ -114,7 +112,7 @@ function flagAtStartup<T>(option: string, check: () => T): T {
 
 if (values.help) {
   console.log(`abxfs-gateway [--port 8080] [--host 127.0.0.1] [--chains <network>,…]
-              [--default-chain <network>] [--allow-orgs 0xA,0xB|file] [--deny file] [--allow file]
+              [--allow-orgs 0xA,0xB|file] [--deny file] [--allow file]
               [--base-path /g] [--cors <origin>]
               [--max-file-bytes 67108864] [--root-max-age 31536000]
 
@@ -122,7 +120,7 @@ if (values.help) {
 
   --content-domain <host[:port]>
                 one origin per project (recommended). A project is served at
-                https://<chain>-<org>-<id>[-v<n>].<host>/ and raw content at https://c-<root>.<host>/,
+                https://<chain>-<org>-<id>[-v<n>].<host>/ and raw content at https://<chain>-<root>.<host>/,
                 so a website's own /style.css works and one project's script can never touch another's.
                 Put wildcard DNS and TLS for *.<host> in front. Use a SEPARATE registrable domain from
                 anything that holds cookies or logins. Local: --content-domain localhost:8080 and open
@@ -132,9 +130,6 @@ if (values.help) {
 
   --chains <network>,…
                 the networks to serve (names, or chain ids). Default: every network with a deployment.
-  --default-chain <network>
-                the network a raw root (which names none) is looked up on first; every other served network
-                is asked too. Default: the first of --chains, else the lowest chain id.
 
   --project <chain>/<org>/<id>
                 serve ONE project at the root of this host, for a website that uses root-absolute
@@ -148,7 +143,7 @@ if (values.help) {
                 process keeps an immutable response after a block). Behind a CDN you cannot purge, set a
                 short value (60). Anything under a root other than the root itself is never immutable.
   --allow-orgs  serve ONLY these orgs' projects: addresses, comma separated, or a file of them.
-                Bare /g/cid/<root> URLs are refused (a root names content, not an org).
+                Raw /g/cid/<chain>/<root> URLs are refused (a root names content, not an org).
   --deny   one subject per line; refuse any request that names one. # comments ok.
   --allow  one subject per line; serve ONLY requests that name one.
   subjects: project:<chain>:<org>:<id>  org:<chain>:<org>  root:<0x…cid>`);
@@ -181,7 +176,6 @@ const requestedChains = flagAtStartup("chains", () => {
   if (ids?.length === 0) throw new Error(`--chains expects chains, comma separated: ${CHAIN_NAMES} (got "${values.chains}")`);
   return ids;
 });
-const requestedDefault = flagAtStartup("default-chain", () => parseOneChain(values["default-chain"], "--default-chain"));
 // The same check `createGateway` makes, made here so a URL or a path is refused as the flag (or variable) it came from,
 // before any chain.
 const contentDomainFlag = values["content-domain"]?.trim();
@@ -229,8 +223,8 @@ if (chosen !== 1) {
 
 // Then the chains: --chains, else the project's own chain for --project, else every one in the registry. A chain the
 // registry has no addresses for is "not deployed", and a request that names no deployed chain is one line, exit 2.
-const { chains, defaultChainId } = atStartup(() =>
-  requireDeployed(chainsFromEnv(process.env, requestedChains ?? (project ? [project.chainId] : undefined), requestedDefault), (msg) =>
+const { chains } = atStartup(() =>
+  requireDeployed(chainsFromEnv(process.env, requestedChains ?? (project ? [project.chainId] : undefined)), (msg) =>
     console.error(`[abxfs-gateway] not serving ${msg}`),
   ),
 );
@@ -250,9 +244,6 @@ await registerNodeCodecs({ maxOutputBytes: maxFileBytes });
 const handler = atStartup(() =>
   createGateway({
     chains,
-    defaultChainId,
-    // A raw root names no chain: try the default first, then every other chain this gateway serves.
-    rootChains: chains.map((c) => c.id),
     ...(contentDomain ? { hostMode: { baseHost: contentDomain } } : {}),
     ...(values["path-mode"] ? { pathMode: { basePath } } : {}),
     ...(project ? { project } : {}),
@@ -279,7 +270,7 @@ server.listen(port, host, () => {
         ? `listening on http://${host}:${port}; serving https://<project>.${contentDomain}/ (send Host: <chain>-<org>-<id>.${contentDomain})`
         : `listening on http://${host}:${port}${basePath} (path mode)`,
   );
-  log(`chains: ${chains.map((c) => `${c.name ?? c.id} (${c.id})`).join(", ")}; /cid defaults to ${defaultChainId}`);
+  log(`chains: ${chains.map((c) => `${c.name ?? c.id} (${c.id})`).join(", ")}`);
   log(filters.length ? `filtering: ${[values.deny && `deny ${values.deny}`, values.allow && `allow ${values.allow}`, values["allow-orgs"] && `orgs only (${values["allow-orgs"]})`].filter(Boolean).join(", ")}` : "filtering: none");
 });
 

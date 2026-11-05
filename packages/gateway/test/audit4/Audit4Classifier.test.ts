@@ -149,7 +149,7 @@ describe("AUDIT4 end to end: a node answering -32603 (internal error) for every 
     __resetResolveCaches();
     current = rpcErr(-32603, "internal error");
     const chain = { id: 84532, contracts: TEST_ADDRESSES, client: client() };
-    const gw = createGateway({ chains: [chain], defaultChainId: 84532, hostMode: { baseHost: "content.example" }, onError: () => {} });
+    const gw = createGateway({ chains: [chain], hostMode: { baseHost: "content.example" }, onError: () => {} });
     const host = `84532-${ORG.slice(2)}-1.content.example`;
     const res = await gw(new Request(`http://${host}/`, { headers: { host } }));
     console.log(`E2E -32603 | status=${res.status} | cc=${res.headers.get("cache-control")} | body=${await res.text()}`);
@@ -162,7 +162,7 @@ describe("AUDIT4 end to end: a node answering -32603 (internal error) for every 
     __resetResolveCaches();
     current = { status: 502, body: "Bad gateway: upstream said execution reverted" };
     const chain = { id: 84532, contracts: TEST_ADDRESSES, client: client() };
-    const gw = createGateway({ chains: [chain], defaultChainId: 84532, hostMode: { baseHost: "content.example" }, onError: () => {} });
+    const gw = createGateway({ chains: [chain], hostMode: { baseHost: "content.example" }, onError: () => {} });
     const host = `84532-${ORG.slice(2)}-1.content.example`;
     const res = await gw(new Request(`http://${host}/`, { headers: { host } }));
     console.log(`E2E 502 | status=${res.status} | cc=${res.headers.get("cache-control")}`);
@@ -172,7 +172,7 @@ describe("AUDIT4 end to end: a node answering -32603 (internal error) for every 
     __resetResolveCaches();
     current = rpcErr(3, "execution reverted", "0x");
     const chain = { id: 84532, contracts: TEST_ADDRESSES, client: client() };
-    const gw = createGateway({ chains: [chain], defaultChainId: 84532, hostMode: { baseHost: "content.example" }, onError: () => {} });
+    const gw = createGateway({ chains: [chain], hostMode: { baseHost: "content.example" }, onError: () => {} });
     const host = `84532-${ORG.slice(2)}-1.content.example`;
     expect((await gw(new Request(`http://${host}/`, { headers: { host } }))).status).toBe(404);
     __resetResolveCaches();

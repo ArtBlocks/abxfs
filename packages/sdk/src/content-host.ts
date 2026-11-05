@@ -6,13 +6,17 @@
  *
  *     https://<chain>-<org>-<id>.<content domain>/            the project's latest version
  *     https://<chain>-<org>-<id>-v<n>.<content domain>/       a pinned version (permalink)
- *     https://c-<base32 root>.<content domain>/               raw content by root, no project
+ *     https://<chain>-<base32 root>.<content domain>/         raw content by root, no project
  *
  * and the app's own origin serves none of it. The label is the project's whole identity (token ids
  * repeat across orgs and orgs across chains), it is a single DNS label so ONE wildcard certificate
  * covers every project, and it is at most 63 characters:
  *
  *     chain (1-10 digits) + '-' + org (40 hex, lowercase, no 0x) + '-' + id (1-10 digits) + '-v' + n
+ *     chain (1-10 digits) + '-' + root (52 base32 characters)
+ *
+ * A root names the chain it is read from, like a project does. The same bytes have the same root on every chain, so
+ * the chain does not identify the content; it says where to read it, so a gateway asks one chain, not every one.
  *
  * Parsing is deliberately strict and canonical: a single spelling per project. A second spelling
  * (`+84532`, `0x14a34`, leading zeros, a `0x` prefix on the address) is how a deny list gets walked around,
@@ -37,7 +41,7 @@ export interface ContentProject {
 
 export type ParsedContentLabel =
   | { kind: "project"; chainId: number; org: Address; tokenId: bigint; version?: number }
-  | { kind: "root"; rootCid: AbxfsCid };
+  | { kind: "root"; chainId: number; rootCid: AbxfsCid };
 
 const MAX_CHAIN_DIGITS = 10;
 const MAX_ID_DIGITS = 10;
@@ -48,7 +52,7 @@ const MAX_LABEL = 63;
 const PROJECT_LABEL = new RegExp(
   `^([1-9][0-9]{0,${MAX_CHAIN_DIGITS - 1}})-([0-9a-f]{40})-(0|[1-9][0-9]{0,${MAX_ID_DIGITS - 1}})(?:-v([1-9][0-9]{0,8}))?$`,
 );
-const ROOT_LABEL = /^c-([a-z2-7]{52})$/;
+const ROOT_LABEL = new RegExp(`^([1-9][0-9]{0,${MAX_CHAIN_DIGITS - 1}})-([a-z2-7]{52})$`);
 
 const B32 = "abcdefghijklmnopqrstuvwxyz234567";
 
@@ -92,9 +96,7 @@ function base32Decode(s: string): Uint8Array | null {
 export function contentLabel(p: ContentProject): string {
   const org = String(p.org).toLowerCase();
   if (!/^0x[0-9a-f]{40}$/.test(org)) throw new Error(`not an org address: ${String(p.org)}`);
-  if (!Number.isSafeInteger(p.chainId) || p.chainId < 1 || String(p.chainId).length > MAX_CHAIN_DIGITS) {
-    throw new Error(`chain id out of range: ${p.chainId}`);
-  }
+  checkChainId(p.chainId);
   const id = BigInt(p.tokenId);
   if (id < 0n || id.toString().length > MAX_ID_DIGITS) throw new Error(`token id out of range: ${p.tokenId}`);
   let label = `${p.chainId}-${org.slice(2)}-${id}`;
@@ -108,12 +110,19 @@ export function contentLabel(p: ContentProject): string {
   return label;
 }
 
-/** The label for raw content by root CID: no project, no org. */
-export function rootContentLabel(rootCid: AbxfsCid): string {
-  const hex = rootCid.slice(2);
+function checkChainId(chainId: number): void {
+  if (!Number.isSafeInteger(chainId) || chainId < 1 || String(chainId).length > MAX_CHAIN_DIGITS) {
+    throw new Error(`chain id out of range: ${chainId}`);
+  }
+}
+
+/** The label for raw content by root CID, read on `chainId`: no project, no org. */
+export function rootContentLabel(chainId: number, rootCid: AbxfsCid): string {
+  checkChainId(chainId);
+  const hex = asAbxfsCid(rootCid).slice(2);
   const bytes = new Uint8Array(32);
   for (let i = 0; i < 32; i++) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  return `c-${base32Encode(bytes)}`;
+  return `${chainId}-${base32Encode(bytes)}`;
 }
 
 /** Parse one DNS label. `null` for anything that is not the canonical spelling of a project or root. */
@@ -133,11 +142,13 @@ export function parseContentLabel(label: string): ParsedContentLabel | null {
   }
   const r = ROOT_LABEL.exec(label);
   if (r) {
-    const bytes = base32Decode(r[1]!);
+    const chainId = Number(r[1]);
+    if (!Number.isSafeInteger(chainId)) return null;
+    const bytes = base32Decode(r[2]!);
     if (!bytes || bytes.length !== 32) return null;
     const hex = `0x${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
     try {
-      return { kind: "root", rootCid: asAbxfsCid(hex as `0x${string}`) };
+      return { kind: "root", chainId, rootCid: asAbxfsCid(hex as `0x${string}`) };
     } catch {
       return null;
     }
@@ -172,12 +183,12 @@ export function isValidBaseHost(baseHost: string): boolean {
 
 /** `https://<label>.<base>` (no trailing slash). `scheme` defaults to https; `http` is for local dev only. */
 export function contentOrigin(
-  target: ContentProject | { rootCid: AbxfsCid },
+  target: ContentProject | { chainId: number; rootCid: AbxfsCid },
   baseHost: string,
   scheme: "https" | "http" = "https",
 ): string {
   if (scheme !== "https" && scheme !== "http") throw new Error(`content scheme must be https or http, got ${String(scheme)}`);
   if (!isValidBaseHost(baseHost)) throw new Error(`not a valid content host: ${JSON.stringify(baseHost)}`);
-  const label = "rootCid" in target ? rootContentLabel(target.rootCid) : contentLabel(target);
+  const label = "rootCid" in target ? rootContentLabel(target.chainId, target.rootCid) : contentLabel(target);
   return `${scheme}://${label}.${baseHost}`;
 }

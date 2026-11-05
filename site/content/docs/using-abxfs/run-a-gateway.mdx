@@ -29,7 +29,7 @@ anything else on that host. So the gateway gives **each project its own origin**
 ```text
 https://<chain>-<org>-<id>.<content domain>/            a project's head
 https://<chain>-<org>-<id>-v<n>.<content domain>/       a fixed version
-https://c-<root>.<content domain>/                      raw content by root
+https://<chain>-<root>.<content domain>/                raw content by root
 ```
 
 `<org>` is the org's 40 hex digits (no `0x`, lowercase), and `<root>` is the root CID as lowercase base32.
@@ -85,8 +85,8 @@ chunk is read; one whose decoded content does not match its `outputHash` is a `5
 about immutable bytes: remembered, and cacheable like the `413`. A client that already holds a file (a matching
 `If-None-Match`) gets a `304` before any content is read. Every read is paged (at
 most 100 chunk ids or directory entries per call): a path inside a large directory is one on-chain lookup, never a
-listing, and a directory listing page is paged. A raw-root host (`c-<root>.…`) names no chain, so the
-gateway tries the default chain first and then each other chain it serves. The gateway only serves `GET` and
+listing, and a directory listing page is paged. Every URL names its chain, a raw root's too, so each request
+reads one chain. The gateway only serves `GET` and
 `HEAD`; every other method is a `405`.
 
 If you run the gateway **on a platform that caps response bodies** (Vercel Functions allow 4.5 MB), set `--max-file-bytes` below that limit: the gateway
@@ -115,7 +115,7 @@ raw roots, no other project. Point your domain at it. The filters (`--deny`) sti
 
 Two ways to run one. **Open, with a blocklist** is `--deny denylist.txt`. **Only these orgs** is
 `--allow-orgs 0xAbc…,0xDef…` (or a file of addresses): it serves the projects of those orgs and nothing
-else, and refuses root hosts (`c-<root>.…`), since a root names content rather than an org. With neither,
+else, and refuses root hosts (`<chain>-<root>.…`), since a root names content rather than an org. With neither,
 nothing is filtered.
 
 For finer control, `--deny` refuses a request that names anything in a file and `--allow` serves **only**

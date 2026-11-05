@@ -18,11 +18,10 @@ import { byteRange, createGateway } from "../../src/handler.js";
 const ETAG = '"0x1111:%2F"';
 const gw = createGateway({
   chains: () => ({ id: 84532, contracts: {} as never, client: {} as never }),
-  defaultChainId: 84532,
   pathMode: {},
   filter: () => { filterCalls++; return { allow: true }; },
 });
-const get = (h: Record<string, string>, method = "GET") => gw(new Request(`http://gw.test/g/cid/0x${"11".repeat(32)}/`, { method, headers: h }));
+const get = (h: Record<string, string>, method = "GET") => gw(new Request(`http://gw.test/g/cid/84532/0x${"11".repeat(32)}/`, { method, headers: h }));
 
 describe("AUDIT5 byteRange", () => {
   beforeEach(() => { size = 100; });
@@ -90,8 +89,8 @@ describe("AUDIT5 handler Range", () => {
     log("empty file Range 0-: ", r.status, r.headers.get("content-range"), "plain:", h.status, h.headers.get("content-length"));
   });
   it("Range through the cors wrapper keeps content-range exposed", async () => {
-    const g2 = createGateway({ chains: () => ({ id: 84532, contracts: {} as never, client: {} as never }), defaultChainId: 84532, pathMode: {}, cors: "*" });
-    const r = await g2(new Request(`http://gw.test/g/cid/0x${"11".repeat(32)}/`, { headers: { range: "bytes=1-2" } }));
+    const g2 = createGateway({ chains: () => ({ id: 84532, contracts: {} as never, client: {} as never }), pathMode: {}, cors: "*" });
+    const r = await g2(new Request(`http://gw.test/g/cid/84532/0x${"11".repeat(32)}/`, { headers: { range: "bytes=1-2" } }));
     log("cors 206:", r.status, r.headers.get("access-control-expose-headers"));
   });
 });

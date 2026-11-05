@@ -13,14 +13,14 @@ describe("classifyPath", () => {
   it("names a project and its org, or a root, or an org", () => {
     expect(classifyPath(`/g/p/84532/${ORG}/7/latest/x`)).toEqual({ kind: "subjects", subjects: [`project:84532:${ORG}:7`, `org:84532:${ORG}`] });
     expect(classifyPath(`/projects/84532/${ORG}/7/files/a.html`)).toMatchObject({ kind: "subjects", subjects: [`project:84532:${ORG}:7`, `org:84532:${ORG}`] });
-    expect(classifyPath(`/g/cid/${ROOT}/index.html`)).toEqual({ kind: "subjects", subjects: [`root:${ROOT}`] });
+    expect(classifyPath(`/g/cid/84532/${ROOT}/index.html`)).toEqual({ kind: "subjects", subjects: [`root:${ROOT}`] });
     expect(classifyPath(`/orgs/84532/${ORG}`)).toEqual({ kind: "subjects", subjects: [`org:84532:${ORG}`] });
   });
 
   it("lowercases addresses and roots, whatever case the URL carried", () => {
     const up = ORG.toUpperCase().replace("0X", "0x");
     expect(subjectsForPath(`/g/p/84532/${up}/7/latest/`)[1]).toBe(`org:84532:${ORG}`);
-    expect(subjectsForPath(`/g/cid/${ROOT.toUpperCase().replace("0X", "0x")}/`)).toEqual([`root:${ROOT}`]);
+    expect(subjectsForPath(`/g/cid/84532/${ROOT.toUpperCase().replace("0X", "0x")}/`)).toEqual([`root:${ROOT}`]);
   });
 
   it("is `invalid` for every spelling a looser parser would accept", () => {
@@ -28,13 +28,16 @@ describe("classifyPath", () => {
       expect(classifyPath(`/g/p/${chain}/${ORG}/1/latest/`).kind, chain).toBe("invalid");
       expect(classifyPath(`/projects/${chain}/${ORG}/1`).kind, chain).toBe("invalid");
       expect(classifyPath(`/orgs/${chain}/${ORG}`).kind, chain).toBe("invalid");
+      expect(classifyPath(`/g/cid/${chain}/${ROOT}/`).kind, chain).toBe("invalid");
+      expect(classifyPath(`/g/cid/${chain}/${ROOT}/`).kind, chain).toBe("invalid");
     }
     for (const token of ["01", "+1", "1.0", "0x1", "-0"]) {
       expect(classifyPath(`/projects/84532/${ORG}/${token}`).kind, token).toBe("invalid");
     }
     expect(classifyPath(`/projects/84532/0x1234/1`).kind).toBe("invalid");
     expect(classifyPath(`/g//p/84532/${ORG}/1/latest/`).kind).toBe("invalid");
-    expect(classifyPath(`/g/cid/0xabc`).kind).toBe("invalid");
+    expect(classifyPath(`/g/cid/84532/0xabc`).kind).toBe("invalid");
+    expect(classifyPath(`/g/cid/${ROOT}/`).kind).toBe("invalid"); // no chain
   });
 
   it("leaves other trees alone, and the new-project page", () => {

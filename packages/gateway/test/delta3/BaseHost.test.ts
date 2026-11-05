@@ -22,7 +22,7 @@ describe("normalizeBaseHost", () => {
   });
 
   it("createGateway refuses the same values, as the option", () => {
-    expect(() => createGateway({ chains: [], defaultChainId: 84532, hostMode: { baseHost: "https://bad.example/" } })).toThrow(
+    expect(() => createGateway({ chains: [], hostMode: { baseHost: "https://bad.example/" } })).toThrow(
       /hostMode\.baseHost must be a bare host/,
     );
   });

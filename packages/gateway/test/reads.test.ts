@@ -22,7 +22,6 @@ beforeEach(() => {
 function gateway(extra: Partial<Parameters<typeof createGateway>[0]> = {}) {
   const gw = createGateway({
     chains: [{ id: 84532, contracts: chain.contracts, client: chain.client }],
-    defaultChainId: 84532,
     hostMode: { baseHost: BASE },
     onError: () => {},
     ...extra,
@@ -33,7 +32,7 @@ function gateway(extra: Partial<Parameters<typeof createGateway>[0]> = {}) {
   };
 }
 
-const hostOf = (root: AbxfsCid) => `${rootContentLabel(asAbxfsCid(root))}.${BASE}`;
+const hostOf = (root: AbxfsCid) => `${rootContentLabel(84532, asAbxfsCid(root))}.${BASE}`;
 const file = (name: string, cid: AbxfsCid): DirectoryEntry => ({ name, cid, isDirectory: false });
 const dir = (name: string, cid: AbxfsCid): DirectoryEntry => ({ name, cid, isDirectory: true });
 

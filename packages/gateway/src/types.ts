@@ -52,17 +52,10 @@ export interface GatewayOptions {
    * gateway; it lets a page read a project's host, which the app's own viewers need.
    */
   cors?: string;
-  /** The chains to serve, or a lookup. A chain id not found is a 404. */
-  chains: GatewayChain[] | ((chainId: number) => GatewayChain | undefined);
-  /** The chain a root request resolves against first. A root CID carries none. */
-  defaultChainId: number;
   /**
-   * Other chains a raw root (`c-<root>.<base>` in host mode, `<basePath>/cid/<root>` in path mode) may be looked up
-   * on when the default does not store it. Content is shared by every chain (the stores are CREATE2-deployed, so the CID
-   * space is the same), and the bytes are verified against the root either way. Each is one cheap probe,
-   * bounded by this list, and a chain that answers is remembered per root. Default: the default chain only.
+   * The chains to serve, or a lookup. Every URL names its chain, a raw root's too, and a chain id not found is a 404.
    */
-  rootChains?: number[];
+  chains: GatewayChain[] | ((chainId: number) => GatewayChain | undefined);
 
   /*
    * Exactly ONE of the three addressing modes below must be chosen. There is no default: which
@@ -71,7 +64,7 @@ export interface GatewayOptions {
 
   /**
    * Serve per-project origins. The Host header names the content, as
-   * `<chain>-<org>-<id>[-v<n>].<baseHost>` (a project) or `c-<root>.<baseHost>` (raw content by root),
+   * `<chain>-<org>-<id>[-v<n>].<baseHost>` (a project) or `<chain>-<root>.<baseHost>` (raw content by root),
    * and the request path is the path INSIDE it, so a website's own `/style.css` just works and one
    * project's code never shares an origin with another's. Strict, canonical parsing only; anything
    * else under `baseHost` is a 404. `baseHost` carries its port when it has one (`localhost:3001`).
@@ -84,7 +77,7 @@ export interface GatewayOptions {
    */
   project?: { chainId: number; org: string; tokenId: bigint | number; tag?: string; version?: number };
   /**
-   * The shared-origin `<basePath>/p/<chain>/<org>/<id>/…` and `<basePath>/cid/<root>/…` layout. UNSAFE for
+   * The shared-origin `<basePath>/p/<chain>/<org>/<id>/…` and `<basePath>/cid/<chain>/<root>/…` layout. UNSAFE for
    * content you do not trust: every project is served from ONE origin, so any project's script can
    * read, replace or impersonate every other's (localStorage, cookies, service workers). Use it only
    * for content you control, or behind a gateway you do not let people browse with credentials.

@@ -33,8 +33,8 @@ function setup() {
   const F = fc.addFile(Array.from({ length: 100 }, (_, i) => chunkBytes(i, 16 * 1024)), "application/octet-stream").cid;
   const D = fc.addDirectory([{ name: "f.bin", cid: F, isDirectory: false }]);
   const ROOT = fc.addDirectory([{ name: "dir", cid: D, isDirectory: true }]);
-  const gw = createGateway({ chains: [{ id: 84532, contracts: fc.contracts, client: fc.client } as never], defaultChainId: 84532, hostMode: { baseHost: "c.example" }, onError: () => {} });
-  const host = `${rootContentLabel(ROOT)}.c.example`;
+  const gw = createGateway({ chains: [{ id: 84532, contracts: fc.contracts, client: fc.client } as never], hostMode: { baseHost: "c.example" }, onError: () => {} });
+  const host = `${rootContentLabel(84532, ROOT)}.c.example`;
   const get = (path: string, headers: Record<string, string> = {}, method = "GET") => gw(new Request(`https://${host}${path}`, { method, headers: { host, ...headers } }));
   return { fc, get, F, ROOT };
 }
@@ -124,15 +124,16 @@ describe("N2: host spellings never serve a blocked project or root", () => {
     const F = fc.addFile([new TextEncoder().encode("x")], "text/plain").cid;
     const spy = vi.spyOn(sdk, "readProject").mockResolvedValue({ cid: F, kind: 2, versionCount: 1, preferredGateway: null } as never);
     const chain = { id: 84532, contracts: { ...(fc.contracts as object), orgFactory: "0x00000000000000000000000000000000000000e1", projectHook: "0x00000000000000000000000000000000000000f1" }, client: fc.client };
-    const gw = createGateway({ chains: [chain as never], defaultChainId: 84532, hostMode: { baseHost: BASE }, filter: denylistFilter([projectSubject(84532, `0x${ORG}`, 1n), rootSubject(F)]), onError: () => {} });
-    const root = rootContentLabel(F).slice(2);
+    const gw = createGateway({ chains: [chain as never], hostMode: { baseHost: BASE }, filter: denylistFilter([projectSubject(84532, `0x${ORG}`, 1n), rootSubject(F)]), onError: () => {} });
+    const root = rootContentLabel(84532, F).slice("84532-".length);
     const hosts = [
       `84532-${ORG}-1.${BASE}`, `84532-${ORG}-1-v1.${BASE}`, `84532-${ORG.toUpperCase()}-1.${BASE}`.toUpperCase(),
       `84532-${ORG}-01.${BASE}`, `084532-${ORG}-1.${BASE}`, `+84532-${ORG}-1.${BASE}`, `84532-0x${ORG}-1.${BASE}`,
       `84532-${ORG}-1.${BASE}.`, `84532-${ORG}-1.${BASE}:443`, `84532-${ORG}-1-v0.${BASE}`, `84532-${ORG}-1-v01.${BASE}`,
       `84532-${ORG}-１.${BASE}`, `x.84532-${ORG}-1.${BASE}`, `84532-${ORG}-1%2e${BASE}`, `xn--84532-${ORG}-1.${BASE}`,
-      `c-${root}.${BASE}`, `C-${root.toUpperCase()}.${BASE}`, `c-${root.replace(/.$/, (c) => (c === "a" ? "b" : "a"))}.${BASE}`,
-      `c-${root}=.${BASE}`, `c-${root.replace(/k/g, "K")}.${BASE}`,
+      `84532-${root}.${BASE}`, `84532-${root.toUpperCase()}.${BASE}`, `84532-${root.replace(/.$/, (c) => (c === "a" ? "b" : "a"))}.${BASE}`,
+      `84532-${root}=.${BASE}`, `84532-${root.replace(/k/g, "K")}.${BASE}`, `084532-${root}.${BASE}`, `+84532-${root}.${BASE}`,
+      `c-${root}.${BASE}`, `${root}.${BASE}`, `84532-c-${root}.${BASE}`,
     ];
     for (const host of hosts) {
       let status: number;
@@ -159,8 +160,8 @@ describe("N3: ranges return exactly the bytes Content-Range names", () => {
       let o = 0;
       for (const c of chunks) (all.set(c, o), (o += c.length));
       const { cid } = fc.addFile(chunks, "application/octet-stream");
-      const gw = createGateway({ chains: [{ id: 84532, contracts: fc.contracts, client: fc.client } as never], defaultChainId: 84532, hostMode: { baseHost: "c.example" }, maxFileBytes: 64 * 1024 + rnd(256 * 1024), onError: () => {} });
-      const host = `${rootContentLabel(cid)}.c.example`;
+      const gw = createGateway({ chains: [{ id: 84532, contracts: fc.contracts, client: fc.client } as never], hostMode: { baseHost: "c.example" }, maxFileBytes: 64 * 1024 + rnd(256 * 1024), onError: () => {} });
+      const host = `${rootContentLabel(84532, cid)}.c.example`;
       const L = all.length;
       for (let i = 0; i < 30; i++) {
         const kind = rnd(3);

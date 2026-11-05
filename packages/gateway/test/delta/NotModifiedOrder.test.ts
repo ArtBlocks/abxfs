@@ -39,25 +39,25 @@ describe("a 304 never outranks a block", () => {
       contracts: { ...(fc.contracts as object), orgFactory: "0x00000000000000000000000000000000000000e1", projectHook: "0x00000000000000000000000000000000000000f1" },
       client: fc.client,
     };
-    const mk = (blocked: string[]) => createGateway({ chains: [chain as never], defaultChainId: 84532, hostMode: { baseHost: BASE }, filter: denylistFilter(blocked), onError: () => {} });
+    const mk = (blocked: string[]) => createGateway({ chains: [chain as never], hostMode: { baseHost: BASE }, filter: denylistFilter(blocked), onError: () => {} });
     const get = (gw: ReturnType<typeof mk>, label: string, path: string, inm: string) =>
       gw(new Request(`https://${label}.${BASE}${path}`, { headers: { host: `${label}.${BASE}`, ...(inm ? { "if-none-match": inm } : {}) } }));
     state.projectRoot = R;
     const P = `84532-${ORG.slice(2)}-7`;
     // the ETags an earlier, unblocked visit got: each one really does earn a 304 while nothing is blocked
-    const etag = (await get(mk([]), rootContentLabel(R), "/", "")).headers.get("etag")!;
-    const wrappedEtag = (await get(mk([]), rootContentLabel(W), "/site/", "")).headers.get("etag")!;
-    expect((await get(mk([]), rootContentLabel(R), "/", etag)).status).toBe(304);
-    expect((await get(mk([]), rootContentLabel(W), "/site/", wrappedEtag)).status).toBe(304);
+    const etag = (await get(mk([]), rootContentLabel(84532, R), "/", "")).headers.get("etag")!;
+    const wrappedEtag = (await get(mk([]), rootContentLabel(84532, W), "/site/", "")).headers.get("etag")!;
+    expect((await get(mk([]), rootContentLabel(84532, R), "/", etag)).status).toBe(304);
+    expect((await get(mk([]), rootContentLabel(84532, W), "/site/", wrappedEtag)).status).toBe(304);
 
     for (const inm of [etag, "*", `W/${etag}`]) {
-      expect((await get(mk([rootSubject(R)]), rootContentLabel(R), "/", inm)).status).toBe(451); // URL subject
+      expect((await get(mk([rootSubject(R)]), rootContentLabel(84532, R), "/", inm)).status).toBe(451); // URL subject
       expect((await get(mk([rootSubject(R)]), P, "/", inm)).status).toBe(451); // the project's resolved root
-      expect((await get(mk([rootSubject(F)]), rootContentLabel(R), "/", inm)).status).toBe(451); // served CID
+      expect((await get(mk([rootSubject(F)]), rootContentLabel(84532, R), "/", inm)).status).toBe(451); // served CID
       expect((await get(mk([rootSubject(F)]), P, "/", inm)).status).toBe(451);
     }
     for (const inm of [wrappedEtag, "*", `W/${wrappedEtag}`]) {
-      expect((await get(mk([rootSubject(R)]), rootContentLabel(W), "/site/", inm)).status).toBe(451); // the courtesy directory
+      expect((await get(mk([rootSubject(R)]), rootContentLabel(84532, W), "/site/", inm)).status).toBe(451); // the courtesy directory
     }
   });
 });

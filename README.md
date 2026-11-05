@@ -26,11 +26,11 @@ org's admin included, can change how an org works; the admin only decides who ma
   │                          │      │   abxfs.gateway  (optional)  │
   │ permissionless, immutable│      │   owner = publish rights     │
   └──────────────────────────┘      └──────────────────────────────┘
-   c-<root>.<content domain>        <chain>-<org>-<token>.<content domain>
+ <chain>-<root>.<content domain>    <chain>-<org>-<token>.<content domain>
 ```
 
-The two layers are independent on purpose. A root's own host (`https://c-<base32 root>.<content domain>/`)
-resolves any stored content whether or not a token points at it, so the content layer is usable on its own
+The two layers are independent on purpose. A root's own host (`https://<chain>-<base32 root>.<content domain>/`)
+resolves any content stored on that chain whether or not a token points at it, so the content layer is usable on its own
 and anyone can build a different project abstraction on top of it. Every project is served from its own
 host (`https://<chain>-<org>-<id>.<content domain>/`) and the app's origin serves no project bytes; the
 `/g/cid/…` and `/g/p/…` paths on the app redirect to those hosts (a project's root, its `animation_url`, is a page that

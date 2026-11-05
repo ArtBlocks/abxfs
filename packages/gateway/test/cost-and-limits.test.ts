@@ -60,7 +60,7 @@ const mkChain = () => ({ id: 84532, contracts: { chunkStore: "0x0000000000000000
 
 function gateway(extra: Partial<Parameters<typeof createGateway>[0]> = {}) {
   const chain = mkChain();
-  const gw = createGateway({ chains: [chain], defaultChainId: 84532, hostMode: { baseHost: BASE }, onError: () => {}, ...extra });
+  const gw = createGateway({ chains: [chain], hostMode: { baseHost: BASE }, onError: () => {}, ...extra });
   return (id = 1, path = "/") => {
     const host = `${label(id)}.${BASE}`;
     return gw(new Request(`http://${host}${path}`, { headers: { host } }));
