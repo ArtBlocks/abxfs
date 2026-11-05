@@ -21,8 +21,8 @@ email `legal@artblocks.io`, as its [content policy](https://fs.abx.io/policy) de
 ## Supported versions
 
 Security fixes are applied to the current canonical deployments listed in
-[the deployments reference](https://docs.fs.abx.io/docs/reference/deployments), the packages on `main`
-(none is on npm yet), and the site at fs.abx.io and its content domain.
+[the deployments reference](https://docs.fs.abx.io/docs/reference/deployments), the latest release of each
+`@artblocks/abxfs-*` package on npm, and the site at fs.abx.io and its content domain.
 
 The contracts are immutable: nothing deployed has an owner, an upgrade path, or a setter. A
 contract fix ships as a new deployment at new addresses, and orgs created by an earlier factory keep

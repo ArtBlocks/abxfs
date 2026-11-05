@@ -213,6 +213,12 @@ the gateway) through their package exports, so after changing one of those, rebu
 (`pnpm -r --filter="./packages/*" build`) before trusting a dependent test. A stale `dist` reads as a baffling mock
 error ("No `<name>` export is defined on the mock") rather than a type error.
 
+**The four packages are published to npm by Changesets and trusted publishing** (`.github/workflows/release.yml`,
+[`.changeset/README.md`](./.changeset/README.md)). A change to a published package carries a changeset (`pnpm changeset`);
+merging it opens a Version Packages pull request, and merging THAT publishes. No npm token exists anywhere, and none
+should be added: npm trusts this repository's `release.yml` by name, so renaming the file stops releases until every
+package is told the new name. Do not edit a package's version by hand.
+
 `OrgFactory` is the same kind of thing — deployed with a fixed salt, so its address is a function
 of its creation code and of its constructor arguments (the ABX addresses, both stores and `OrgMeta`).
 It is **pinned**: `packages/contracts-projects/test/DeployFactoryPin.t.sol` pins its creation-code hash,

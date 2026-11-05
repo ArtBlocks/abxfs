@@ -1,14 +1,14 @@
 {
   "name": "@artblocks/abxfs-sdk",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "description": "ABX FS SDK — content-addressed, immutable file storage on any EVM chain. Chunk, compute CIDs, upload, read, and derive IPFS CIDs.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ArtBlocks/abxfs.git"
+    "url": "git+https://github.com/ArtBlocks/abxfs.git",
+    "directory": "packages/sdk"
   },
-  "homepage": "https://github.com/ArtBlocks/abxfs#readme",
+  "homepage": "https://docs.fs.abx.io",
   "bugs": "https://github.com/ArtBlocks/abxfs/issues",
   "keywords": [
     "abxfs",
@@ -47,7 +47,9 @@
   "files": [
     "dist",
     "src",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "sideEffects": false,
   "publishConfig": {

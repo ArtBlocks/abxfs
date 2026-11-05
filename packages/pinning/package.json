@@ -1,14 +1,14 @@
 {
   "name": "@artblocks/abxfs-pinning",
-  "version": "0.0.0",
-  "private": true,
-  "description": "ABX FS pinning \u2014 optionally mirror on-chain ABX FS content to IPFS. Opt-in: content lives on-chain regardless.",
+  "version": "0.1.0",
+  "description": "ABX FS pinning — optionally mirror on-chain ABX FS content to IPFS. Opt-in: content lives on-chain regardless.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ArtBlocks/abxfs.git"
+    "url": "git+https://github.com/ArtBlocks/abxfs.git",
+    "directory": "packages/pinning"
   },
-  "homepage": "https://github.com/ArtBlocks/abxfs#readme",
+  "homepage": "https://docs.fs.abx.io",
   "bugs": "https://github.com/ArtBlocks/abxfs/issues",
   "keywords": [
     "abxfs",
@@ -29,7 +29,9 @@
   "files": [
     "dist",
     "src",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "sideEffects": false,
   "publishConfig": {

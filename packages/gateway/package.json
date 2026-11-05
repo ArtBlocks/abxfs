@@ -1,14 +1,14 @@
 {
   "name": "@artblocks/abxfs-gateway",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "description": "ABX FS reference gateway and mirror — serve ABX FS content over HTTP and optionally pin it to IPFS, with your own filtering rules or none.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ArtBlocks/abxfs.git"
+    "url": "git+https://github.com/ArtBlocks/abxfs.git",
+    "directory": "packages/gateway"
   },
-  "homepage": "https://github.com/ArtBlocks/abxfs#readme",
+  "homepage": "https://docs.fs.abx.io",
   "bugs": "https://github.com/ArtBlocks/abxfs/issues",
   "keywords": [
     "abxfs",
@@ -46,7 +46,9 @@
   "files": [
     "dist",
     "src",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "sideEffects": false,
   "publishConfig": {

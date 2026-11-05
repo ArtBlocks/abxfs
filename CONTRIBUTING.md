@@ -68,4 +68,10 @@ pnpm check:hygiene
 
 For documentation changes, also run `pnpm --dir site build`.
 
+## Releases
+
+A change to a published package (`packages/sdk`, `cli`, `gateway`, `pinning`) carries a changeset: run
+`pnpm changeset`, pick the packages and the bump, and commit the file it writes with your change. The maintainers
+release from `main`; [`.changeset/README.md`](.changeset/README.md) describes how.
+
 By participating, you agree to follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).

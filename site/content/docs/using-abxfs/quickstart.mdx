@@ -32,16 +32,10 @@ representation of content, and anyone can build a different one.
 
 ## The CLI
 
-The `abxfs` CLI uploads, publishes, diffs, verifies and pins. It is **not published
-to npm yet**, so today it is built from [the repository](https://github.com/ArtBlocks/abxfs)
-(Node 22.13 or later; `corepack enable` provides the pinned pnpm):
+The `abxfs` CLI uploads, publishes, diffs, verifies and pins. It needs Node 22.13 or later:
 
 ```bash
-git clone https://github.com/ArtBlocks/abxfs.git && cd abxfs
-corepack enable
-pnpm install
-pnpm --filter "@artblocks/abxfs-cli..." build   # the CLI and the packages it uses
-alias abxfs="node $PWD/packages/cli/dist/index.js"
+npm install -g @artblocks/abxfs-cli
 ```
 
 Reads need nothing else; the canonical addresses are compiled in. `--chain`

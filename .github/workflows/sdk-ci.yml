@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The release workflow starts it on the Version Packages branch: a pull request opened with a workflow token starts
+  # no workflow by itself (see .changeset/README.md).
+  workflow_dispatch:
 
 # A newer push to a pull request cancels the run it supersedes; every push to main runs to the end.
 concurrency:

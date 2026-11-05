@@ -3,8 +3,9 @@
 TypeScript SDK for reading from and writing to the ABX FS contracts ([`specs/abx-fs.md`](../../specs/abx-fs.md),
 [`specs/abx-fs-orgs.md`](../../specs/abx-fs-orgs.md)). Used by `@artblocks/abxfs-cli` and `@artblocks/abxfs-gateway`.
 
-> **Not on npm yet.** Until the packages are published, build it from a checkout:
-> `pnpm install && pnpm --filter @artblocks/abxfs-sdk build`.
+```bash
+npm install @artblocks/abxfs-sdk viem    # Node 22.13 or later
+```
 
 ## Layout
 

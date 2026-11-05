@@ -110,15 +110,14 @@ The SDK ships every network's addresses, so reading needs no config file, no API
 [deployments](https://docs.fs.abx.io/docs/reference/deployments) page lists them):
 
 ```bash
-pnpm install
-pnpm --filter "@artblocks/abxfs-cli..." build   # the CLI and the packages it uses
+npm install -g @artblocks/abxfs-cli   # Node 22.13 or later
 
 # Zero config: the canonical deployments are built in.
-node packages/cli/dist/index.js read <root-cid> --path index.html --chain <network>
+abxfs read <root-cid> --path index.html --chain <network>
 
 # Projects live in orgs. Try them on a testnet first.
-node packages/cli/dist/index.js org list --address 0x… --chain <network>
-node packages/cli/dist/index.js info --project-id 0 --org 0x… --chain <network>
+abxfs org list --address 0x… --chain <network>
+abxfs info --project-id 0 --org 0x… --chain <network>
 ```
 
 `abxfs dev` (below) gives you a local chain with the content layer deployed.

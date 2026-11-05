@@ -102,6 +102,14 @@ for (const name of ["cli", "gateway", "pinning", "sdk"]) {
   if (pkg.license !== "MIT") errors.push(`${path} must declare license MIT`);
   if (pkg.repository?.url !== "git+https://github.com/ArtBlocks/abxfs.git") errors.push(`${path} must name this repository`);
   if (pkg.bugs !== "https://github.com/ArtBlocks/abxfs/issues") errors.push(`${path} must direct bugs to the public issue tracker`);
+  // npm trusted publishing checks the repository named here against the workflow that publishes.
+  if (pkg.repository?.directory !== `packages/${name}`) errors.push(`${path} must name its directory in repository.directory`);
+  if (pkg.private) errors.push(`${path} is published to npm and must not be private`);
+  if (!pkg.files?.includes("LICENSE")) errors.push(`${path} must ship its LICENSE`);
+  const license = resolve(root, `packages/${name}/LICENSE`);
+  if (!existsSync(license) || readFileSync(license, "utf8") !== readFileSync(resolve(root, "LICENSE"), "utf8")) {
+    errors.push(`packages/${name}/LICENSE must be a copy of the repository's LICENSE`);
+  }
 }
 
 const linkPattern = /\[[^\]]*\]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g;
