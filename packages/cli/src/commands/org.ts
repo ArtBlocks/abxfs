@@ -17,7 +17,7 @@ import kleur from "kleur";
 import { privateKeyToAccount } from "viem/accounts";
 import type { Address, Hex } from "viem";
 
-import { assertSafeRecipient, defaultOrgName, validateOrgDescription, validateOrgName, type Org } from "@abxfs/sdk";
+import { assertSafeRecipient, defaultOrgName, validateOrgDescription, validateOrgName, type Org } from "@artblocks/abxfs-sdk";
 
 import { createClient, createOrgClient } from "../client.js";
 import { getPrivateKey, isAddress, loadConfig, resolveChain } from "../config.js";

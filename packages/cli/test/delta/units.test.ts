@@ -5,7 +5,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UserRejectedRequestError } from "viem";
-import { TransactionTimeoutError as SdkTimeout } from "@abxfs/sdk";
+import { TransactionTimeoutError as SdkTimeout } from "@artblocks/abxfs-sdk";
 
 import { parsePositiveInt, parseTokenId } from "../../src/args.js";
 import { chainDisplayName } from "../../src/chains.js";

@@ -1,6 +1,6 @@
 /**
  * DELTA-2: the executables' start-up refusals, through the real binaries (run from `dist`, as installed: build first,
- * `pnpm --filter @abxfs/gateway build`).
+ * `pnpm --filter @artblocks/abxfs-gateway build`).
  *
  *  - EVERY flag is checked before any chain is, so a bad flag is reported as itself whether or not a chain is deployed
  *    (it used to be hidden behind "not deployed", or thrown as a stack trace).
@@ -22,7 +22,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { isCanonicallyDeployed } from "@abxfs/sdk";
+import { isCanonicallyDeployed } from "@artblocks/abxfs-sdk";
 
 const BIN = resolve(__dirname, "../../dist/bin");
 const built = existsSync(resolve(BIN, "gateway.js")) && existsSync(resolve(BIN, "mirror.js"));

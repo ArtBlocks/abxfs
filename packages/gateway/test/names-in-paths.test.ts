@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { decodeEntryName } from "@abxfs/sdk/names";
+import { decodeEntryName } from "@artblocks/abxfs-sdk/names";
 
 import { encodePathSegment, isUnsafeNameBytes, parseSubpath, segmentBytes } from "../src/addressing.js";
 import { GatewayError } from "../src/errors.js";

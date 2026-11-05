@@ -6,7 +6,7 @@
 import { brotliCompressSync } from "node:zlib";
 import { keccak256 } from "viem";
 import { beforeAll, describe, expect, it } from "vitest";
-import { CODEC_BROTLI, codecLabel, getFileCodec, hasFileCodec, rootContentLabel } from "@abxfs/sdk";
+import { CODEC_BROTLI, codecLabel, getFileCodec, hasFileCodec, rootContentLabel } from "@artblocks/abxfs-sdk";
 
 import { registerNodeCodecs } from "../../src/codecs.js";
 import { createGateway } from "../../src/handler.js";
@@ -56,7 +56,7 @@ describe("registerNodeCodecs", () => {
   });
 
   it("keeps a codec that is already registered (the gateway's streaming gzip), so call order does not matter", async () => {
-    const { CODEC_GZIP, registerWebCodecs } = await import("@abxfs/sdk");
+    const { CODEC_GZIP, registerWebCodecs } = await import("@artblocks/abxfs-sdk");
     registerWebCodecs();
     const web = getFileCodec(CODEC_GZIP);
     await registerNodeCodecs({ maxOutputBytes: 1024 });

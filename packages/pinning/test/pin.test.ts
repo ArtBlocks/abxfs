@@ -15,7 +15,7 @@ import {
   autoRegisterNodeCodecs,
   ipfsFileCid,
   type IpfsCid,
-} from "@abxfs/sdk";
+} from "@artblocks/abxfs-sdk";
 import { startAnvilWithAbxfs, type AnvilHarness } from "../../sdk/test/helpers/anvil.js";
 
 import { pinDirectory, pinRoot } from "../src/pin.js";

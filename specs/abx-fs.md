@@ -519,7 +519,7 @@ that validates roots against `FileStore` and `DirectoryStore`, and the token met
 - **Decoding:** sizes are known before reads, and the SDK and gateway cap inflated and decoded bytes. Codec ambiguity is
   closed by `outputHash`.
 - **No blocklist:** the protocol has none. What a gateway declines to serve is its own choice, made off chain
-  (`@abxfs/gateway` takes a filter).
+  (`@artblocks/abxfs-gateway` takes a filter).
 
 ## 11. Tooling and deployment
 

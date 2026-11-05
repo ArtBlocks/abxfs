@@ -2,9 +2,9 @@
  * What a request addresses, parsed ONCE and strictly.
  *
  * This file is pure string logic with no Node or chain dependency, so it can run in Edge middleware
- * (it is re-exported from `@abxfs/gateway/subjects`). Everything that needs to know "which project,
+ * (it is re-exported from `@artblocks/abxfs-gateway/subjects`). Everything that needs to know "which project,
  * org or root is this request?" derives it from the parsers here or from `parseContentHost`
- * (`@abxfs/sdk`), and from nowhere else: the audit's filter bypass was two parsers that
+ * (`@artblocks/abxfs-sdk`), and from nowhere else: the audit's filter bypass was two parsers that
  * disagreed (`/^\d+$/` deciding the subjects, `Number()` deciding what was served), so `+84532`,
  * `0x14a34` and `8.4532e4` were served and filtered as nothing.
  *
@@ -12,8 +12,8 @@
  * digits (case is folded, because checksummed addresses are what people paste), a root is `0x` and 64
  * hex digits. Anything else is rejected, never coerced.
  */
-import type { AbxfsCid } from "@abxfs/sdk";
-import { decodeEntryName } from "@abxfs/sdk/names";
+import type { AbxfsCid } from "@artblocks/abxfs-sdk";
+import { decodeEntryName } from "@artblocks/abxfs-sdk/names";
 
 import { GatewayError } from "./errors.js";
 

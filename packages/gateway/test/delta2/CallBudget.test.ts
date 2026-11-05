@@ -11,8 +11,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ readCalls: 0, locateCalls: 0, readError: null as unknown, locateError: null as unknown }));
 
-vi.mock("@abxfs/sdk", async (orig) => {
-  const real = await orig<typeof import("@abxfs/sdk")>();
+vi.mock("@artblocks/abxfs-sdk", async (orig) => {
+  const real = await orig<typeof import("@artblocks/abxfs-sdk")>();
   return {
     ...real,
     getFileInfo: async () => ({
@@ -40,7 +40,7 @@ vi.mock("@abxfs/sdk", async (orig) => {
   };
 });
 
-import { LimitExceededError, readChunkSlices } from "@abxfs/sdk";
+import { LimitExceededError, readChunkSlices } from "@artblocks/abxfs-sdk";
 
 import { createGateway } from "../../src/handler.js";
 import { __resetResolveCaches } from "../../src/resolve.js";

@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { AbxfsCid } from "@abxfs/sdk";
+import type { AbxfsCid } from "@artblocks/abxfs-sdk";
 
 import { spawnSync } from "node:child_process";
 
@@ -176,7 +176,7 @@ describe.skipIf(SHOULD_SKIP)("cli smoke", () => {
     const rootCid = joined.match(/file root:\s+(0x[0-9a-f]{64})/)![1]!;
     const { createClient } = await import("../src/client.js");
     const { loadConfig, resolveChain } = await import("../src/config.js");
-    const { ProjectKind } = await import("@abxfs/sdk");
+    const { ProjectKind } = await import("@artblocks/abxfs-sdk");
     const client = createClient(resolveChain(loadConfig()));
     expect(await client.cidKind(rootCid as AbxfsCid)).toBe(ProjectKind.File);
   }, 240_000);

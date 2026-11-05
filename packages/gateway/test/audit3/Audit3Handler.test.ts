@@ -13,8 +13,8 @@ const state = vi.hoisted(() => ({
   readCalls: 0,
 }));
 
-vi.mock("@abxfs/sdk", async (orig) => {
-  const real = await orig<typeof import("@abxfs/sdk")>();
+vi.mock("@artblocks/abxfs-sdk", async (orig) => {
+  const real = await orig<typeof import("@artblocks/abxfs-sdk")>();
   return {
     ...real,
     getFileInfo: async () => ({
@@ -44,7 +44,7 @@ vi.mock("@abxfs/sdk", async (orig) => {
   };
 });
 
-import { LimitExceededError, asAbxfsCid, rootContentLabel } from "@abxfs/sdk";
+import { LimitExceededError, asAbxfsCid, rootContentLabel } from "@artblocks/abxfs-sdk";
 import { createGateway } from "../../src/handler.js";
 import { revertError } from "../helpers.js";
 import { __resetResolveCaches } from "../../src/resolve.js";

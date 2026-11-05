@@ -1,5 +1,5 @@
 {
-  "name": "@abxfs/pinning",
+  "name": "@artblocks/abxfs-pinning",
   "version": "0.0.0",
   "private": true,
   "description": "ABX FS pinning \u2014 optionally mirror on-chain ABX FS content to IPFS. Opt-in: content lives on-chain regardless.",
@@ -43,7 +43,7 @@
     "lint": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@abxfs/sdk": "workspace:*",
+    "@artblocks/abxfs-sdk": "workspace:*",
     "viem": "^2.57.1"
   },
   "devDependencies": {

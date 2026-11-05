@@ -21,8 +21,8 @@ const state = vi.hoisted(() => ({
   dirIsDirectory: false,
 }));
 
-vi.mock("@abxfs/sdk", async (orig) => {
-  const real = await orig<typeof import("@abxfs/sdk")>();
+vi.mock("@artblocks/abxfs-sdk", async (orig) => {
+  const real = await orig<typeof import("@artblocks/abxfs-sdk")>();
   return {
     ...real,
     isOrg: async () => true,
@@ -56,7 +56,7 @@ vi.mock("@abxfs/sdk", async (orig) => {
   };
 });
 
-import { ProjectKind } from "@abxfs/sdk";
+import { ProjectKind } from "@artblocks/abxfs-sdk";
 import { createGateway } from "../src/handler.js";
 import { createGatewayServer } from "../src/server.js";
 import { rootSubject } from "../src/subjects.js";
@@ -140,7 +140,7 @@ describe("host dispatch", () => {
 
   it("serves raw content from a root host, resolved against the default chain", async () => {
     const { get } = gateway();
-    const { rootContentLabel, asAbxfsCid } = await import("@abxfs/sdk");
+    const { rootContentLabel, asAbxfsCid } = await import("@artblocks/abxfs-sdk");
     const root = asAbxfsCid(`0x${"ab".repeat(32)}`);
     const res = await get(`${rootContentLabel(84532, root)}.${BASE}`);
     // A root with no project: kind is probed on chain (the fake store says "a file"), and it is routed as a

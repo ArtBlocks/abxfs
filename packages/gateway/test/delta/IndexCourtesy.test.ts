@@ -7,8 +7,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ projectRoot: "" as string }));
-vi.mock("@abxfs/sdk", async (orig) => {
-  const real = await orig<typeof import("@abxfs/sdk")>();
+vi.mock("@artblocks/abxfs-sdk", async (orig) => {
+  const real = await orig<typeof import("@artblocks/abxfs-sdk")>();
   return {
     ...real,
     isOrg: async () => true,
@@ -16,7 +16,7 @@ vi.mock("@abxfs/sdk", async (orig) => {
   };
 });
 
-import { rootContentLabel, type AbxfsCid } from "@abxfs/sdk";
+import { rootContentLabel, type AbxfsCid } from "@artblocks/abxfs-sdk";
 
 import { createGateway } from "../../src/handler.js";
 import { denylistFilter } from "../../src/filters.js";

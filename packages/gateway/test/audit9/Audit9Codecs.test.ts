@@ -9,7 +9,7 @@
  */
 import { gzipSync } from "node:zlib";
 import { beforeEach, describe, expect, it } from "vitest";
-import { codecLabel, rootContentLabel } from "@abxfs/sdk";
+import { codecLabel, rootContentLabel } from "@artblocks/abxfs-sdk";
 
 import { createGateway } from "../../src/handler.js";
 import { __resetResolveCaches } from "../../src/resolve.js";
@@ -77,7 +77,7 @@ describe("L1: a codec this gateway cannot decode", () => {
 
   it("through a project host the refusal is cached briefly (the project can republish)", async () => {
     const { vi } = await import("vitest");
-    const sdk = await import("@abxfs/sdk");
+    const sdk = await import("@artblocks/abxfs-sdk");
     const fc = new FakeChain();
     const { cid } = fc.addFile([chunkBytes(0, 10)], "text/plain");
     const spy = vi.spyOn(sdk, "readProject");

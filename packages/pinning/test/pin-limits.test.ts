@@ -4,7 +4,7 @@
  * reads it is depth+1 directory reads.
  */
 import { describe, expect, it } from "vitest";
-import { IPFS_SHARD_THRESHOLD_BYTES, LimitExceededError, type AbxfsCid, type AbxfsClient } from "@abxfs/sdk";
+import { IPFS_SHARD_THRESHOLD_BYTES, LimitExceededError, type AbxfsCid, type AbxfsClient } from "@artblocks/abxfs-sdk";
 
 import { DirectoryTooLargeForFlatIpfsError, pinDirectory } from "../src/pin.js";
 import type { PinningProvider } from "../src/types.js";

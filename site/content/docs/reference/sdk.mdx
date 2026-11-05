@@ -1,17 +1,17 @@
 ---
 title: "SDK"
-description: "@abxfs/sdk — two main entry points, split by whether a chain is involved."
+description: "@artblocks/abxfs-sdk — two main entry points, split by whether a chain is involved."
 ---
 
 ```ts
-import { AbxfsClient }       from "@abxfs/sdk";       // reads, writes, projects — needs an RPC
-import { planUploadOffline } from "@abxfs/sdk/core";  // pure computation — needs nothing
+import { AbxfsClient }       from "@artblocks/abxfs-sdk";       // reads, writes, projects — needs an RPC
+import { planUploadOffline } from "@artblocks/abxfs-sdk/core";  // pure computation — needs nothing
 ```
 
-Two small subpaths are also exported: `@abxfs/sdk/content-host` (per-project host parsing) and
-`@abxfs/sdk/names` (directory entry names as bytes).
+Two small subpaths are also exported: `@artblocks/abxfs-sdk/content-host` (per-project host parsing) and
+`@artblocks/abxfs-sdk/names` (directory entry names as bytes).
 
-## `@abxfs/sdk/core`
+## `@artblocks/abxfs-sdk/core`
 
 Everything about the ABX FS *format*: chunking, ABX FS and IPFS CID derivation,
 file codecs and FastLZ, validation, gas arithmetic, and the canonical addresses.
@@ -22,7 +22,7 @@ It is not a reimplementation for offline use — the real uploader runs this sam
 code, so a plan is the upload's own arithmetic rather than an estimate of it.
 
 ```ts
-import { planUploadOffline, planBackendsFor, requireCanonicalAddresses } from "@abxfs/sdk/core";
+import { planUploadOffline, planBackendsFor, requireCanonicalAddresses } from "@artblocks/abxfs-sdk/core";
 import { sepolia as chain } from "viem/chains"; // or the production or test network of your choice
 
 const plan = await planUploadOffline(
@@ -72,12 +72,12 @@ the upload used, and changing either is a new content address rather than a
 re-encoding of the same one. Read `plan.storedBytes` rather than assuming
 compression is free; the planner only uses FastLZ for chunks it shrinks.
 
-## `@abxfs/sdk`
+## `@artblocks/abxfs-sdk`
 
 Everything above, plus reads, writes, projects, and history.
 
 ```ts
-import { AbxfsClient, requireCanonicalAddresses } from "@abxfs/sdk";
+import { AbxfsClient, requireCanonicalAddresses } from "@artblocks/abxfs-sdk";
 import { createPublicClient, http } from "viem";
 import { sepolia as chain } from "viem/chains"; // or the production or test network of your choice
 
@@ -195,7 +195,7 @@ about 100,000 bytes from one.
 **Entry names are bytes.** On chain a directory entry name is 1 to 255 bytes, not necessarily UTF-8. The
 SDK reads each name as exact bytes (`DirectoryEntry.nameBytes`) and gives a lossless text form in `name`:
 the UTF-8 text, with `\xHH` for every byte that is not part of a valid UTF-8 sequence (`decodeEntryName`,
-`encodeEntryName`, `entryNameBytes`, `@abxfs/sdk/names`). Packing, CIDs and IPFS derivation use the bytes.
+`encodeEntryName`, `entryNameBytes`, `@artblocks/abxfs-sdk/names`). Packing, CIDs and IPFS derivation use the bytes.
 Names a person types or a file system supplies are literal text and may not contain a backslash. Text
 holding a lone UTF-16 surrogate (`isWellFormedText` is false) is no name's spelling: UTF-8 cannot encode
 it, so `encodeEntryName` and `assertLiteralPath` refuse it and a lookup with it finds nothing.
@@ -250,7 +250,7 @@ at the next page, not a shorter list. Pull the walk through promptly, or start a
 ## Addresses
 
 ```ts
-import { CANONICAL_DEPLOYMENTS, requireCanonicalAddresses } from "@abxfs/sdk/core";
+import { CANONICAL_DEPLOYMENTS, requireCanonicalAddresses } from "@artblocks/abxfs-sdk/core";
 ```
 
 Baked in rather than configured: they are public deployment artifacts, and the

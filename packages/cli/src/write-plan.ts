@@ -9,7 +9,7 @@
  */
 import kleur from "kleur";
 import { formatEther, formatGwei, type Address, type Hex } from "viem";
-import { GAS_ESTIMATES, gasScheduleForChain, iOrgFactoryAbi, type AbxfsClient } from "@abxfs/sdk";
+import { GAS_ESTIMATES, gasScheduleForChain, iOrgFactoryAbi, type AbxfsClient } from "@artblocks/abxfs-sdk";
 
 import { chainDisplayName, isArbitrumChain, isOpStackChain, maxFeeCapWei } from "./chains.js";
 import { confirmTyped } from "./prompt.js";

@@ -2,7 +2,7 @@
  * Unit tests for the Pinata provider (v3 Files API) with a stubbed fetch.
  */
 import { describe, expect, it, vi } from "vitest";
-import type { IpfsCid } from "@abxfs/sdk";
+import type { IpfsCid } from "@artblocks/abxfs-sdk";
 
 import { pinataPinningProvider } from "../../src/providers/pinata.js";
 

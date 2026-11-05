@@ -17,7 +17,7 @@ import {
   sortDirectoryEntries,
   type AbxfsCid,
   type DirectoryEntry,
-} from "@abxfs/sdk";
+} from "@artblocks/abxfs-sdk";
 
 import { revertError } from "./helpers.js";
 

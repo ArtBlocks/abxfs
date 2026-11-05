@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import kleur from "kleur";
 
-import { isSafeExternalUrl, isUsableViewUrl, projectKindName } from "@abxfs/sdk";
+import { isSafeExternalUrl, isUsableViewUrl, projectKindName } from "@artblocks/abxfs-sdk";
 
 import { parsePositiveInt, parseTokenId } from "../args.js";
 import { createOrgClient } from "../client.js";

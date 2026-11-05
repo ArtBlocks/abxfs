@@ -16,7 +16,7 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TransactionTimeoutError, type AbxfsCid } from "@abxfs/sdk";
+import { TransactionTimeoutError, type AbxfsCid } from "@artblocks/abxfs-sdk";
 
 import type { WritePlan } from "../../src/write-plan.js";
 
@@ -30,8 +30,8 @@ vi.mock("../../src/client.js", () => ({
   createClient: () => h.client,
   createOrgClient: async () => h.client,
 }));
-vi.mock("@abxfs/sdk", async (orig) => ({
-  ...(await orig<typeof import("@abxfs/sdk")>()),
+vi.mock("@artblocks/abxfs-sdk", async (orig) => ({
+  ...(await orig<typeof import("@artblocks/abxfs-sdk")>()),
   readOrgsAdministeredAcrossGenerations: async () => h.administered,
 }));
 vi.mock("../../src/write-plan.js", async (orig) => {

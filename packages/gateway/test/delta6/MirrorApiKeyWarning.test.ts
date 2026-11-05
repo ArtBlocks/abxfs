@@ -24,8 +24,8 @@ beforeEach(() => {
   vi.spyOn(process, "exit").mockImplementation(((code: number) => {
     throw new Error(`exit ${code}`);
   }) as never);
-  vi.doMock("@abxfs/sdk", async (orig) => {
-    const sdk = (await orig()) as typeof import("@abxfs/sdk");
+  vi.doMock("@artblocks/abxfs-sdk", async (orig) => {
+    const sdk = (await orig()) as typeof import("@artblocks/abxfs-sdk");
     const deployments = Object.fromEntries(Object.values(sdk.CANONICAL_DEPLOYMENTS).map((d) => [d.chainId, { ...d, addresses: CONTENT }]));
     return { ...sdk, CANONICAL_DEPLOYMENTS: deployments, resolveCanonicalDeployment: (id: number) => deployments[id] };
   });
@@ -33,7 +33,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   process.argv = argv;
-  vi.doUnmock("@abxfs/sdk");
+  vi.doUnmock("@artblocks/abxfs-sdk");
   vi.doUnmock("../../src/mirror.js");
   vi.restoreAllMocks();
   vi.unstubAllEnvs();

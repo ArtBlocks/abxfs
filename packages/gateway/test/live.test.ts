@@ -6,14 +6,14 @@
  * two-file site. It is testnet, public, and was made for this.
  */
 import { describe, expect, it } from "vitest";
-import type { IpfsCid } from "@abxfs/sdk";
+import type { IpfsCid } from "@artblocks/abxfs-sdk";
 
 import { chainsFromEnv } from "../src/config.js";
 import { denylistFilter } from "../src/filters.js";
 import { createGateway } from "../src/handler.js";
 import { memoryCursor, runMirrorGenerations } from "../src/mirror.js";
 import { orgSubject } from "../src/subjects.js";
-import { contentLabel, rootContentLabel, asAbxfsCid } from "@abxfs/sdk";
+import { contentLabel, rootContentLabel, asAbxfsCid } from "@artblocks/abxfs-sdk";
 
 const rpc = process.env["ABXFS_RPC_URL_84532"];
 const ORG = "0x450ddacfe7ccba64abda147ffd5a888626982242";

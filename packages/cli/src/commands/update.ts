@@ -10,7 +10,7 @@ import {
   projectKindName,
   assertValidPublishInputs,
   type FileDescriptor,
-} from "@abxfs/sdk";
+} from "@artblocks/abxfs-sdk";
 
 import { parsePositiveInt, parseTokenId } from "../args.js";
 import { createOrgClient } from "../client.js";

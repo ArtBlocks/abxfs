@@ -4,7 +4,7 @@
  * sandboxed now, like an active type; nothing else changes.
  */
 import { describe, expect, it } from "vitest";
-import { rootContentLabel } from "@abxfs/sdk";
+import { rootContentLabel } from "@artblocks/abxfs-sdk";
 
 import { createGateway } from "../../src/handler.js";
 import { isSniffedEssence, servedType } from "../../src/mime.js";

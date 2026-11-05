@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { IpfsCid } from "@abxfs/sdk";
+import type { IpfsCid } from "@artblocks/abxfs-sdk";
 
 import { UNDICI_GLOBAL_DISPATCHER, UNDICI_GLOBAL_DISPATCHER_2, httpClient, jsonOf, undiciGlobalDispatcher, undiciRuntime } from "../src/http.js";
 import { localPinningProvider } from "../src/providers/local.js";

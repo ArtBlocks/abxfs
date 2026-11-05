@@ -10,7 +10,7 @@
  * viem wraps every failure in a chain of causes (`ContractFunctionExecutionError` > `CallExecutionError` >
  * `ExecutionRevertedError` / `HttpRequestError` / `TimeoutError` ...), so classification walks the chain.
  */
-import { isOrg, orgGenerations, type ContractAddresses, type OrgGeneration } from "@abxfs/sdk";
+import { isOrg, orgGenerations, type ContractAddresses, type OrgGeneration } from "@artblocks/abxfs-sdk";
 import type { Address, PublicClient } from "viem";
 
 import { GatewayError } from "./errors.js";

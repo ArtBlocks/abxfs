@@ -360,7 +360,7 @@ layer works on its own.
   org's name, and that every state-changing selector on a real org is closed to every actor. The only calls that
   succeed are caller-scoped no-ops (`approve`, `setApprovalForAll`, an empty `multicall`, an ownership-handover request
   and cancel), and the handover cannot complete because `completeOwnershipHandover` is owner-only.
-- `test/fork/Battery.sol` is generated from ABX's own ABI (`pnpm --filter @abxfs/sdk gen:battery`), and a test fails if
+- `test/fork/Battery.sol` is generated from ABX's own ABI (`pnpm --filter @artblocks/abxfs-sdk gen:battery`), and a test fails if
   it goes stale, so a mutator ABX adds later shows up in a diff instead of slipping past a hand-kept list.
 - `test/DeployFactoryPin.t.sol` pins the factory's, `OrgMeta`'s and the lens's creation-code hashes, and checks the
   deploy script's `predict` against its `pinned()` addresses (`OrgMeta`, the factory, its five components and the

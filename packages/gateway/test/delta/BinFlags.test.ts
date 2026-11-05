@@ -1,7 +1,7 @@
 /**
  * DELTA AUDIT: the `bin` flags the fix round added (`--root-max-age` on the gateway, `--max-entries-per-root` and the
  * checked `--poll-seconds` on the mirror), through the real executables. They run from `dist`, as installed: build
- * first (`pnpm --filter @abxfs/gateway build`; CI builds every package before these tests). The parsers themselves
+ * first (`pnpm --filter @artblocks/abxfs-gateway build`; CI builds every package before these tests). The parsers themselves
  * are tested directly as well, so a missing `dist` skips only the wiring.
  */
 import { spawn, spawnSync } from "node:child_process";

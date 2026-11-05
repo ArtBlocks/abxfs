@@ -6,7 +6,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TransactionTimeoutError } from "@abxfs/sdk";
+import { TransactionTimeoutError } from "@artblocks/abxfs-sdk";
 import type { Hex } from "viem";
 
 import { buildProgram, run } from "../../src/index.js";
@@ -15,7 +15,7 @@ import { CliRefusal, formatCliError } from "../../src/redact.js";
 import { collapseHex, ipfsCidText, shortTxHash, txHash } from "../../src/text.js";
 
 // The registry has no addresses for the production chains; these tests need a canonical address book.
-vi.mock("@abxfs/sdk", async (orig) => (await import("../../../sdk/test/helpers/deployed-registry.js")).withDeployedRegistry(await orig()));
+vi.mock("@artblocks/abxfs-sdk", async (orig) => (await import("../../../sdk/test/helpers/deployed-registry.js")).withDeployedRegistry(await orig()));
 
 let dir: string;
 let err: string[];

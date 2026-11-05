@@ -23,7 +23,7 @@ import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { Command, Option } from "commander";
 import kleur from "kleur";
 
-import { autoRegisterNodeCodecs, asAbxfsCid, CodecNotSupportedOnChainError, type AbxfsCid, type AbxfsClient } from "@abxfs/sdk";
+import { autoRegisterNodeCodecs, asAbxfsCid, CodecNotSupportedOnChainError, type AbxfsCid, type AbxfsClient } from "@artblocks/abxfs-sdk";
 import {
   deriveCar,
   localPinningProvider,
@@ -31,7 +31,7 @@ import {
   pinRoot,
   type PinnedFile,
   type PinningProvider,
-} from "@abxfs/pinning";
+} from "@artblocks/abxfs-pinning";
 
 import { parsePositiveInt, parseTokenId } from "../args.js";
 import { createClient, createOrgClient } from "../client.js";

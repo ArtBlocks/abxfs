@@ -14,7 +14,7 @@ import {
   CANONICAL_DEPLOYMENTS,
   type CanonicalDeployment,
   type ContractAddresses,
-} from "@abxfs/sdk";
+} from "@artblocks/abxfs-sdk";
 
 import { chainCheckedFetch, strictBatchFetch } from "./upstream.js";
 import type { GatewayChain } from "./types.js";

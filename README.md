@@ -95,8 +95,8 @@ publishes.
 | `packages/contracts-projects` | The org layer: `OrgFactory`, `OrgMeta`, `OrgMinter`, `ProjectHook` (integrity, history, tags), `ProjectEnumeration`, `ProjectCard` (the token's on-chain SVG `image`), `ProjectTraits`, `ProjectLinks`, `Lens`. |
 | `packages/protobuf-sol` | Solidity protobuf, dag-pb, UnixFS, CIDv1, base32. |
 | `packages/contracts-companion` | `IpfsCidResolver`: view-only IPFS CIDv1 derivation from content on chain. |
-| `packages/sdk` | TypeScript SDK (`@abxfs/sdk`). |
-| `packages/cli` | The `abxfs` CLI (`@abxfs/cli`). |
+| `packages/sdk` | TypeScript SDK (`@artblocks/abxfs-sdk`). |
+| `packages/cli` | The `abxfs` CLI (`@artblocks/abxfs-cli`). |
 | `packages/gateway` | The gateway and IPFS mirror (`abxfs-gateway`, `abxfs-mirror`). |
 | `packages/pinning` | Opt-in IPFS pinning, for anyone who wants to pin. |
 | `site` | The documentation site, published at [docs.fs.abx.io](https://docs.fs.abx.io). |
@@ -111,7 +111,7 @@ The SDK ships every network's addresses, so reading needs no config file, no API
 
 ```bash
 pnpm install
-pnpm --filter "@abxfs/cli..." build   # the CLI and the packages it uses
+pnpm --filter "@artblocks/abxfs-cli..." build   # the CLI and the packages it uses
 
 # Zero config: the canonical deployments are built in.
 node packages/cli/dist/index.js read <root-cid> --path index.html --chain <network>

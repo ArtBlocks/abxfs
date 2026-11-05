@@ -33,8 +33,8 @@ import {
   readGlobalPublishes,
   type OrgGeneration,
   type OrgPublish,
-} from "@abxfs/sdk";
-import { pinDirectory, pinFile, type PinningProvider } from "@abxfs/pinning";
+} from "@artblocks/abxfs-sdk";
+import { pinDirectory, pinFile, type PinningProvider } from "@artblocks/abxfs-pinning";
 
 import { orgSubject, projectSubject, rootSubject } from "./subjects.js";
 import type { Filter, GatewayChain } from "./types.js";
@@ -498,7 +498,7 @@ async function handleEntry(args: {
         log(`skip (${err.message}) ${label}`);
         return "skipped";
       }
-      // `@abxfs/pinning` refuses a directory IPFS would shard (`DirectoryTooLargeForFlatIpfsError`, a
+      // `@artblocks/abxfs-pinning` refuses a directory IPFS would shard (`DirectoryTooLargeForFlatIpfsError`, a
       // `DirectoryNeedsShardingError`); that is as permanent as a root over the caps here.
       if (
         err instanceof RootTooLargeError ||

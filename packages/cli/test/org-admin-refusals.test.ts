@@ -4,7 +4,7 @@
  * that is not the admin (`NotAdmin`). It used to print viem's whole revert dump (seen on Base Sepolia, 2026-10-31).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Org } from "@abxfs/sdk";
+import type { Org } from "@artblocks/abxfs-sdk";
 import type { Address } from "viem";
 
 const h = vi.hoisted(() => ({ sent: [] as string[], record: null as unknown, readFails: false }));

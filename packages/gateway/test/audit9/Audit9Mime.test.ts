@@ -7,7 +7,7 @@
  * `application/octet-stream` with the sandbox.
  */
 import { beforeEach, describe, expect, it } from "vitest";
-import { rootContentLabel } from "@abxfs/sdk";
+import { rootContentLabel } from "@artblocks/abxfs-sdk";
 
 import { createGateway } from "../../src/handler.js";
 import { isActiveEssence, servedType, singleMimeEssence } from "../../src/mime.js";

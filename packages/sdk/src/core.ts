@@ -1,5 +1,5 @@
 /**
- * `@abxfs/sdk/core` — everything about the ABX FS *format*, with no chain attached.
+ * `@artblocks/abxfs-sdk/core` — everything about the ABX FS *format*, with no chain attached.
  *
  * Import this instead of the root entry point when you want to compute rather than transact. Nothing
  * here opens an RPC connection, reads a contract, or needs a wallet, so it runs in a browser, a

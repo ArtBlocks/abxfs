@@ -9,7 +9,7 @@ import { resolve } from "node:path";
 import { createServer, type Server } from "node:http";
 import { spawnSync } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { AbxfsCid } from "@abxfs/sdk";
+import type { AbxfsCid } from "@artblocks/abxfs-sdk";
 
 import { startAnvilWithAbxfs, type AnvilHarness } from "../../sdk/test/helpers/anvil.js";
 import { reachable, readCar } from "../../pinning/test/helpers/car-reader.js";

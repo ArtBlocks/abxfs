@@ -5,7 +5,7 @@
  * Only what pinning needs: one root, blocks already hashed by the caller. Nothing here re-encodes or re-hashes a block,
  * so the archive carries exactly the DAG the caller derived.
  */
-import type { IpfsBlock } from "@abxfs/sdk";
+import type { IpfsBlock } from "@artblocks/abxfs-sdk";
 
 /** The media type of a CAR (CARv1 and CARv2 alike). */
 export const CAR_MEDIA_TYPE = "application/vnd.ipld.car";

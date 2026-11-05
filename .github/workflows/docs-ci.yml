@@ -33,13 +33,13 @@ jobs:
       # Only the docs package and what it depends on. The site imports nothing
       # from the workspace, so contracts and Foundry are not needed here.
       - name: pnpm install
-        run: pnpm install --frozen-lockfile --filter @abxfs/docs...
+        run: pnpm install --frozen-lockfile --filter @artblocks/abxfs-docs...
 
       - name: Typecheck
-        run: pnpm --filter @abxfs/docs typecheck
+        run: pnpm --filter @artblocks/abxfs-docs typecheck
 
       # `next build` is the real gate: it resolves every MDX file, so bad
       # frontmatter, an unknown lucide icon, or an unresolvable import fails
       # here rather than on Vercel after merge.
       - name: Build
-        run: pnpm --filter @abxfs/docs build
+        run: pnpm --filter @artblocks/abxfs-docs build

@@ -18,8 +18,8 @@ const FILE = `0x31${"00".repeat(31)}`;
 const ROOT = `0x32${"ff".repeat(31)}`;
 const dirCid = (i: number) => `0x32${i.toString(16).padStart(62, "0")}`;
 
-vi.mock("@abxfs/sdk", async (orig) => {
-  const real = await orig<typeof import("@abxfs/sdk")>();
+vi.mock("@artblocks/abxfs-sdk", async (orig) => {
+  const real = await orig<typeof import("@artblocks/abxfs-sdk")>();
   return {
     ...real,
     fileChunkCount: async () => 1,
@@ -35,7 +35,7 @@ vi.mock("@abxfs/sdk", async (orig) => {
   };
 });
 
-import { ProjectKind } from "@abxfs/sdk";
+import { ProjectKind } from "@artblocks/abxfs-sdk";
 
 import { DEFAULT_MAX_ENTRIES_PER_ROOT, RootTooLargeError, assessRoot, memoryCursor, parsePollSeconds, runMirror } from "../../src/mirror.js";
 

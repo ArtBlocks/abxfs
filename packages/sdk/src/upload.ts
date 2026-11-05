@@ -306,7 +306,7 @@ export async function buildDirectoryTree(
 
 /**
  * Compute the expected CIDs for an upload without touching the chain: a thin wrapper around {@link planUploadOffline}
- * that takes the backends from an address book. Pure; also importable from `@abxfs/sdk/core`.
+ * that takes the backends from an address book. Pure; also importable from `@artblocks/abxfs-sdk/core`.
  */
 export async function planUpload(
   files: FileDescriptor[],

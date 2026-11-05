@@ -13,8 +13,8 @@ const dirs = vi.hoisted(() => ({
   behaviour: new Map<string, "limit" | "boom" | { entries: number }>(),
 }));
 
-vi.mock("@abxfs/sdk", async (orig) => {
-  const real = await orig<typeof import("@abxfs/sdk")>();
+vi.mock("@artblocks/abxfs-sdk", async (orig) => {
+  const real = await orig<typeof import("@artblocks/abxfs-sdk")>();
   return {
     ...real,
     fileChunkCount: async () => 1,
@@ -29,7 +29,7 @@ vi.mock("@abxfs/sdk", async (orig) => {
   };
 });
 
-import { DirectoryNeedsShardingError, ProjectKind, type AbxfsCid } from "@abxfs/sdk";
+import { DirectoryNeedsShardingError, ProjectKind, type AbxfsCid } from "@artblocks/abxfs-sdk";
 
 import { RootTooLargeError, assessRoot, memoryCursor, parsePositiveFlag, runMirror } from "../../src/mirror.js";
 import type { GatewayChain } from "../../src/types.js";
@@ -86,7 +86,7 @@ describe("mirror: a root IPFS would shard is skipped, not retried", () => {
 
   for (const [name, make] of [
     ["DirectoryNeedsShardingError", () => new DirectoryNeedsShardingError(D(9), 300_000)],
-    ["DirectoryTooLargeForFlatIpfsError (by name, from @abxfs/pinning)", () => Object.assign(new Error("needs a HAMT"), { name: "DirectoryTooLargeForFlatIpfsError" })],
+    ["DirectoryTooLargeForFlatIpfsError (by name, from @artblocks/abxfs-pinning)", () => Object.assign(new Error("needs a HAMT"), { name: "DirectoryTooLargeForFlatIpfsError" })],
   ] as const) {
     it(name, async () => {
       const logs: string[] = [];

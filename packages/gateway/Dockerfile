@@ -12,10 +12,10 @@ FROM node:22-slim AS build
 RUN corepack enable
 WORKDIR /repo
 COPY . .
-RUN pnpm install --frozen-lockfile --filter "@abxfs/gateway..."
-RUN pnpm --filter "@abxfs/gateway..." build
+RUN pnpm install --frozen-lockfile --filter "@artblocks/abxfs-gateway..."
+RUN pnpm --filter "@artblocks/abxfs-gateway..." build
 # `--legacy`: pnpm 10 otherwise requires `inject-workspace-packages`, which this repo does not set.
-RUN pnpm --filter @abxfs/gateway deploy --legacy --prod /out
+RUN pnpm --filter @artblocks/abxfs-gateway deploy --legacy --prod /out
 
 FROM node:22-slim
 WORKDIR /app

@@ -1,5 +1,5 @@
 import type { PublicClient } from "viem";
-import type { ContractAddresses } from "@abxfs/sdk";
+import type { ContractAddresses } from "@artblocks/abxfs-sdk";
 
 
 /** One chain a gateway can read from: its contracts, and a client that reaches it. */

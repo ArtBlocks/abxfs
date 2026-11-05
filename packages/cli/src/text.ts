@@ -5,7 +5,7 @@
  * can clear the screen, rewrite earlier output or set the clipboard. Every `console.log` of such a
  * value goes through `safe()`.
  */
-import { stripTerminalControl } from "@abxfs/sdk";
+import { stripTerminalControl } from "@artblocks/abxfs-sdk";
 
 export function safe(value: unknown): string {
   return stripTerminalControl(value);

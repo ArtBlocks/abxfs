@@ -314,7 +314,7 @@ export class DirectoryNeedsShardingError extends Error {
  * (target node + every descendant block), per the dag-pb spec — not just the child's own
  * block size. For a file, use {@link ipfsFileCidWithSize}.tsize. For a sub-directory,
  * recurse and sum the sub-directory's encoded length plus all of its child Tsizes, as
- * `verifyLocalIpfsCid` and `@abxfs/pinning` do for on-chain trees. Any other value (0, say)
+ * `verifyLocalIpfsCid` and `@artblocks/abxfs-pinning` do for on-chain trees. Any other value (0, say)
  * produces CIDs that do NOT match Kubo for a nested directory.
  */
 export async function ipfsDirectoryCid(

@@ -1,4 +1,4 @@
-# @abxfs/gateway
+# @artblocks/abxfs-gateway
 
 A reference **gateway** and **mirror** for ABX FS. Run your own, with whatever filtering rules you want
 — or none.
@@ -16,7 +16,7 @@ ABXFS_RPC_URL_<chainId>=https://… abxfs-gateway --content-domain content.examp
 ```
 
 > **Not on npm yet.** Until the packages are published, run it from a checkout:
-> `pnpm install && pnpm --filter "@abxfs/gateway..." build && node packages/gateway/dist/bin/gateway.js --help`.
+> `pnpm install && pnpm --filter "@artblocks/abxfs-gateway..." build && node packages/gateway/dist/bin/gateway.js --help`.
 > Everywhere below, `abxfs-gateway` and `abxfs-mirror` mean `node packages/gateway/dist/bin/gateway.js`
 > and `…/mirror.js`.
 
@@ -46,7 +46,7 @@ GET /healthz                                            on any host that is not 
 base32, and the whole label is at most 63 characters, so one wildcard certificate covers every project. Every URL names
 its chain, a raw root's too: the same bytes have the same root on every chain, so the chain says where to read them,
 and that chain is the only one asked. Parsing is strict and
-canonical (it is `parseContentHost` in `@abxfs/sdk`): `+84532`, `0x14a34`, leading
+canonical (it is `parseContentHost` in `@artblocks/abxfs-sdk`): `+84532`, `0x14a34`, leading
 zeros, a `0x` prefix on the address, or a nested label are all a 404. Hostnames are case-insensitive, so the `Host`
 is lowercased before it is parsed: an uppercase spelling is the same project, with the same filter subjects.
 The request path is the path **inside** the project. Tags are not addressable by host (a tag may hold
@@ -182,7 +182,7 @@ it serves. A filter you write must therefore be **idempotent** and side-effect f
 As a library, a filter is a function:
 
 ```ts
-import { createGateway, chainsFromEnv, allOf, fileFilter } from "@abxfs/gateway";
+import { createGateway, chainsFromEnv, allOf, fileFilter } from "@artblocks/abxfs-gateway";
 
 const { chains } = chainsFromEnv();
 const gateway = createGateway({
@@ -282,7 +282,7 @@ others carry on, and the process exits `1` at the end. A factory with no lens in
 The stores keep no enumeration of those, so mirroring *literally every byte* means watching the stores
 directly. This mirrors everything anyone has *published*.
 
-Providers: `local` (Kubo's HTTP API) and `pinata` from `@abxfs/pinning`, or implement `PinningProvider`.
+Providers: `local` (Kubo's HTTP API) and `pinata` from `@artblocks/abxfs-pinning`, or implement `PinningProvider`.
 
 ## Docker
 

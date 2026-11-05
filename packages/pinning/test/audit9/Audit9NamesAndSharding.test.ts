@@ -13,13 +13,13 @@ import {
   ipfsFileCidWithSize,
   type AbxfsCid,
   type AbxfsClient,
-} from "@abxfs/sdk";
+} from "@artblocks/abxfs-sdk";
 
 // Every file in these trees is the same small one: the tests are about directory blocks.
 const LEAF = new TextEncoder().encode("leaf");
 let fileReads = 0;
-vi.mock("@abxfs/sdk", async (orig) => ({
-  ...(await orig<typeof import("@abxfs/sdk")>()),
+vi.mock("@artblocks/abxfs-sdk", async (orig) => ({
+  ...(await orig<typeof import("@artblocks/abxfs-sdk")>()),
   readFile: async () => {
     fileReads++;
     return { bytes: new TextEncoder().encode("leaf") };

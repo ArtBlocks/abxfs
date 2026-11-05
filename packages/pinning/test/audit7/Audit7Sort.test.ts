@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { ipfsDirectoryCid, ipfsFileCidWithSize, type AbxfsCid, type AbxfsClient } from "@abxfs/sdk";
+import { ipfsDirectoryCid, ipfsFileCidWithSize, type AbxfsCid, type AbxfsClient } from "@artblocks/abxfs-sdk";
 
 // Every file in this tree is the same small one; the test is about link ORDER.
 const LEAF = new TextEncoder().encode("leaf");
-vi.mock("@abxfs/sdk", async (orig) => ({
-  ...(await orig<typeof import("@abxfs/sdk")>()),
+vi.mock("@artblocks/abxfs-sdk", async (orig) => ({
+  ...(await orig<typeof import("@artblocks/abxfs-sdk")>()),
   readFile: async () => ({ bytes: new TextEncoder().encode("leaf") }),
 }));
 

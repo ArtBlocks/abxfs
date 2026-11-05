@@ -3,7 +3,7 @@
  * block would be too big is skipped by name (not derived wrong).
  */
 import { describe, expect, it } from "vitest";
-import { ProjectKind, type DirectoryEntry } from "@abxfs/sdk";
+import { ProjectKind, type DirectoryEntry } from "@artblocks/abxfs-sdk";
 
 import { assessRoot, RootTooLargeError } from "../src/mirror.js";
 import { FakeChain } from "./fake-chain.js";

@@ -4,7 +4,7 @@
  * a path is found with a lookup, never by listing; a range reads the chunks it needs.
  */
 import { beforeEach, describe, expect, it } from "vitest";
-import { asAbxfsCid, rootContentLabel, type AbxfsCid, type DirectoryEntry } from "@abxfs/sdk";
+import { asAbxfsCid, rootContentLabel, type AbxfsCid, type DirectoryEntry } from "@artblocks/abxfs-sdk";
 
 import { createGateway, rangeSpecOf } from "../src/handler.js";
 import { __resetResolveCaches, chunkBudget } from "../src/resolve.js";
@@ -321,7 +321,7 @@ describe("a node that is missing", () => {
     // The second chunk's backend stops serving it (its record stays).
     const { keccak256 } = await import("viem");
     const h = keccak256(b);
-    const id = (await import("@abxfs/sdk")).chunkId("0x00000000000000000000000000000000000000b1", h, h, b.length);
+    const id = (await import("@artblocks/abxfs-sdk")).chunkId("0x00000000000000000000000000000000000000b1", h, h, b.length);
     chain.dropChunk(id);
     const res = await gateway()(cid);
     expect(res.status).toBe(502);
