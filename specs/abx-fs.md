@@ -487,6 +487,10 @@ Cost and limits:
 **Pinning** uploads exactly the derived blocks (raw leaves, file nodes and directory nodes, empty directories included)
 as a CAR, so the pinned root is the derived root by construction for any tree.
 
+The method is published as a defensive publication,
+[On-Chain Reconstruction of IPFS Content Identifiers from EVM-Resident Content-Addressed Data](https://www.tdcommons.org/dpubs_series/11507/)
+(Technical Disclosure Commons 11507), which names ABX FS by its working name, BAMFS.
+
 ## 9. Projects and orgs
 
 A project is an ABX token in an org, publishing a root from §5 through the `abxfs.cid` param. The org layer, the hook
