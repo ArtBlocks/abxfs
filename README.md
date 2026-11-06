@@ -87,6 +87,8 @@ publishes.
   - [Disclosure 11507](https://www.tdcommons.org/dpubs_series/11507/)
   - [Disclosure 11508](https://www.tdcommons.org/dpubs_series/11508/)
 
+  They call the project by its working name, BAMFS, and cite `github.com/ArtBlocks/bamfs`, which now points here.
+
 ## Layout
 
 | Package | Description |
