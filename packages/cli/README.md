@@ -19,8 +19,8 @@ refused when selected (give it an `rpcUrl` or `ABXFS_RPC_URL_<chainId>`; the uns
 it), and never stops commands on other chains.
 
 **Every paid write shows its plan and asks first.** Before the first transaction the CLI prints the chain, the org,
-how many transactions, the estimated gas, the most it can cost at the fee ceiling, and what becomes permanent; on a
-terminal you type `yes`. Without a terminal it refuses unless you pass `--yes`. `--dry-run` needs neither. The max
+how many transactions, the estimated gas, the likely cost at the current gas price, the most it can cost at the fee
+ceiling, and what becomes permanent; on a terminal you type `yes`. Without a terminal it refuses unless you pass `--yes`. `--dry-run` needs neither. The max
 cost is gas only: on an OP-stack rollup each transaction also pays an L1 data fee for its calldata, which it does
 not include (the plan says so there).
 
@@ -123,8 +123,8 @@ Everything uploaded is **public and permanent**, and what a project or org looks
   (`privateKey`, `mnemonic`, `apiKey`, …) is reported loudly and never used. Nothing a config file says reaches the
   terminal with escape sequences in it.
 - **Confirmation.** `upload`, `update`, `tag set` / `tag remove`, `view`, `transfer` and every `org` write print the
-  chain, the org, the number of transactions, the estimated gas, the maximum cost at the fee ceiling and what becomes
-  permanent, refuse an account with no ETH, and then ask you to type `yes`. Without a terminal they refuse unless
+  chain, the org, the number of transactions, the estimated gas, the likely cost at the current gas price, the maximum
+  cost at the fee ceiling and what becomes permanent, refuse an account with no ETH, and then ask you to type `yes`. Without a terminal they refuse unless
   `--yes` is passed. `upload --dry-run` sends nothing and asks nothing.
 - **Fee ceiling.** Every write caps `maxFeePerGas` and `maxPriorityFeePerGas` at `ABXFS_MAX_FEE_GWEI` (default 50
   gwei; 200 on Ethereum L1 and its testnets) and refuses, signing nothing, if the node quotes above it. The check

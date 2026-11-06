@@ -337,6 +337,26 @@ describe("declined, empty and error paths", () => {
     expect(printed()).toMatch(/no --name or --project-id — content is stored and addressable by CID/);
   });
 
+  it("upload: content only prints where the root is served, from the gateway base frozen in OrgMeta", async () => {
+    h.client = uploadClient({
+      addresses: { ...CONTENT_ADDRESSES, orgMeta: "0x00000000000000000000000000000000000000e3" },
+      publicClient: {
+        getBalance: async () => 10n ** 18n,
+        readContract: async (r: { functionName: string }) => (expect(r.functionName).toBe("gatewayBase"), "https://gw.example"),
+      },
+    });
+    await run(uploadCommand(), [site(), "--yes"]);
+    expect(printed()).toMatch(/served at: https:\/\/gw\.example\/g\/cid\/\d+\/0x[0-9a-f]{64}\//);
+  });
+
+  it("the plan gives the likely cost at the node's gas price beside the ceiling, and leaves it out when there is none", () => {
+    const plan = { action: "x", chainId: 84532, steps: [{ what: "a write", txs: 1, gas: 1_000_000 }], permanent: [] };
+    const priced = describeWritePlan(plan, 1_000_000n).join("\n");
+    expect(priced).toMatch(/est\. cost:\s+~0\.000001 ETH .*at the current gas price, 0\.001 gwei/);
+    expect(priced).toMatch(/max cost:\s+0\.05 ETH .*fee ceiling/);
+    expect(describeWritePlan(plan).join("\n")).not.toMatch(/est\. cost/);
+  });
+
   it("update: declined on a terminal sends nothing; a folder with nothing in it is refused", async () => {
     onTty(false);
     h.orgClient = orgClient();

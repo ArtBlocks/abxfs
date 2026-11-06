@@ -120,7 +120,8 @@ function orgClient(extra: Record<string, unknown> = {}) {
     mintProject: async (o?: { onSent?: (h: Hex) => void }) => (h.calls.push("mintProject"), o?.onSent?.(TX as Hex), { tokenId: 7n, txHash: TX }),
     recoverMint: rec("recoverMint", { state: "mined", org: ORG, tokenId: 7n }),
     publishAndTag: async (...a: unknown[]) => (h.calls.push(`publishAndTag:${String(a[0])}`), { publishTxHash: TX, versionNumber: 3n }),
-    setProjectName: rec("setProjectName"),
+    setProjectName: rec("setProjectName", TX),
+    readTokenLinks: async (id: bigint) => ({ animationUrl: `https://gw.example/g/p/84532/${ORG}/${id}/latest/`, externalUrl: `https://gw.example/projects/84532/${ORG}/${id}` }),
     readProject: async () => ({ tokenId: 5n, collection: ORG, name: "proj", owner: ACCOUNT, kind: ProjectKind.Directory, cid: ROOT, versionCount: 2, preferredGateway: null, viewUrl: null }),
     update: async () => (h.calls.push("update"), { newRootCid: ROOT, txHash: TX, versionNumber: 3n }),
     setTag: rec("setTag"),
@@ -180,6 +181,32 @@ describe("F5: which org a minting upload goes into", () => {
     expect(printed()).toMatch(/version published to project #7 in org "Test Org" 0x0+a1 as v3/);
   });
 
+  it("after publishing it prints each transaction's full hash, and where the project is, read from its token", async () => {
+    h.client = uploadClient(
+      [{ org: ORG, name: "Mine", roles: ["admin"], open: false }],
+      orgClient({ publishAndTag: async () => ({ publishTxHash: TX, tagTxHash: TX, versionNumber: 3n }) }),
+    );
+    await run(uploadCommand(), [site(), "--name", "my-art", "--tag", "stable", "--yes"]);
+    const p = printed();
+    expect(p).toContain(`as v3 ${TX}`);
+    expect(p).toMatch(new RegExp(`tag "stable" → v3 on project #7 .* ${TX}`));
+    expect(p).toMatch(new RegExp(`name set: "my-art" on project #7 .* ${TX}`));
+    expect(p).toMatch(/live at: https:\/\/gw\.example\/g\/p\/84532\/0x0+a1\/7\/latest\/ \(the token's animation_url\)/);
+    expect(p).toMatch(/page: +https:\/\/gw\.example\/projects\/84532\/0x0+a1\/7 \(the token's external_url\)/);
+  });
+
+  it("a link that cannot be read is a note: the publish before it stands", async () => {
+    h.client = uploadClient(
+      [{ org: ORG, name: "Mine", roles: ["admin"], open: false }],
+      orgClient({ readTokenLinks: async () => Promise.reject(new Error("HTTP request failed. URL: https://rpc.example/v2/SECRETKEY")) }),
+    );
+    await run(uploadCommand(), [site(), "--name", "my-art", "--yes"]);
+    const p = printed();
+    expect(p).toMatch(/version published to project #7/);
+    expect(p).toMatch(/could not read the project's links: HTTP request failed/);
+    expect(p).not.toContain("SECRETKEY");
+  });
+
   it("an explicit org the account may not mint into is refused before anything is uploaded", async () => {
     h.client = uploadClient([], orgClient({ mayMint: async () => false }));
     await expect(run(uploadCommand(), [site(), "--name", "x", "--org", ORG, "--yes"])).rejects.toThrow(/may not mint into org .*Nothing was uploaded/);
@@ -205,6 +232,30 @@ describe("F6: paid writes preview, then confirm or need --yes", () => {
     await run(uploadCommand(), [site(), "--name", "x", "--dry-run"]);
     expect(printed()).toMatch(/dry-run: root =/);
     expect(sent()).toEqual([]);
+  });
+
+  it("a dry run with --name counts the project transactions the real run adds, not the content alone", async () => {
+    h.client = uploadClient([]);
+    await run(uploadCommand(), [site(), "--name", "x", "--tag", "stable", "--dry-run"]);
+    const p = printed();
+    expect(p).toMatch(/dry-run: then, to publish it as a project:/);
+    expect(p).toMatch(/1 × create your personal org and mint its first project/);
+    expect(p).toMatch(/or mint a new project token into your newest org\s+~[\d,]+ gas/);
+    expect(p).toMatch(/1 × publish the root as the project's next version/);
+    expect(p).toMatch(/1 × point tag "stable" at it/);
+    expect(p).toMatch(/1 × set the project's name to "x"/);
+    const content = Number(/up to (\d+) transaction\(s\), ~/.exec(p)![1]);
+    expect(p).toMatch(new RegExp(`in all, up to ${content + 4} transaction\\(s\\)`));
+    expect(sent()).toEqual([]);
+  });
+
+  it("a dry run into an existing project adds only the publish (and tag)", async () => {
+    h.client = uploadClient([]);
+    await run(uploadCommand(), [site(), "--project-id", "5", "--org", ORG, "--tag", "stable", "--dry-run"]);
+    const p = printed();
+    expect(p).not.toMatch(/create your personal org|mint a new project/);
+    const content = Number(/up to (\d+) transaction\(s\), ~/.exec(p)![1]);
+    expect(p).toMatch(new RegExp(`in all, up to ${content + 2} transaction\\(s\\)`));
   });
 
   it("a single-file dry run plans the file and sends nothing", async () => {
@@ -500,7 +551,9 @@ describe("info and diff", () => {
     const p = printed();
     expect(p).not.toContain("\u001b[2J");
     expect(p).toMatch(/gateway: .*ignored/);
-    expect(p).toMatch(/links: .*https:\/\/ok\.example\//);
+    expect(p).toMatch(/view: .*https:\/\/ok\.example\//);
+    expect(p).toMatch(/live at: +https:\/\/gw\.example\/g\/p\/84532\/0x0+a1\/5\/latest\//);
+    expect(p).not.toMatch(/✓ live at/);
     expect(p).toMatch(/stable → v2/);
   });
 

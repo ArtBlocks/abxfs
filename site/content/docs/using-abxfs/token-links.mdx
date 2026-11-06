@@ -12,8 +12,10 @@ A project is an NFT, and marketplaces show two links from its metadata:
 
 By default both are a path on the ABX FS app:
 
-- `animation_url` → `https://fs.abx.io/g/p/<chain>/<org>/<id>/latest/`
-- `external_url` → `https://fs.abx.io/projects/<chain>/<org>/<id>`
+- `animation_url` → `https://fs.abx.io/g/p/<chain>/0x<org>/<id>/latest/`
+- `external_url` → `https://fs.abx.io/projects/<chain>/0x<org>/<id>`
+
+(`0x<org>` is the org's address in lowercase hex.) `abxfs info` prints a project's two links as its token renders them.
 
 That default is computed on chain from the token's own address and id, and the domain is frozen into every
 org's link renderer (it is a constructor argument of `OrgMeta`, which the factory reads), so every org uses it. It is only a fallback. The app serves no project bytes

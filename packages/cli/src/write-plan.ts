@@ -105,8 +105,17 @@ export async function estimateCreateOrgGas(
 
 const n = (x: number) => x.toLocaleString("en-US");
 
-/** The lines {@link confirmWrite} prints, without the balance check or the prompt. */
-export function describeWritePlan(plan: WritePlan): string[] {
+/** About two significant figures of ETH: an estimate, not a quote. */
+const approxEth = (wei: bigint) => {
+  const eth = Number(formatEther(wei));
+  return eth === 0 ? "0" : eth.toPrecision(2).replace(/\.?0+(e|$)/, "$1");
+};
+
+/**
+ * The lines {@link confirmWrite} prints, without the balance check or the prompt. `gasPrice`, the node's current
+ * price when it gave one, adds the likely cost: the max cost is a ceiling at the fee cap, often thousands of times more.
+ */
+export function describeWritePlan(plan: WritePlan, gasPrice?: bigint): string[] {
   const txs = plan.steps.reduce((a, s) => a + s.txs, 0);
   const gas = plan.steps.reduce((a, s) => a + s.gas, 0);
   const upTo = plan.steps.some((s) => s.upTo);
@@ -123,9 +132,14 @@ export function describeWritePlan(plan: WritePlan): string[] {
   for (const s of plan.steps) {
     lines.push(kleur.gray(`                ${s.upTo ? "up to " : ""}${s.txs} × ${s.what}`.padEnd(64) + ` ~${n(s.gas)} gas`));
   }
+  if (gasPrice !== undefined && gasPrice > 0n) {
+    lines.push(
+      `  est. cost:  ~${approxEth(BigInt(gas) * gasPrice)} ETH` + kleur.gray(` (at the current gas price, ${formatGwei(gasPrice)} gwei)`),
+    );
+  }
   lines.push(
     `  max cost:   ${formatEther(maxCost)} ETH` +
-      kleur.gray(` (the estimate at the ${formatGwei(cap)} gwei fee ceiling, ABXFS_MAX_FEE_GWEI; real fees are usually far lower)`),
+      kleur.gray(` (the estimate at the ${formatGwei(cap)} gwei fee ceiling, ABXFS_MAX_FEE_GWEI: what it could cost if fees spiked)`),
   );
   if (isOpStackChain(plan.chainId)) {
     // Charged per byte of each transaction at the L1's price, outside the gas the fee ceiling caps.
@@ -163,7 +177,14 @@ export async function confirmWrite(
   plan: WritePlan,
   opts: { yes?: boolean | undefined },
 ): Promise<boolean> {
-  for (const line of describeWritePlan(plan)) console.log(line);
+  let gasPrice: bigint | undefined;
+  try {
+    // Display only, so a node that cannot say leaves the line out rather than stopping the write.
+    if (typeof client.publicClient.getGasPrice === "function") gasPrice = await client.publicClient.getGasPrice();
+  } catch {
+    gasPrice = undefined;
+  }
+  for (const line of describeWritePlan(plan, gasPrice)) console.log(line);
 
   const txs = plan.steps.reduce((a, s) => a + s.txs, 0);
   const gas = plan.steps.reduce((a, s) => a + s.gas, 0);

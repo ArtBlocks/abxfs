@@ -33,11 +33,13 @@ import {
   publishVersion,
   readProject,
   readTag,
+  readTokenLinks,
   readVersionHistory,
   readVersionHistoryPage,
   readTagPage,
   type VersionHistoryPage,
   type TagPage,
+  type TokenLinks,
   waitForVersion,
   assertCanPublish,
   readRecentProjects,
@@ -614,6 +616,16 @@ export class AbxfsClient {
   /** Full current state of a project: owner, name, head CID, kind, version count, gateway. */
   readProject(tokenId: bigint): Promise<AbxfsProject> {
     return readProject(this.publicClient, this._project(), tokenId);
+  }
+
+  /**
+   * The links this project's token shows on marketplaces (`animation_url`, `external_url`), as its metadata renders
+   * them: read from the renderer of this client's `orgMeta`, so bind the client with {@link resolveOrg} first.
+   */
+  readTokenLinks(tokenId: bigint): Promise<TokenLinks> {
+    const orgMeta = this.addresses.orgMeta;
+    if (!orgMeta) throw new Error("ABX FS client has no `orgMeta` configured — required to read a token's links");
+    return readTokenLinks(this.publicClient, orgMeta, this._requireOrg(), tokenId);
   }
 
   /** Version history from the hook — one `eth_call`, no log-range limits. */

@@ -1,5 +1,6 @@
 /**
- * The ABX FS org factory, its minter and its lens. Generated from the Solidity sources;
+ * The ABX FS org factory, its minter, its lens, `OrgMeta` and the links renderer it deploys (`ProjectLinks`, which
+ * renders every token's `animation_url` and `external_url`). Generated from the Solidity sources;
  * `test/abi-drift.test.ts` fails if any of these drifts from `packages/contracts-projects/src`.
  *
  * An org is its own ABX collection, deployed by `OrgFactory`, which renounces ABX ownership at
@@ -735,3 +736,140 @@ export const lensAbi = [
   }
 ] as const;
 
+
+export const orgMetaAbi = [
+  {
+    "type": "constructor",
+    "inputs": [
+      {
+        "name": "gatewayBase_",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "contractURI",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "gatewayBase",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "links",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "render",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address"
+      },
+      {
+        "name": "tokenId",
+        "type": "uint256"
+      },
+      {
+        "name": "field",
+        "type": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "contentType",
+        "type": "string"
+      },
+      {
+        "name": "data",
+        "type": "bytes"
+      }
+    ],
+    "stateMutability": "view"
+  }
+] as const;
+
+export const projectLinksAbi = [
+  {
+    "type": "constructor",
+    "inputs": [
+      {
+        "name": "gatewayBase_",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "gatewayBase",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "render",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address"
+      },
+      {
+        "name": "tokenId",
+        "type": "uint256"
+      },
+      {
+        "name": "field",
+        "type": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "contentType",
+        "type": "string"
+      },
+      {
+        "name": "data",
+        "type": "bytes"
+      }
+    ],
+    "stateMutability": "view"
+  }
+] as const;
