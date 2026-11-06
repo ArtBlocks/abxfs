@@ -29,7 +29,8 @@ import { assertNotSymlink, scanDirectoryReport } from "../fsscan.js";
 import { loadSingleFile, scanTreeForUpload, validateAllowPublicGlob } from "../scan-guard.js";
 import { describeStage, summarizeUpload, type UploadSummary } from "../plan-summary.js";
 import { withMintRecovery } from "../recover.js";
-import { safe, shellArg, shortTxHash, txHash } from "../text.js";
+import { printProjectLinks, printRootLink } from "../links.js";
+import { safe, shellArg, txHash } from "../text.js";
 import { confirmWrite, describeOrg, estimateCreateOrgGas, WRITE_GAS, type WriteStep } from "../write-plan.js";
 
 type Kind = "file" | "directory" | "auto";
@@ -158,6 +159,7 @@ export function uploadCommand(): Command {
         console.log(kleur.yellow("dry-run:"), "root =", preflight.rootCid, kleur.gray(file ? "(file)" : "(directory)"));
         if (!file) for (const f of (preflight as { files: Array<{ cid: string; path: string }> }).files) console.log("  ", f.cid, safe(f.path));
         printSummary(summary);
+        if (opts.name || projectId !== undefined) printProjectSteps(summary, opts, projectId);
         return;
       }
 
@@ -227,6 +229,7 @@ export function uploadCommand(): Command {
         : await client.upload(files, { codec, fastLz, emptyDirectories, ...gas, onProgress, onFileUploaded });
       console.log(kleur.green("✓"), file ? "file root:" : "root directory:", result.rootCid);
       await maybeCreateProject(client, result, opts, resolved, projectId, recovery);
+      if (!resolved) await printRootLink(client, chain.chainId, result.rootCid);
     });
 }
 
@@ -238,7 +241,7 @@ function onProgress(e: PublishProgress): void {
     `${e.stageCallsDone}/${e.stageCallsTotal}`.padStart(9),
     kleur.gray(`tx ${e.txsDone}/${e.txsTotal}`),
     kleur.gray(`~${e.estimatedGas.toLocaleString()} gas`),
-    kleur.gray(shortTxHash(e.txHash)),
+    kleur.gray(txHash(e.txHash)),
   );
 }
 
@@ -261,6 +264,30 @@ function printSummary(s: UploadSummary): void {
     `up to ${s.txs} transaction(s), ~${s.estimatedGas.toLocaleString()} gas estimated`,
     kleur.gray("(assumes nothing exists on chain yet; content already stored is skipped, so re-running an interrupted upload resumes where it stopped)"),
   );
+}
+
+/**
+ * The project transactions a real run adds after the content, which the dry run does not plan: choosing or creating
+ * the org needs the account, so both possibilities are named. The real run prints the exact plan before sending.
+ */
+function printProjectSteps(s: UploadSummary, opts: UploadOpts, projectId: bigint | undefined): void {
+  const lines: [string, number | undefined][] = [];
+  if (projectId === undefined) {
+    if (opts.org) lines.push(["mint a new project token into the org", WRITE_GAS.mint]);
+    else {
+      lines.push(["create your personal org and mint its first project (when you administer no org yet; gas estimated when sent)", undefined]);
+      lines.push(["  or mint a new project token into your newest org", WRITE_GAS.mint]);
+    }
+  }
+  lines.push(["publish the root as the project's next version", WRITE_GAS.publish]);
+  if (opts.tag) lines.push([`point tag "${safe(opts.tag)}" at it`, WRITE_GAS.setTag]);
+  if (opts.name) lines.push([`set the project's name to "${safe(opts.name)}"`, WRITE_GAS.setName]);
+  console.log(kleur.yellow("dry-run:"), "then, to publish it as a project:");
+  for (const [what, gas] of lines) {
+    console.log("  ", `${what.startsWith("  or") ? "" : "1 × "}${what}`.padEnd(70), gas === undefined ? "" : kleur.gray(`~${gas.toLocaleString()} gas`));
+  }
+  const txs = s.txs + lines.filter(([what]) => !what.startsWith("  or")).length;
+  console.log(kleur.yellow("dry-run:"), `in all, up to ${txs} transaction(s); the real run plans them against your account and shows the cost before sending`);
 }
 
 /** A shell-quoted argument for a command the CLI prints for the user to run: its exact characters ({@link shellArg}). */
@@ -525,14 +552,23 @@ async function maybeCreateProject(
     `#${tokenId}`,
     `in org ${orgLabel}`,
     `as v${published.versionNumber}`,
+    kleur.gray(txHash(published.publishTxHash)),
   );
 
-  if (opts.tag) console.log(kleur.green("✓"), `tag "${safe(opts.tag)}" → v${published.versionNumber} on project #${tokenId} in org ${orgLabel}`);
+  if (opts.tag) {
+    console.log(
+      kleur.green("✓"),
+      `tag "${safe(opts.tag)}" → v${published.versionNumber} on project #${tokenId} in org ${orgLabel}`,
+      kleur.gray(txHash(published.tagTxHash)),
+    );
+  }
 
   if (opts.name) {
-    await orgClient.setProjectName(tokenId, opts.name);
-    console.log(kleur.green("✓"), `name set: "${safe(opts.name)}" on project #${tokenId} in org ${orgLabel}`);
+    const nameTx = await orgClient.setProjectName(tokenId, opts.name);
+    console.log(kleur.green("✓"), `name set: "${safe(opts.name)}" on project #${tokenId} in org ${orgLabel}`, kleur.gray(txHash(nameTx)));
   }
+
+  await printProjectLinks(orgClient, tokenId);
 }
 
 /** `--kind`, validated before any work: `file`, `directory` or `auto` (the default). */

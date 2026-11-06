@@ -19,7 +19,8 @@ import { loadConfig, requireOrg, resolveChain } from "../config.js";
 import { assertNotSymlink } from "../fsscan.js";
 import { summarizeUpload } from "../plan-summary.js";
 import { loadSingleFile, scanTreeForUpload } from "../scan-guard.js";
-import { safe, shortTxHash } from "../text.js";
+import { printProjectLinks } from "../links.js";
+import { safe, txHash } from "../text.js";
 import { confirmWrite, describeOrg, WRITE_GAS, type WriteStep } from "../write-plan.js";
 import { ALLOW_PUBLIC_HELP, collectAllowPublic } from "./upload.js";
 
@@ -164,16 +165,27 @@ export function updateCommand(): Command {
                 kleur.gray("·"),
                 `bundled ${info.callCount} call${info.callCount === 1 ? "" : "s"}`,
                 kleur.gray(`(~${info.estimatedGas.toLocaleString()} gas)`),
-                kleur.gray(shortTxHash(info.txHash)),
+                kleur.gray(txHash(info.txHash)),
               ),
           },
         });
         // `client.update` publishes through the shared publish-and-tag path: the version number is
         // proven against a settled read of the recorded CID (not predicted or read once), and a tag
         // is only written against that proven version.
-        console.log(kleur.green("✓"), `new version: v${String(result.versionNumber)} of project #${tokenId} in org ${orgLabel}`);
+        console.log(
+          kleur.green("✓"),
+          `new version: v${String(result.versionNumber)} of project #${tokenId} in org ${orgLabel}`,
+          kleur.gray(txHash(result.txHash)),
+        );
         console.log(kleur.green("✓"), "new root:", result.newRootCid);
-        if (opts.tag) console.log(kleur.green("✓"), `tag "${safe(opts.tag)}" → v${result.versionNumber} on project #${tokenId} in org ${orgLabel}`);
+        if (opts.tag) {
+          console.log(
+            kleur.green("✓"),
+            `tag "${safe(opts.tag)}" → v${result.versionNumber} on project #${tokenId} in org ${orgLabel}`,
+            kleur.gray(txHash(result.tagTxHash)),
+          );
+        }
+        await printProjectLinks(client, tokenId);
       },
     );
 }

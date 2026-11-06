@@ -255,12 +255,13 @@ root-absolute links (`/style.css`) and nothing it runs shares an origin with the
 https://<chainId>-<org>-<tokenId>.<content domain>/<path>      the head
 https://<chainId>-<org>-<tokenId>-v<n>.<content domain>/<path>  a fixed version
 https://<chainId>-<root, base32>.<content domain>/<path>         raw content, no project needed
-/projects/<chainId>/<org>/<tokenId>                              the project's page (app)
-/orgs/<chainId>/<org>                                            the org's page (app)
+/projects/<chainId>/0x<org>/<tokenId>                            the project's page (app)
+/orgs/<chainId>/0x<org>                                          the org's page (app)
 ```
 
-`<org>` is the 40 lowercase hex characters without `0x`. The label is one DNS label, so a single
-wildcard certificate covers every project. A tag is not addressable by host (a tag may hold
+`<org>` is the org's address as 40 lowercase hex characters: without `0x` in a host label, with `0x` in an app path.
+On the hosted ABX FS site the app is `fs.abx.io` and `<content domain>` is `abxfs.app`. The label is one DNS label,
+so a single wildcard certificate covers every project. A tag is not addressable by host (a tag may hold
 characters a hostname cannot); its content is reachable at the version it points to, which is what
 the project page's share link uses for a tagged selection. The project page shows the project's
 own URL in its header; the live preview is a sandboxed frame on that origin, without
@@ -286,7 +287,7 @@ The site serves these hosts from a separate deployment on its content domain. To
 [gateway](/docs/using-abxfs/run-a-gateway) with `--content-domain`.
 
 The `/g/p/…` and `/g/cid/…` paths on the app redirect to the content's own host, with one exception: a project's
-root (`/g/p/<chain>/<org>/<id>/latest/`, the default `animation_url`) is a page that frames the project's host (see
+root (`/g/p/<chain>/0x<org>/<id>/latest/`, the default `animation_url`) is a page that frames the project's host (see
 [Token links](/docs/using-abxfs/token-links)). Either way the URL carries the chain and org, since a bare token id
 would name a different project in every org. The gateway serves only orgs the factory created; any other address
 is a 404.

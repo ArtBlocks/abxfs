@@ -6,6 +6,7 @@ import { isSafeExternalUrl, isUsableViewUrl, projectKindName } from "@artblocks/
 import { parsePositiveInt, parseTokenId } from "../args.js";
 import { createOrgClient } from "../client.js";
 import { loadConfig, requireOrg, resolveChain } from "../config.js";
+import { printProjectLinks } from "../links.js";
 import { safe } from "../text.js";
 
 /** How many versions `info` prints unless `--max-versions` says otherwise. */
@@ -47,13 +48,14 @@ export function infoCommand(): Command {
         );
 
         console.log(
-          "  links:   ",
+          "  view:    ",
           p.viewUrl === null
-            ? kleur.gray("(default: a path on the ABX FS site; set one with `abxfs view`)")
+            ? kleur.gray("(unset: the token links to the ABX FS site, below; set one with `abxfs view`)")
             : isUsableViewUrl(p.viewUrl) && isSafeExternalUrl(p.viewUrl)
               ? safe(p.viewUrl)
               : kleur.yellow("(set, but ignored: not a public https URL)"),
         );
+        await printProjectLinks(client, id, { afterWrite: false });
 
         // The hook keeps the full history, and a Version[] window is requested directly.
         if (p.versionCount > 0) {

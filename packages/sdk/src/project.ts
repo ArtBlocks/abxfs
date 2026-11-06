@@ -28,6 +28,7 @@ import {
 import { seriesCodeAbi } from "@artblocks/abx-sdk/abi";
 
 import { iProjectHookAbi } from "./abi-hook.js";
+import { orgMetaAbi, projectLinksAbi } from "./abi-org.js";
 import { mintInOrg } from "./org.js";
 import { settle } from "./settle.js";
 import { isTransportFailure } from "./multicall.js";
@@ -691,6 +692,39 @@ export function viewUrlProblem(url: string): string | null {
     return "must be a full https:// URL of visible ASCII (at most 512 bytes, none of \" ' & ( ) < > [ \\ ] ^ ` { | }: write those percent-encoded)";
   }
   return externalUrlProblem(url);
+}
+
+/** The two links a project's token shows on marketplaces, exactly as its metadata renders them. */
+export interface TokenLinks {
+  /** The live project: the owner's `abxfs.view` when it is set and usable, else the gateway's project path. */
+  animationUrl: string;
+  /** The "view on website" link: the same `abxfs.view` when set, else the project's page on the gateway. */
+  externalUrl: string;
+}
+
+const FIELD_ANIMATION_URL = stringToHex("animation_url", { size: 32 });
+const FIELD_EXTERNAL_URL = stringToHex("external_url", { size: 32 });
+
+/**
+ * A project's {@link TokenLinks}, read from the renderer its token's metadata uses (`OrgMeta.links()`), so they are
+ * what a marketplace shows and nothing here assumes a domain: the gateway base is frozen into the org's `OrgMeta`.
+ * Pass the `orgMeta` of the factory generation that made `collection` (`addressesForOrg`, or a resolved client).
+ */
+export async function readTokenLinks(
+  client: PublicClient,
+  orgMeta: Address,
+  collection: Address,
+  tokenId: bigint,
+): Promise<TokenLinks> {
+  const links = await client.readContract({ address: orgMeta, abi: orgMetaAbi, functionName: "links" });
+  const [animation, external] = await client.multicall({
+    allowFailure: false,
+    contracts: [
+      { address: links, abi: projectLinksAbi, functionName: "render", args: [collection, tokenId, FIELD_ANIMATION_URL] },
+      { address: links, abi: projectLinksAbi, functionName: "render", args: [collection, tokenId, FIELD_EXTERNAL_URL] },
+    ],
+  });
+  return { animationUrl: hexToString(animation[1]), externalUrl: hexToString(external[1]) };
 }
 
 /**

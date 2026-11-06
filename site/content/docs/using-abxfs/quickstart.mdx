@@ -47,14 +47,21 @@ abxfs read <root> --path index.html --chain <network>
 abxfs info --project-id 0 --org <org> --chain <network>
 ```
 
-Writes need a funded key, in the environment only — the CLI never reads one from
-disk:
+Writes are signed by a private key you hold, in the environment only: the CLI never reads one from disk. (On
+fs.abx.io they are signed by your browser wallet.) ABX FS does not use ABX's creator wallet (`abx auth login`) or
+its gas sponsorship, so the account pays its own gas.
+
+To try it on a testnet, make a key just for that, and keep it out of files and shell history:
 
 ```bash
-export ABXFS_PRIVATE_KEY=0x…
-abxfs upload ./site --chain <network> --dry-run          # compute CIDs, spend nothing
+export ABXFS_PRIVATE_KEY=0x$(openssl rand -hex 32)       # a new key, for this shell only
+abxfs upload ./site --chain <network> --dry-run          # compute CIDs and count the transactions, spend nothing
 abxfs upload ./site --chain <network> --name my-project  # mint and publish
 ```
+
+An account with no ETH is refused before anything is sent, and the refusal names its address: fund that address from
+a faucet for the testnet you chose (the network's own documentation lists them). On a layer-2 testnet, publishing a
+four-file site as a new project in a new org (nine transactions) measured 0.000026 ETH, so 0.001 is plenty.
 
 With `--name` and no `--org`, the upload uses `ABXFS_ORG` or the `org` in your config if
 you set one, else the newest org you administer. If you administer none, your own
@@ -63,13 +70,17 @@ signature.
 
 The upload is chunked, deduplicated against what is already on chain, and
 compressed per chunk with FastLZ by default (the chain inflates it itself). Before
-it sends anything it prints the plan (network, org, transactions, the most it can
-cost) and asks you to type `yes`; in a script, pass `--yes`. A big folder is not
+it sends anything it prints the plan (network, org, transactions, the likely cost at
+the current gas price, and the most it could cost if fees spiked) and asks you to type
+`yes`; in a script, pass `--yes`. A big folder is not
 refused; it is more transactions, and running the same upload again after an
 interruption sends only what is missing.
 
+When the project is published, the CLI prints where it is: the token's `animation_url`
+(the live site) and its page on the app. `abxfs info` prints both again later.
+
 `--dry-run` runs the whole pipeline offline, so you can see the root CID and the
-transaction count before committing to either. To try everything against a local
+transaction count, the project's own transactions included, before committing to either. To try everything against a local
 chain instead, `abxfs dev` runs Anvil with the contracts deployed (see the
 [CLI reference](/docs/reference/cli)).
 

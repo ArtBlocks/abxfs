@@ -94,6 +94,17 @@ const TARGETS: Target[] = [
     interfacePath: "src/Lens.sol:Lens",
   },
   {
+    // `OrgMeta` and the links renderer it deploys are mirrored from their contracts: a token's links are read there.
+    constName: "orgMetaAbi",
+    contractPackage: "contracts-projects",
+    interfacePath: "src/OrgMeta.sol:OrgMeta",
+  },
+  {
+    constName: "projectLinksAbi",
+    contractPackage: "contracts-projects",
+    interfacePath: "src/ProjectLinks.sol:ProjectLinks",
+  },
+  {
     constName: "iIpfsCidResolverAbi",
     contractPackage: "contracts-companion",
     interfacePath: "src/interfaces/IIpfsCidResolver.sol:IIpfsCidResolver",
