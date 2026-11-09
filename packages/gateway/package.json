@@ -1,6 +1,6 @@
 {
   "name": "@artblocks/abxfs-gateway",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "ABX FS reference gateway and mirror — serve ABX FS content over HTTP and optionally pin it to IPFS, with your own filtering rules or none.",
   "license": "MIT",
   "repository": {

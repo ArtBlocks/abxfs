@@ -1,5 +1,13 @@
 # @artblocks/abxfs-pinning
 
+## 0.1.3
+
+### Patch Changes
+
+- c40ed96: Validate package publishing through the main-only npm-publish environment. Package runtime behavior is unchanged.
+- Updated dependencies [c40ed96]
+  - @artblocks/abxfs-sdk@0.2.1
+
 ## 0.1.2
 
 ### Patch Changes

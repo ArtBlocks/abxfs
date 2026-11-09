@@ -1,6 +1,6 @@
 {
   "name": "@artblocks/abxfs-pinning",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "ABX FS pinning — optionally mirror on-chain ABX FS content to IPFS. Opt-in: content lives on-chain regardless.",
   "license": "MIT",
   "repository": {
