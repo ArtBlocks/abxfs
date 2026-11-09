@@ -1,5 +1,11 @@
 # @artblocks/abxfs-sdk
 
+## 0.2.1
+
+### Patch Changes
+
+- c40ed96: Validate package publishing through the main-only npm-publish environment. Package runtime behavior is unchanged.
+
 ## 0.2.0
 
 ### Minor Changes

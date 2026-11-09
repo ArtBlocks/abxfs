@@ -1,6 +1,6 @@
 {
   "name": "@artblocks/abxfs-sdk",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "ABX FS SDK — content-addressed, immutable file storage on any EVM chain. Chunk, compute CIDs, upload, read, and derive IPFS CIDs.",
   "license": "MIT",
   "repository": {
