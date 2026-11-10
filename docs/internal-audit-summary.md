@@ -1,29 +1,11 @@
 # Internal audit summary
 
-## Presentation generation — 2026-11-10
+## Scope
 
-The native reader, ABX reader adapter, presentation companion and new factory generation were reviewed before
-production deployment. Their frozen contract sources are at
-[`2ca3b912`](https://github.com/ArtBlocks/abxfs/tree/2ca3b9125647606d27357082dd27c2b9689c8eca).
-The existing content stores, backends and original org contracts retain their deployed behavior; existing orgs do
-not acquire the new renderers. See [the public change](https://github.com/ArtBlocks/abxfs/pull/22).
-
-Separate agent review runs covered owner authorization, source/path encoding, native read bounds and content
-verification, delivery changes, lock commitments and transfers, malformed or expensive backend responses, and
-deployment wiring. Findings in path encoding, reviewed-state lock binding and deployment dependency checks were
-closed with regression coverage before the contract build was frozen. A final focused review of the lock changes
-found no additional actionable issue.
-
-Qualification included local suites, real-ABX fork tests, full `tokenURI` gas sweeps, and a 256-run/128,000-call
-presentation invariant. Reproducible cases live in
-[reader tests](../packages/contracts-companion/test/ContentReader.t.sol),
-[presentation tests](../packages/contracts-projects/test/ProjectPresentation.t.sol),
-[fork tests](../packages/contracts-projects/test/fork/PresentationFork.t.sol) and
-[the invariant](../packages/contracts-projects/test/PresentationInvariant.t.sol).
-See [deployments](../site/content/docs/reference/deployments.mdx) for verified addresses and generation history.
-
-These were internal, agent-assisted reviews, not an external independent security audit or a proof that no
-vulnerability remains. The historical review below covers the original generation only.
+The historical review below covers the original `abx-fs-freeze-3` generation only. It does not describe the later
+native reader and presentation generation. See [presentation](../site/content/docs/reference/presentation.mdx)
+for current behavior and [deployments](../site/content/docs/reference/deployments.mdx) for verified addresses
+and generation history. Source verification is not an independent security audit.
 
 ## Original generation — 2026-10-29 to 2026-10-31
 
