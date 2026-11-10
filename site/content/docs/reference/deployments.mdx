@@ -12,14 +12,11 @@ other.
 Use the canonical addresses. The SDK ships them, so the CLI and the gateway need
 no configuration to read.
 
-The original six networks below have verified legacy deployments. Robinhood and
-Robinhood Testnet are metadata-only registry entries awaiting verified addresses;
-CLI/SDK operations there refuse rather than calling predicted addresses.
-
-The new `ContentReader`, `ProjectPresentation` and seven-argument `OrgFactory`
-build is a deployment candidate. Its source pins are predictions, not evidence of
-live contracts, and are not published here as deployed addresses. Presentation
-commands require a factory generation that actually registers the capability.
+The current generation adds `ContentReader`, `ProjectPresentation` and a
+seven-argument `OrgFactory` on all eight networks below. The original generation
+remains registered on the six networks where it was deployed. Robinhood and
+Robinhood Testnet began with the current generation and have no earlier factory
+history.
 
 <Callout type="warn">
 **Prerelease, and unaudited.** ABX FS is early software and may have bugs; we do
@@ -40,8 +37,8 @@ network, real funds are at risk.
 | **Sepolia** | `sepolia` | 11155111 | Ethereum's paired testnet | deployed |
 | **Arbitrum One** | `arbitrum-one` | 42161 | production | deployed |
 | **Arbitrum Sepolia** | `arbitrum-sepolia` | 421614 | Arbitrum One's paired testnet | deployed |
-| **Robinhood** | `robinhood` | 4663 | production | awaiting verified addresses |
-| **Robinhood Testnet** | `robinhood-testnet` | 46630 | Robinhood's paired testnet | awaiting verified addresses |
+| **Robinhood** | `robinhood` | 4663 | production | deployed |
+| **Robinhood Testnet** | `robinhood-testnet` | 46630 | Robinhood's paired testnet | deployed |
 
 No tool picks a network for you: name the production or test network of your
 choice (`--chain`, or `ABXFS_CHAIN`, with the name above). A testnet tries ABX FS
@@ -59,7 +56,7 @@ the exact source through solc's metadata hash):
   `FileStore`, `DirectoryStore`. Because the backend addresses are part of every
   chunk id, identical bytes uploaded to any chain produce identical CIDs. A CID does not say which chain holds
   it, so a content URL names the chain to read: `<chain id>-<root>.<content domain>`.
-- **IPFS:** `IpfsCidResolver`.
+- **Companions:** `IpfsCidResolver`, the stateless `ContentReader` and `ProjectPresentation`.
 - **Org layer:** `OrgMeta` (which deploys `ProjectLinks`), `OrgFactory` and
   `Lens`, each with its own salt. The factory's five components (`ProjectHook`,
   `ProjectEnumeration`, `OrgMinter`, `ProjectCard`, `ProjectTraits`) are not
@@ -67,12 +64,17 @@ the exact source through solc's metadata hash):
   under one shared salt, anyone may deploy each to that address, and `createOrg`
   reverts with `ComponentsNotDeployed` until all five exist. The factory's address
   also depends on its constructor arguments (the chain's ABX contracts, the two
-  stores and `OrgMeta`), and those are identical on the six deployed networks
-  listed here, so it too lands at one address.
+  stores, `OrgMeta` and the presentation companion), which are identical on all
+  eight networks listed here, so it too lands at one address. The companion is
+  frozen into new orgs as their `animation_url` renderer; `external_url` continues
+  to use `ProjectLinks`.
 
 ## Addresses
 
-The build tagged `abx-fs-freeze-3`, at these addresses on the six deployed chains above:
+### Current generation: all eight networks
+
+The content stores and backend addresses are shared with the original generation;
+new factories do not change stored CIDs.
 
 | Contract | Address |
 | --- | --- |
@@ -83,21 +85,38 @@ The build tagged `abx-fs-freeze-3`, at these addresses on the six deployed chain
 | `DirectoryStore` | `0x4273E4E078F47303Ca15b11959eeb61F3FC94c11` |
 | `IpfsCidResolver` | `0x7CE58c2945CbE3C2bDb0D3d276Ba3b9bD294008d` |
 | `OrgMeta` | `0xB21e65DE1c241B9BaE8b7077b6f2E8f2c3Bc0F5D` |
+| `OrgFactory` | `0x4a5D0fCed9b2162Db4517E7248dC0f3243CCB475` |
+| `OrgMinter` | `0xf03ef75B8bbf683dd293E2A6c22eC99c421e4eCf` |
+| `ProjectHook` | `0x402b7aC4a578DFB77d498937379EEf0744c17Ba1` |
+| `ProjectEnumeration` | `0x4c1f7476a13e87C66C212a6BBa588511554c2412` |
+| `Lens` | `0x90A2476db90F658B8E989fa5128C0A75E864A282` |
+| `ContentReader` | `0xe6d62620A284565B7F0B3581A6972BA3Be5C8B13` |
+| `ProjectPresentation` | `0x8FD707e572d53581a9fA4d79E9D8202AD3acC208` |
+
+### Original generation: six networks only
+
+The `abx-fs-freeze-3` factory and its components remain available on Base, Base
+Sepolia, Ethereum, Sepolia, Arbitrum One and Arbitrum Sepolia. They were never
+deployed on Robinhood or Robinhood Testnet. Their shared content/resolver/OrgMeta
+addresses are the same as above; their generation-specific addresses are:
+
+| Contract | Address |
+| --- | --- |
 | `OrgFactory` | `0xC5aBF9fBd94659cdfc173AF30c6052700Fa62798` |
 | `OrgMinter` | `0xc009135a8b9DdB14De53868773Fc1dc97963De1e` |
 | `ProjectHook` | `0x3828Dd35AbF6a42F0d92E0F3311bd70593BD6E7B` |
 | `ProjectEnumeration` | `0x2b2a84df4d62d18329899b66c744E6C643cDC065` |
 | `Lens` | `0x2Ef71C4780e70F64507F04BD1Fde35eC3713269e` |
 
-The factory's three renderers have fixed addresses too: read them from the
+The card, traits and legacy links renderers have fixed addresses too: read them from the
 factory (`card()`, `traits()`, `links()`). Read every address from the SDK
 rather than copying it from here:
 
 ```ts
 import { requireCanonicalDeployment, isCanonicallyDeployed } from "@artblocks/abxfs-sdk";
 
-isCanonicallyDeployed(chainId);                     // true for the six deployed networks above
-isCanonicallyDeployed(4663);                        // false: metadata only
+isCanonicallyDeployed(chainId);                     // true for all eight networks above
+isCanonicallyDeployed(4663);                        // true: Robinhood is deployed
 isCanonicallyDeployed(137);                         // false: not a network ABX FS supports
 const { name, addresses, publicRpc } = requireCanonicalDeployment(chainId);
 ```
@@ -107,12 +126,21 @@ record, naming the chains that have them.
 
 ### Verified source
 
-Every contract above, the three renderers included, is source-verified on
-[Sourcify](https://sourcify.dev) on the six deployed networks above, as an **exact match**: the
-bytecode commits to the source text through solc's metadata hash, comments
-included, so the source Sourcify shows is exactly the source that was compiled.
-For example, the factory on Base:
-[repo.sourcify.dev/8453/0xC5aB…2798](https://repo.sourcify.dev/8453/0xC5aBF9fBd94659cdfc173AF30c6052700Fa62798).
+Current-generation contracts, including all renderers, are source-verified on
+[Sourcify](https://sourcify.dev) across all eight networks as an **exact match**.
+The original generation remains verified on its original six networks. The exact
+match commits to the compiled source text through Solidity metadata, comments
+included. For example, the current factory on Base:
+[repo.sourcify.dev/8453/0x4a5D…B475](https://repo.sourcify.dev/8453/0x4a5D0fCed9b2162Db4517E7248dC0f3243CCB475).
+
+The new contract sources were frozen at
+[2ca3b912](https://github.com/ArtBlocks/abxfs/tree/2ca3b912/packages/contracts-projects),
+with the companion reader in the same commit's
+[contracts-companion package](https://github.com/ArtBlocks/abxfs/tree/2ca3b912/packages/contracts-companion).
+SDK/RPC qualification continued through
+[87a472e](https://github.com/ArtBlocks/abxfs/tree/87a472e/packages/sdk) without changing
+those contract sources or bytecode. These are internally reviewed releases;
+source verification is not an independent security audit.
 
 ## Gas schedules and local chains
 

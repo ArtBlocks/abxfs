@@ -194,16 +194,17 @@ it. Things that bite:
   a new resolver with no other redeploy. Its address is pinned like the others (`script/Deploy.s.sol` `pinned()`,
   `test/DeployPin.t.sol`).
 
-**Deployed networks.** The `abx-fs-freeze-3` build is deployed, read back and rehearsed at the pinned addresses on
-production networks and their testnets. The canonical registry (`packages/sdk/src/canonical.ts`) is the list, and gives
+**Deployed networks.** The reader/presentation generation is deployed, read back and rehearsed on all eight
+registered networks. The original `abx-fs-freeze-3` factory remains in `previousGenerations` permanently on its
+original six networks only; Robinhood and Robinhood Testnet have no earlier factory history. The canonical registry (`packages/sdk/src/canonical.ts`) is the list, and gives
 every network one address book; the docs' deployments page publishes it. Name a network only where a fact is specific
 to it (a measurement, a test fixture, the registry), never as the place to deploy or the default: no tool picks one
 for the user. Everything on a production network is permanent and holds real value, so a bug there is fixed only by
 a new factory (see "Superseding" in the deploy runbook). A chain is listed with NO addresses until a deployment there is verified, and every consumer has to say
 what it does with such a chain: `requireCanonicalAddresses` throws "not deployed"; the CLI loads such a
 chain without addresses and refuses commands on it (`requireAddresses`); a site leaves it out of the chains it serves.
-`canonical.test.ts` fails if the registry's addresses drift from the deploy scripts' `pinned()`, so a re-pin
-cannot leave the record pointing at an old build. Tests that need an address book mock `@artblocks/abxfs-sdk` through
+`canonical.test.ts` checks current addresses against `pinned()` and original-generation history against
+`previousPinned()`. Address promotion follows verification and rehearsal; a re-pin alone does not authorize it. Tests that need an address book mock `@artblocks/abxfs-sdk` through
 `packages/sdk/test/helpers/deployed-registry.ts` (a test setup file can do it for a whole suite), so they defend stand-in
 addresses on every chain, so they do not move when a chain is deployed. Deploying anything to a production chain
 needs the maintainers' explicit go-ahead.

@@ -1,9 +1,9 @@
 # Deploy runbook: ABX FS to one network
 
 How to deploy ABX FS to the network of your choice: the content layer, the optional IPFS resolver, and the org
-factory. The legacy `abx-fs-freeze-3` build is deployed on the original six networks recorded with addresses in the
-SDK registry. Robinhood (4663) and Robinhood Testnet (46630) currently have metadata only: no verified ABX FS
-addresses are registered there. A source prediction or allow-table entry does not establish deployment.
+factory. The current reader/presentation generation is registered on all eight supported networks. The original
+`abx-fs-freeze-3` generation remains registered on its original six networks only; Robinhood (4663) and Robinhood
+Testnet (46630) have no earlier factory history. A source prediction or allow-table entry never establishes deployment.
 
 Everything the factory deploys is frozen into every org it will ever create, so a mistake there means a new factory
 address and new org addresses (new URLs). A mistake in the content layer means a new content-address space. Nothing
@@ -11,9 +11,9 @@ here is cosmetic.
 
 ## Deploying the presentation generation
 
-The new stateless reader, presentation companion and seven-argument factory are a **candidate build**, not an
-announced deployment. Their script pins must match the exact frozen sources before broadcast, and their addresses
-must not enter `canonical.ts` or public deployment tables until source verification and rehearsal pass. The content
+The stateless reader, presentation companion and seven-argument factory form the current generation. Any future
+replacement is a candidate until its script pins match the exact frozen sources and source verification and rehearsal
+pass on that chain; only then may its addresses enter `canonical.ts` or public deployment tables. The content
 stores and backends remain the existing deployment: do not redeploy them to add presentation.
 
 With the content layer and IPFS resolver already deployed, the order is:
@@ -30,6 +30,10 @@ With the content layer and IPFS resolver already deployed, the order is:
    seed source, directory store, file store, OrgMeta and presentation. Read back `presentation()` as well as all
    existing factory/component wiring. Confirm a newly created org uses the presentation renderer only for
    `animation_url`; `external_url` retains `ProjectLinks`.
+
+After a successful receipt, a load-balanced RPC's latest or pending nonce can still lag; reconcile the exact receipt
+and account nonces, then wait for consistent reads before the next deployment stage. Do not resend a confirmed
+deployment: continue only the remaining steps with the same frozen pins and the remaining approved budget.
 
 Each dry run omits `--broadcast`; each broadcast uses the same reviewed inputs and an encrypted account as below.
 For example, the reader's dry run is:
@@ -74,7 +78,7 @@ generation, use the sequence above and the current scripts' pins; do not reuse t
 
 ## Prerequisites
 
-- **The build:** the working tree is the tagged commit (`abx-fs-freeze-3`, internally audited), clean, and built with the repo's pinned compiler
+- **The build:** the working tree is the tagged commit (`abx-fs-freeze-3`, internally reviewed), clean, and built with the repo's pinned compiler
   (`solc_version` in each `foundry.toml`).
   - The bytecode commits to the exact source text through solc's metadata hash, so **any edit under a contract
     package's `src/`, a comment included, moves addresses**.
@@ -273,7 +277,7 @@ ABXFS_REHEARSAL_CHAIN=<chainId> ABXFS_REHEARSAL_ADDRESSES=/tmp/candidate-address
   npx vitest run test/rehearsal-live.test.ts --reporter=verbose
 ```
 
-All registry chains, including metadata-only Robinhood networks, can be rehearsal targets. The test refuses an RPC
+All registry chains, including both Robinhood networks, can be rehearsal targets. The test refuses an RPC
 with the wrong chain id. The capability-aware lane checks native file/path reads, Auto/Embedded output, chain and
 derived IPFS URLs, endpoint changes and a reviewed content lock that survives a later publish, reusing one token.
 IPFS derivation does not pin content. The legacy lane keeps its original link assertions. This command is opt-in and
@@ -302,6 +306,22 @@ Abandon the throwaway org; it is permanent and harmless. Only then announce the 
    verifying the old six-argument factory with today's seven-argument source is refused before submission. Constructor
    compatibility is a guard, not proof of matching source: Sourcify's exact match remains required. Do it before
    announcing the chain: unverified code asks users to trust bytes they cannot read.
+
+### Explorer API failures and manual evidence
+
+A failed status request or an HTML challenge from an explorer API is not evidence that a contract is unverified.
+Keep the automated verifier's failure visible; do not label that run a successful two-verifier check. Open the
+contract's normal explorer page and inspect its Contract/Code tab. If it shows an exact match, confirm the contract
+name, compiler, source path and constructor arguments, then record the address, displayed result and evidence URL
+outside the repository. Check Sourcify's `exact_match` independently. Manual explorer evidence and successful
+Sourcify checks are distinct from an automated `both` pass.
+
+Hosted Blockscout instances are migrating from per-instance APIs to the
+[documented universal API](https://docs.blockscout.com/devs/apis). Robinhood production's
+[documented API routes](https://github.com/blockscout/docs/blob/main/robinhood-api.mdx) use
+`https://api.blockscout.com/4663/api` and require a Blockscout developer key; the normal explorer UI can still display
+verified source without one. Use that supported API with its own key if automation is needed, or retain normal UI
+evidence. Do not reuse an Etherscan key, bypass a challenge, or infer a verification failure from a transport failure.
 
 ## If a check fails
 

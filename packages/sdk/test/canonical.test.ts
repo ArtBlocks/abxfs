@@ -5,7 +5,7 @@
  * id, so a registry that names the wrong address does not fail loudly: it silently computes ids in a different
  * content-address space, and a call to an address with no code "succeeds" and returns nothing. So until ABX FS is deployed
  * and verified on a chain, its entry carries no addresses, and every lookup that needs them refuses. Every supported chain
- * has them now: the three testnets since 2026-10-31, and Base, Arbitrum One and Ethereum since 2026-11-03.
+ * carries only generations verified on that chain; a fresh deployment must never invent earlier history.
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
@@ -26,7 +26,8 @@ import {
 const REPO_ROOT = resolve(__dirname, "../../..");
 const SUPPORTED = [84532, 8453, 1, 11155111, 42161, 421614, 4663, 46630];
 /** Verified deployments only; additional supported networks remain addressless until rehearsed. */
-const DEPLOYED = [84532, 8453, 1, 11155111, 42161, 421614];
+const DEPLOYED = [...SUPPORTED];
+const LEGACY_CHAINS = [84532, 8453, 1, 11155111, 42161, 421614];
 
 /** `0x…` addresses assigned in a Solidity function's body, by the name each is assigned to. */
 function pinnedIn(file: string, fn: string): Record<string, string> {
@@ -40,21 +41,25 @@ describe("verified canonical deployments", () => {
     const book = CANONICAL_DEPLOYMENTS[84532]?.addresses;
     expect(book).toBeDefined();
     for (const id of DEPLOYED) {
-      expect(CANONICAL_DEPLOYMENTS[id]?.addresses, `chain ${id}`).toBe(book);
+      const own = CANONICAL_DEPLOYMENTS[id]?.addresses;
+      const { previousGenerations: _history, ...current } = own!;
+      const { previousGenerations: _expectedHistory, ...expectedCurrent } = book!;
+      expect(current, `chain ${id}`).toEqual(expectedCurrent);
       expect(isCanonicallyDeployed(id)).toBe(true);
-      expect(resolveCanonicalAddresses(id)).toBe(book);
-      expect(requireCanonicalAddresses(id)).toBe(book);
+      expect(resolveCanonicalAddresses(id)).toBe(own);
+      expect(requireCanonicalAddresses(id)).toBe(own);
     }
     expect(Object.keys(CANONICAL_ADDRESSES).map(Number).sort((a, b) => a - b)).toEqual([...DEPLOYED].sort((a, b) => a - b));
   });
 
   /**
-   * The registry records verified deployments. Candidate pins for an undeployed successor must not move this book;
-   * previousPinned preserves the complete deployed generation while the successor is being qualified.
+   * Current deployments match pinned(), and original-chain history matches previousPinned() exactly.
+   * Promoting a factory never drops or rewrites the generation that made existing orgs.
    */
-  it("records the verified generation rather than undeployed candidate pins", () => {
+  it("records the verified current pins and preserves the exact previous generation", () => {
     const core = pinnedIn("packages/contracts-core/script/Deploy.s.sol", "pinned");
-    const org = pinnedIn("packages/contracts-projects/script/Deploy.s.sol", "previousPinned");
+    const org = pinnedIn("packages/contracts-projects/script/Deploy.s.sol", "pinned");
+    const previous = pinnedIn("packages/contracts-projects/script/Deploy.s.sol", "previousPinned");
     const resolver = readFileSync(resolve(REPO_ROOT, "packages/contracts-companion/script/Deploy.s.sol"), "utf8")
       .match(/function pinned\(\)[^{]*\{\s*return (0x[0-9a-fA-F]{40});/)?.[1];
     const book = CANONICAL_DEPLOYMENTS[84532]!.addresses!;
@@ -85,20 +90,34 @@ describe("verified canonical deployments", () => {
       orgMinter: org.minter,
       lens: org.lens,
     });
+    const companionPin = (file: string) => readFileSync(resolve(REPO_ROOT, file), "utf8")
+      .match(/function pinned\(\)[^{]*\{\s*return (0x[0-9a-fA-F]{40});/)?.[1];
+    expect(book.contentReader).toBe(companionPin("packages/contracts-companion/script/DeployReader.s.sol"));
+    expect(book.projectPresentation).toBe(companionPin("packages/contracts-projects/script/DeployPresentation.s.sol"));
+    expect(book.orgMeta).toBe(previous.orgMeta); // Both factory generations bind this same immutable renderer.
+    for (const id of LEGACY_CHAINS) {
+      expect(requireCanonicalAddresses(id).previousGenerations).toEqual([{
+        orgFactory: previous.factory, projectHook: previous.hook,
+        projectEnumeration: previous.enumeration, orgMinter: previous.minter, lens: previous.lens,
+      }]);
+    }
     expect(Object.keys(core)).toHaveLength(5);
     expect(Object.keys(org)).toHaveLength(8);
+    expect(Object.keys(previous)).toHaveLength(8);
   });
 });
 
 describe("registry shape", () => {
-  it("does not advertise contracts on networks awaiting deployment qualification", () => {
+  it("fresh Robinhood deployments have current capabilities and no invented legacy factory", () => {
     for (const id of [4663, 46630]) {
-      expect(CANONICAL_DEPLOYMENTS[id]).toBeDefined();
-      expect(isCanonicallyDeployed(id)).toBe(false);
-      expect(() => requireCanonicalAddresses(id)).toThrow(/not.*deploy/i);
+      const book = requireCanonicalAddresses(id);
+      expect(isCanonicallyDeployed(id)).toBe(true);
+      expect(book.contentReader).toBeDefined();
+      expect(book.projectPresentation).toBeDefined();
+      expect(book.previousGenerations).toEqual([]);
     }
   });
-  it("supports Base, Ethereum, Arbitrum One and their testnets, and keeps their environments explicit", () => {
+  it("supports all four networks and their testnets, and keeps their environments explicit", () => {
     for (const id of SUPPORTED) expect(canonicalChainIds()).toContain(id);
     expect(CANONICAL_DEPLOYMENTS[8453]?.environment).toBe("production");
     expect(CANONICAL_DEPLOYMENTS[1]?.environment).toBe("production");
@@ -106,6 +125,8 @@ describe("registry shape", () => {
     expect(CANONICAL_DEPLOYMENTS[84532]?.environment).toBe("testnet");
     expect(CANONICAL_DEPLOYMENTS[11155111]?.environment).toBe("testnet");
     expect(CANONICAL_DEPLOYMENTS[421614]?.environment).toBe("testnet");
+    expect(CANONICAL_DEPLOYMENTS[4663]?.environment).toBe("production");
+    expect(CANONICAL_DEPLOYMENTS[46630]?.environment).toBe("testnet");
   });
 
   it("lists no chain ABX FS does not support", () => {
@@ -187,7 +208,10 @@ describe("the published docs agree with the registry", () => {
     .filter((a) => !INFRASTRUCTURE.has(a));
   const registered = new Set(
     Object.values(CANONICAL_DEPLOYMENTS)
-      .flatMap((d) => (d.addresses ? Object.entries(d.addresses).filter(([k]) => k !== "previousGenerations").map(([, v]) => v) : []))
+      .flatMap((d) => d.addresses ? [
+        ...Object.entries(d.addresses).filter(([k]) => k !== "previousGenerations").map(([, v]) => v),
+        ...(d.addresses.previousGenerations ?? []).flatMap((generation) => Object.values(generation)),
+      ] : [])
       .map((a) => String(a).toLowerCase()),
   );
 
