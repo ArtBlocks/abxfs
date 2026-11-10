@@ -25,6 +25,7 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "test:gateway": "pnpm --filter @artblocks/abxfs-gateway test",
     "check:hygiene": "node scripts/check-repo-hygiene.mjs",
+    "test:verify-sources": "node --test scripts/verification-plan.test.mjs",
     "changeset": "changeset",
     "ci:version": "changeset version",
     "ci:publish": "changeset publish"

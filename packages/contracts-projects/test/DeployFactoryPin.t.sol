@@ -38,7 +38,7 @@ import {CONTENT_DIRECTORY_STORE, CONTENT_FILE_STORE} from "./fork/ContentLayer.s
 ///      Tests whose name contains "Pinned" hold only for the optimized build, so `forge coverage` (which compiles
 ///      without the optimizer) leaves them out; the rest hold for any build.
 contract DeployFactoryPinTest is Test {
-    bytes32 constant FACTORY_CREATION_CODE_HASH = 0x83803a951a08cfa01f2a542c687823bf87c4d3eef819b316d75423d90626e1fc;
+    bytes32 constant FACTORY_CREATION_CODE_HASH = 0x61db9496b4aae8f8b52924647dc35df28dda0c5a02b5cc4b5e46cb386547b807;
     bytes32 constant ORG_META_CREATION_CODE_HASH = 0xfee2f62262d2c2838020d3980d01fbf8df96415269f2e1062c69815172b03e9c;
     bytes32 constant LENS_CREATION_CODE_HASH = 0x917e1fef34f305a8a4c4bc9662daf14898a32decfef3f919508a8f707ae23dc9;
     address constant CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
@@ -94,6 +94,19 @@ contract DeployFactoryPinTest is Test {
         }
     }
 
+    function test_previousPinnedRetainsTheCompleteDeployedGeneration() public view {
+        DeployProjects.Addresses memory previous = d.previousPinned();
+        assertEq(previous.orgMeta, 0xB21e65DE1c241B9BaE8b7077b6f2E8f2c3Bc0F5D);
+        assertEq(previous.factory, 0xC5aBF9fBd94659cdfc173AF30c6052700Fa62798);
+        assertEq(previous.hook, 0x3828Dd35AbF6a42F0d92E0F3311bd70593BD6E7B);
+        assertEq(previous.enumeration, 0x2b2a84df4d62d18329899b66c744E6C643cDC065);
+        assertEq(previous.minter, 0xc009135a8b9DdB14De53868773Fc1dc97963De1e);
+        assertEq(previous.card, 0x0296686ED7193D27b945F121835177D6969208f0);
+        assertEq(previous.traits, 0x087dfB523e4085A5Ae2E600c4Fc899813fB7AA3F);
+        assertEq(previous.lens, 0x2Ef71C4780e70F64507F04BD1Fde35eC3713269e);
+        assertNotEq(previous.factory, d.pinned().factory);
+    }
+
     function _create2(bytes32 salt, bytes memory init) internal pure returns (address) {
         return address(uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), CREATE2_DEPLOYER, salt, keccak256(init))))));
     }
@@ -113,7 +126,7 @@ contract DeployFactoryPinTest is Test {
                 SALT,
                 abi.encodePacked(
                     type(OrgFactory).creationCode,
-                    abi.encode(e.abx, e.renderer, e.seed, CONTENT_DIRECTORY_STORE, CONTENT_FILE_STORE, a.orgMeta)
+                    abi.encode(e.abx, e.renderer, e.seed, CONTENT_DIRECTORY_STORE, CONTENT_FILE_STORE, a.orgMeta, e.presentation)
                 )
             )
         );
@@ -137,7 +150,7 @@ contract DeployFactoryPinTest is Test {
     /// constructor arguments naming this factory (or its hook). The lens prediction above depends on the hook's.
     function test_componentsAreWhereTheFactorySays() public {
         OrgMeta meta = new OrgMeta(GATEWAY);
-        OrgFactory f = new OrgFactory(address(1), address(2), address(3), address(4), address(5), address(meta));
+        OrgFactory f = new OrgFactory(address(1), address(2), address(3), address(4), address(5), address(meta), address(meta.links()));
         assertEq(f.COMPONENT_SALT(), COMPONENT_SALT);
         assertEq(f.CREATE2_DEPLOYER(), CREATE2_DEPLOYER);
         address hook = _hookOf(address(f), address(4), address(5));
@@ -178,7 +191,7 @@ contract DeployFactoryPinTest is Test {
     /// satisfy this factory.
     function test_aComponentWithOtherArgumentsIsNotThisFactorys() public {
         OrgMeta meta = new OrgMeta(GATEWAY);
-        OrgFactory f = new OrgFactory(address(1), address(2), address(3), address(4), address(5), address(meta));
+        OrgFactory f = new OrgFactory(address(1), address(2), address(3), address(4), address(5), address(meta), address(meta.links()));
         (bool ok,) = CREATE2_DEPLOYER.call(
             abi.encodePacked(
                 f.COMPONENT_SALT(), type(ProjectHook).creationCode, abi.encode(address(4), address(6), address(f))

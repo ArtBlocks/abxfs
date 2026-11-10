@@ -124,7 +124,7 @@ otherwise errors telling you which to set.
 
 | Command | What it does |
 | --- | --- |
-| `upload <path>` | Upload a directory or single file. With `--name`, also mints a project token and publishes to it — into `--org`, else `ABXFS_ORG`, else `org` in your config, else the newest org you **administer**, else a personal org it creates first. An org where you only hold a project is never chosen for you, and it decides nothing: "you administer none" is read from the factories' lists of the orgs you administer alone, and only from a complete read of them. If such a list, or the record of an org you administer, could not be read, it stops (`could not read 1 org(s) you administer, or the list of orgs you administer from 1 org factory(ies) (0x…); pass --org or retry`) rather than create an org; an org you only hold a project in that cannot be read stops nothing (anyone can mint into your wallet from an open org). |
+| `upload <path>` | Upload a directory or single file. With `--name`, also mints a project token and publishes to it — into `--org`, else `ABXFS_ORG`, else `org` in your config, else the newest org you **administer**, else a personal org it creates first. For new projects, remembered defaults and administered discovery use only the current factory; explicitly naming an older org remains supported. An org where you only hold a project is never chosen for you, and it decides nothing: "you administer none" is read from the factories' lists of the orgs you administer alone, and only from a complete read of them. If such a list, or the record of an org you administer, could not be read, it stops (`could not read 1 org(s) you administer, or the list of orgs you administer from 1 org factory(ies) (0x…); pass --org or retry`) rather than create an org; an org you only hold a project in that cannot be read stops nothing (anyone can mint into your wallet from an open org). |
 | `org` | `create` / `list` / `info` / `mint` / `transfer-admin` / `accept-admin` / `open` / `close` — see below. |
 | `update <path>` | Publish a new version of an existing project from a local path. |
 | `read <cid>` | Read a file or directory back out of contract storage. |
@@ -270,3 +270,73 @@ an `http://` `--endpoint` is refused when a key is attached (a local node on `lo
 It verifies the resulting CID against the on-chain resolver (or, where the resolver
 cannot derive it, the CID derived locally from the chain) unless you pass `--no-verify`. See [IPFS](/docs/using-abxfs/ipfs) for why the CID matches, and
 when it does not.
+
+## Project presentation
+
+See [Project presentation and native reads](/docs/reference/presentation) for delivery methods, source selection and factory compatibility.
+
+Orgs created by a factory with `projectPresentation` support a separate presentation configuration.
+The CLI resolves the org's own factory generation first; an older org cannot inherit a newer
+factory's presentation contract. Existing project updates continue to use their original generation.
+
+```sh
+abxfs presentation inspect --org 0x… --project-id 0 --chain base-sepolia --json
+abxfs presentation preview --org 0x… --project-id 0 --chain base-sepolia --json
+abxfs presentation set-target --latest --path index.html --org 0x… --project-id 0 --chain base-sepolia --dry-run --json
+abxfs presentation set-target --version 2 --org 0x… --project-id 0 --chain base-sepolia --yes
+abxfs presentation set-target --tag stable --org 0x… --project-id 0 --chain base-sepolia --yes
+abxfs presentation set-method auto --org 0x… --project-id 0 --chain base-sepolia --dry-run --json
+abxfs presentation set-endpoints --chain-base https://gateway.example --ipfs-base https://dweb.link --org 0x… --project-id 0 --chain base-sepolia --yes
+```
+
+Choose exactly one of `--latest`, `--version` or `--tag` for `set-target`. An empty path selects the
+file root, or `index.html` at a directory root. `inspect` reports the exact resolved root and path,
+stored method, endpoints and locks. `preview` also reports the render status, MIME type, payload as
+`bytesHex`, dependency findings and the SDK's recommendation. These reads require no private key.
+Every presentation command accepts `--json`, emitting one JSON result; write confirmations go to
+stderr. Errors use the CLI's existing credential redaction and become JSON with `ok: false`.
+
+`set-method` accepts `chain-gateway`, `embedded`, `ipfs` and `auto`. Auto is a tooling recommendation,
+resolved to a concrete method before writing. It uses the official SDK's bounded content inspection:
+small supported HTML/media (at most 8 KiB and 32 chunks, without file codecs) can use Embedded;
+larger payloads, multiple-file sites and detected dependencies use ChainGateway. Static inspection
+cannot prove arbitrary executable code self-contained; preview reports residual dependencies and
+runtime uncertainty. IPFS is selected only when explicitly requested.
+
+For a new project, `upload --name` uses auto when its org supports presentation. You can select a
+method with `--presentation <method>`. Uploads to an existing `--project-id` preserve its method
+unless that option is given; a locked method cannot be overridden. A new project's implicit org
+selection uses only the current factory: remembered orgs from older factories are skipped, and
+only current-factory administered orgs are considered before creating a personal org. Explicit
+`--org` remains available for older orgs.
+
+`update` preserves the existing presentation method and previews it after publication on supported
+orgs. If it is not Ready (for example, Embedded content grew beyond its limits or now uses a file
+codec), or the preview read fails, the CLI warns and prints exact preview and method-change commands.
+The publication stays successful: do not rerun the update. Review the suggested method change
+separately; the CLI does not replace the owner's choice automatically. Legacy orgs skip this check.
+
+All presentation mutations accept `--dry-run`: they report the current configuration and proposed
+change without a signer, transaction, or `--yes`. `update <path> --dry-run` likewise scans the local
+content and reports an update plan without publishing. Upload's existing dry run continues to
+compute content CIDs without sending; the final auto method is determined after content is readable.
+
+### Permanent presentation locks
+
+There are three independent immutable locks: `content`, `method`, and `endpoints`. Combine them
+with commas. A lock survives ownership transfers and has no force bypass. Content locking freezes
+the exact selected root and path, so future versions and tag movements cannot move the presentation.
+It does not prevent publishing later project versions.
+
+Dry-run the exact lock mask and review the preview, selected root/path, method and endpoints:
+
+```sh
+abxfs presentation lock content,method --org 0x… --project-id 0 --chain base-sepolia --dry-run --json
+abxfs presentation lock content,method --expected-commitment 0x… --org 0x… --project-id 0 --chain base-sepolia --yes
+```
+
+Copy the full `expectedCommitment` hash from the reviewed dry run into the real command.
+Every lock mask requires it. The contract binds that commitment to the selected dimensions,
+project, chain, presentation contract and mask, then checks it again when the transaction executes.
+If the selected state changes, review a new dry run before retrying. `--yes` confirms the write;
+it does not bypass the commitment or permanent locks.

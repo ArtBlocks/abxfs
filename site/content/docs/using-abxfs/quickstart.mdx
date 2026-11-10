@@ -63,7 +63,7 @@ a faucet for the testnet you chose (the network's own documentation lists them).
 four-file site as a new project in a new org (nine transactions) measured 0.000026 ETH, so 0.001 is plenty.
 
 With `--name` and no `--org`, the upload uses `ABXFS_ORG` or the `org` in your config if
-you set one, else the newest org you administer. If you administer none, your own
+you set one and it belongs to the current factory, else the newest current-factory org you administer. If you administer none on that factory, your own
 **org** is created in the same transaction as the project, so there is no extra
 signature.
 

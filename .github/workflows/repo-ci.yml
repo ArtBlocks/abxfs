@@ -27,3 +27,4 @@ jobs:
           node-version: 22
       # Node built-ins and git only: no install. What it refuses, and why, is at the top of the script.
       - run: node scripts/check-repo-hygiene.mjs
+      - run: node --test scripts/verification-plan.test.mjs

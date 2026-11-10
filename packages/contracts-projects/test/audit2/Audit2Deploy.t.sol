@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {DWPresentation} from "../DeployWrong.t.sol";
 import {Test} from "forge-std/Test.sol";
 
 import {DeployProjects} from "../../script/Deploy.s.sol";
@@ -90,12 +91,13 @@ contract Audit2DeployValidate is Test {
 /// @dev Fork: run the REAL `run()` with wrong-but-coded dependencies.
 contract Audit2DeployFork is Audit2Base {
     DeployProjects d;
+    address presentationAddress;
 
     // The script's 84532 allow-table lists the ABX FS content layer's store pair.
     address constant STORE_DIR = CONTENT_DIRECTORY_STORE;
     address constant STORE_FILES = CONTENT_FILE_STORE;
     /// @dev The ninth generation's PREDICTED address (the deploy script's `pinned()`); not yet deployed.
-    address constant CURRENT_FACTORY = 0xC5aBF9fBd94659cdfc173AF30c6052700Fa62798;
+    address constant CURRENT_FACTORY = 0x4a5D0fCed9b2162Db4517E7248dC0f3243CCB475;
 
     function setUp() public {
         string memory url = vm.envOr("ABXFS_RPC_URL_84532", string(""));
@@ -103,6 +105,11 @@ contract Audit2DeployFork is Audit2Base {
         vm.createSelectFork(url);
         ContentLayer.deploy();
         d = new DeployProjects();
+        DWPresentation presentation = new DWPresentation(STORE_DIR, STORE_FILES, GATEWAY);
+        presentationAddress = d.expected().presentation;
+        address at = presentationAddress;
+        vm.etch(at, address(presentation).code);
+        DWPresentation(at).setDependencies(presentation.reader(), presentation.ipfsResolver());
     }
 
     /// @dev The script's inputs, passed to `runWith` rather than set as env vars: `vm.setEnv` is process-global and
@@ -113,7 +120,7 @@ contract Audit2DeployFork is Audit2Base {
     {
         (factory,) = d.runWith(
             DeployProjects.Inputs({
-                abx: abx, renderer: renderer, seed: seed, directoryStore: dir, fileStore: files, gatewayBase: gw
+                abx: abx, renderer: renderer, seed: seed, directoryStore: dir, fileStore: files, presentation: presentationAddress, gatewayBase: gw
             }),
             false,
             false

@@ -12,7 +12,7 @@ import {ProjectHook} from "../src/ProjectHook.sol";
 
 import {MockStore} from "./mocks/Mocks.sol";
 import {RawStub} from "./mocks/Hostile.sol";
-import {DWAbxFactory, DWRenderer, DWSeed, DWDirectoryStore, DWFileStore} from "./DeployWrong.t.sol";
+import {DWAbxFactory, DWRenderer, DWSeed, DWDirectoryStore, DWFileStore, DWPresentation} from "./DeployWrong.t.sol";
 
 /// @dev The script's internals, made callable.
 contract DeployHarness is DeployProjects {
@@ -93,6 +93,7 @@ contract DeployScriptProbesTest is Test {
     RawStub internal seed;
     RawStub internal dir;
     RawStub internal files;
+    DWPresentation internal presentation;
 
     function setUp() public {
         d = new DeployProjects();
@@ -108,11 +109,12 @@ contract DeployScriptProbesTest is Test {
         seed.ret(SEED, abi.encode(bytes32(uint256(7))));
         dir.ret(DIR_EXISTS, abi.encode(false));
         files.ret(FILE_EXISTS, abi.encode(false));
+        presentation = new DWPresentation(address(dir), address(files), "https://fs.abx.io");
         vm.chainId(999);
     }
 
     function _in() internal view returns (DeployProjects.Inputs memory) {
-        return DeployProjects.Inputs(address(abx), address(renderer), address(seed), address(dir), address(files), "https://fs.abx.io");
+        return DeployProjects.Inputs(address(abx), address(renderer), address(seed), address(dir), address(files), address(presentation), "https://fs.abx.io");
     }
 
     function _run() internal view {
@@ -341,17 +343,17 @@ contract DeployScriptProbesTest is Test {
             DeployProjects.Inputs memory i = _in();
             address[5] memory a = [i.abx, i.renderer, i.seed, i.directoryStore, i.fileStore];
             a[k] = address(0);
-            i = DeployProjects.Inputs(a[0], a[1], a[2], a[3], a[4], i.gatewayBase);
+            i = DeployProjects.Inputs(a[0], a[1], a[2], a[3], a[4], i.presentation, i.gatewayBase);
             vm.expectRevert(abi.encodeWithSelector(DeployProjects.MissingAddress.selector, names[k]));
             d.preflight(i, true, true);
 
             a[k] = address(0xC0DE);
-            i = DeployProjects.Inputs(a[0], a[1], a[2], a[3], a[4], i.gatewayBase);
+            i = DeployProjects.Inputs(a[0], a[1], a[2], a[3], a[4], i.presentation, i.gatewayBase);
             vm.expectRevert(abi.encodeWithSelector(DeployProjects.NoCode.selector, names[k], address(0xC0DE)));
             d.preflight(i, true, true);
         }
         // The first one missing is the one named, whatever follows.
-        DeployProjects.Inputs memory all = DeployProjects.Inputs(address(0), address(0), address(0), address(0), address(0), "x");
+        DeployProjects.Inputs memory all = DeployProjects.Inputs(address(0), address(0), address(0), address(0), address(0), address(0), "x");
         vm.expectRevert(abi.encodeWithSelector(DeployProjects.MissingAddress.selector, "ABX_SERIES_CODE_FACTORY"));
         d.preflight(all, true, true);
     }
@@ -380,6 +382,9 @@ contract DeployScriptTableTest is Test {
         // The table's addresses answer as what they are: put stand-ins at them.
         vm.etch(e.abx, address(new DWAbxFactory()).code);
         vm.etch(e.renderer, address(new DWRenderer()).code);
+        DWPresentation presentation = new DWPresentation(e.directoryStore, e.fileStore, e.gatewayBase);
+        vm.etch(e.presentation, address(presentation).code);
+        DWPresentation(e.presentation).setDependencies(presentation.reader(), presentation.ipfsResolver());
         vm.etch(e.seed, address(new DWSeed()).code);
         vm.etch(e.directoryStore, address(new DWDirectoryStore()).code);
         vm.etch(e.fileStore, address(new DWFileStore()).code);
@@ -400,8 +405,8 @@ contract DeployScriptTableTest is Test {
         assertEq(e.gatewayBase, "https://fs.abx.io");
     }
 
-    function test_theSixListedChainsAndNoOthers() public view {
-        uint256[6] memory yes = [uint256(8453), 84532, 1, 11155111, 42161, 421614];
+    function test_theEightListedChainsAndNoOthers() public view {
+        uint256[8] memory yes = [uint256(8453), 84532, 1, 11155111, 42161, 421614, 4663, 46630];
         for (uint256 i; i < yes.length; ++i) {
             assertTrue(d.listed(yes[i]), "listed");
         }
@@ -412,7 +417,7 @@ contract DeployScriptTableTest is Test {
     }
 
     function test_everyListedChainAcceptsTheTableWithNoOverrides() public {
-        uint256[6] memory ids = [uint256(8453), 84532, 1, 11155111, 42161, 421614];
+        uint256[8] memory ids = [uint256(8453), 84532, 1, 11155111, 42161, 421614, 4663, 46630];
         for (uint256 i; i < ids.length; ++i) {
             vm.chainId(ids[i]);
             d.preflight(_table(), false, false);
@@ -445,7 +450,7 @@ contract DeployScriptTableTest is Test {
         for (uint256 k; k < 5; ++k) {
             address[5] memory a = [want[0], want[1], want[2], want[3], want[4]]; // a copy: memory arrays alias
             a[k] = alt[k];
-            DeployProjects.Inputs memory i = DeployProjects.Inputs(a[0], a[1], a[2], a[3], a[4], e.gatewayBase);
+            DeployProjects.Inputs memory i = DeployProjects.Inputs(a[0], a[1], a[2], a[3], a[4], address(new DWPresentation(a[3], a[4], e.gatewayBase)), e.gatewayBase);
             vm.expectRevert(abi.encodeWithSelector(DeployProjects.UnexpectedAddress.selector, names[k], alt[k], want[k]));
             d.preflight(i, false, false);
             // The chain override is the only way past it.
@@ -453,14 +458,14 @@ contract DeployScriptTableTest is Test {
         }
         // Several wrong at once: the first in order is the one reported.
         DeployProjects.Inputs memory many =
-            DeployProjects.Inputs(alt[0], alt[1], alt[2], alt[3], alt[4], e.gatewayBase);
+            DeployProjects.Inputs(alt[0], alt[1], alt[2], alt[3], alt[4], address(new DWPresentation(alt[3], alt[4], e.gatewayBase)), e.gatewayBase);
         vm.expectRevert(abi.encodeWithSelector(DeployProjects.UnexpectedAddress.selector, names[0], alt[0], want[0]));
         d.preflight(many, false, false);
     }
 
     /// @dev On a listed chain the gateway must equal the table's, byte for byte; an unlisted chain has no list.
     function test_theGatewayListIsPerChainAndExact() public view {
-        uint256[6] memory ids = [uint256(8453), 84532, 1, 11155111, 42161, 421614];
+        uint256[8] memory ids = [uint256(8453), 84532, 1, 11155111, 42161, 421614, 4663, 46630];
         string[6] memory bad = [
             "https://fs.abx.io/",
             "https://fs.abx.io.x",
@@ -483,6 +488,7 @@ contract DeployScriptTableTest is Test {
         vm.chainId(84532);
         DeployProjects.Inputs memory odd = _table();
         odd.gatewayBase = "https://gateway.example";
+        DWPresentation(odd.presentation).setBase(odd.gatewayBase);
         vm.expectRevert(abi.encodeWithSelector(DeployProjects.UnlistedGateway.selector, "https://gateway.example"));
         d.preflight(odd, false, false);
         vm.expectRevert(abi.encodeWithSelector(DeployProjects.UnlistedGateway.selector, "https://gateway.example"));
@@ -527,6 +533,7 @@ contract DeployScriptTableTest is Test {
         vm.chainId(84532);
         DeployProjects.Inputs memory odd = _table();
         odd.gatewayBase = "https://gateway.example";
+        DWPresentation(odd.presentation).setBase(odd.gatewayBase);
         vm.expectRevert(abi.encodeWithSelector(DeployProjects.GatewayMovesThePins.selector, "https://gateway.example"));
         p.runWith(odd, false, true);
         assertEq(p.predict(odd).orgMeta.code.length, 0, "nothing was deployed");
@@ -1161,14 +1168,8 @@ contract DeployScriptReuseTest is Test {
     /// @dev Stand-ins for everything a reused factory is read back through, all consistent with `i`, and a stand-in
     ///      factory at the address the script will find occupied.
     function _rig() internal {
-        i = DeployProjects.Inputs(
-            address(new DWAbxFactory()),
-            address(new DWRenderer()),
-            address(new DWSeed()),
-            address(new DWDirectoryStore()),
-            address(new DWFileStore()),
-            BASE
-        );
+        i = DeployProjects.Inputs(address(new DWAbxFactory()), address(new DWRenderer()), address(new DWSeed()), address(new DWDirectoryStore()), address(new DWFileStore()), address(0), BASE);
+        i.presentation = address(new DWPresentation(i.directoryStore, i.fileStore, BASE));
         meta = vm.computeCreate2Address(
             keccak256("abx-fs/org-meta"), keccak256(abi.encodePacked(type(OrgMeta).creationCode, abi.encode(BASE))), KEYLESS
         );
@@ -1177,7 +1178,7 @@ contract DeployScriptReuseTest is Test {
             keccak256(
                 abi.encodePacked(
                     type(OrgFactory).creationCode,
-                    abi.encode(i.abx, i.renderer, i.seed, i.directoryStore, i.fileStore, meta)
+                    abi.encode(i.abx, i.renderer, i.seed, i.directoryStore, i.fileStore, meta, i.presentation)
                 )
             ),
             KEYLESS
@@ -1202,6 +1203,7 @@ contract DeployScriptReuseTest is Test {
 
         fac.ret(ABX, abi.encode(i.abx));
         fac.ret(RENDERER, abi.encode(i.renderer));
+        fac.ret(bytes4(keccak256("presentation()")), abi.encode(i.presentation));
         fac.ret(SEED, abi.encode(i.seed));
         fac.ret(LINKS, abi.encode(address(li)));
         fac.ret(HOOK, abi.encode(address(hook)));

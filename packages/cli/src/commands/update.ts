@@ -7,6 +7,7 @@ import {
   autoRegisterNodeCodecs,
   gasScheduleForChain,
   ProjectKind,
+  PresentationStatus,
   projectKindName,
   assertValidPublishInputs,
   type FileDescriptor,
@@ -20,7 +21,8 @@ import { assertNotSymlink } from "../fsscan.js";
 import { summarizeUpload } from "../plan-summary.js";
 import { loadSingleFile, scanTreeForUpload } from "../scan-guard.js";
 import { printProjectLinks } from "../links.js";
-import { safe, txHash } from "../text.js";
+import { redact } from "../redact.js";
+import { safe, shellArg, txHash } from "../text.js";
 import { confirmWrite, describeOrg, WRITE_GAS, type WriteStep } from "../write-plan.js";
 import { ALLOW_PUBLIC_HELP, collectAllowPublic } from "./upload.js";
 
@@ -42,6 +44,7 @@ export function updateCommand(): Command {
       "max estimated gas per multicall bundle, a positive whole number, counted as the chain's per-transaction cap counts it " +
         "(all gas, or only execution gas under EIP-8037); defaults to the chain's defaultBundleGasBudget, else 12000000",
     )
+    .option("--dry-run", "plan the update without a signer or transactions")
     .option("--yes", "send without asking (the plan is still printed). Required when there is no terminal to confirm on")
     .action(
       async (
@@ -57,6 +60,7 @@ export function updateCommand(): Command {
           allowPublic?: string[];
           maxBundleGas?: string;
           yes?: boolean;
+          dryRun?: boolean;
         },
       ) => {
         assertValidPublishInputs({ tag: opts.tag });
@@ -66,7 +70,7 @@ export function updateCommand(): Command {
         const cfg = loadConfig();
         const chain = resolveChain(cfg, opts.chain);
         const org = requireOrg(chain, opts.org);
-        const client = await createOrgClient(chain, { write: true, org });
+        const client = await createOrgClient(chain, { write: !opts.dryRun, org });
         const orgLabel = await describeOrg(client, org);
 
         const project = await client.readProject(tokenId);
@@ -133,6 +137,13 @@ export function updateCommand(): Command {
           { what: "publish the new root as the project's next version", txs: 1, gas: WRITE_GAS.publish },
         ];
         if (opts.tag) steps.push({ what: `point tag "${safe(opts.tag)}" at it (a tag can be moved later)`, txs: 1, gas: WRITE_GAS.setTag });
+        if (opts.dryRun) {
+          const preflight = Array.isArray(newContent)
+            ? await client.planUpload(newContent, { codec, fastLz, emptyDirectories })
+            : await client.uploadFile(newContent, { codec, fastLz, dryRun: true });
+          console.log(JSON.stringify({ newRootCid: preflight.rootCid, dryRun: true, chainId: chain.chainId, org, tokenId: tokenId.toString(), existingRootCid, summary, steps }));
+          return;
+        }
         const ok = await confirmWrite(
           client,
           {
@@ -186,6 +197,25 @@ export function updateCommand(): Command {
           );
         }
         await printProjectLinks(client, tokenId);
+        if (client.addresses.projectPresentation) {
+          // Publishing is settled. A presentation read must never turn it into a failed update or another write.
+          let warning: string | undefined;
+          try {
+            const preview = await client.previewPresentation(tokenId);
+            if (preview.status !== PresentationStatus.Ready)
+              warning = `presentation preview reports ${PresentationStatus[preview.status] ?? String(preview.status)}`;
+          } catch (error) {
+            warning = `could not preview presentation: ${redact(error instanceof Error ? error.message.split("\n")[0]! : String(error))}`;
+          }
+          if (warning) {
+            const chainName = opts.chain ?? (process.env["ABXFS_CHAIN"]?.trim() || undefined)
+              ?? cfg.defaultChain ?? Object.keys(cfg.chains)[0]!;
+            const flags = `--project-id ${tokenId} --org ${org} --chain ${shellArg(chainName)}`;
+            console.warn(kleur.yellow("!"), safe(`Published successfully, but ${warning}. The existing presentation method is preserved; do not rerun update.`));
+            console.warn(`Inspect: abxfs presentation preview ${flags}`);
+            console.warn(`Review a gateway method change if needed: abxfs presentation set-method chain-gateway ${flags}`);
+          }
+        }
       },
     );
 }

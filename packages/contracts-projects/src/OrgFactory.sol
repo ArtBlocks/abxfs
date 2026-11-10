@@ -99,6 +99,9 @@ contract OrgFactory is IOrgFactory {
     ProjectCard public immutable card;
     ProjectTraits public immutable traits;
     ProjectLinks public immutable links;
+    /// @notice The separately deployed animation renderer and owner-controlled presentation policy.
+    ///         Kept outside the factory's creation code to preserve its EIP-3860 headroom.
+    address public immutable presentation;
 
     // ─── Registry ────────────────────────────────────────────────────────────
 
@@ -128,9 +131,11 @@ contract OrgFactory is IOrgFactory {
         address seedSource_,
         address directoryStore_,
         address fileStore_,
-        address orgMeta_
+        address orgMeta_,
+        address presentation_
     ) {
         orgMeta = orgMeta_;
+        presentation = presentation_;
         abx = IAbxSeriesCodeFactory(abx_);
         metadataRenderer = metadataRenderer_;
         seedSource = seedSource_;
@@ -159,7 +164,8 @@ contract OrgFactory is IOrgFactory {
     /// @inheritdoc IOrgFactory
     function componentsDeployed() public view returns (bool) {
         return address(hook).code.length != 0 && address(enumeration).code.length != 0
-            && address(minter).code.length != 0 && address(card).code.length != 0 && address(traits).code.length != 0;
+            && address(minter).code.length != 0 && address(card).code.length != 0 && address(traits).code.length != 0
+            && presentation.code.length != 0;
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -298,12 +304,12 @@ contract OrgFactory is IOrgFactory {
             representation: _REPRESENTATION_RENDERER,
             value: abi.encode(address(traits))
         });
-        // The live project, for marketplaces that embed `animation_url`, and a link to its page for
-        // those that show `external_url`. Both are computed, so they never go stale.
+        // Presentation governs only the animation. The website link stays independent, including
+        // the owner's existing abxfs.view override; it cannot bypass the presentation's locks.
         p.contractFields[2] = AbxContractField({
             field: _FIELD_ANIMATION_URL,
             representation: _REPRESENTATION_RENDERER,
-            value: abi.encode(address(links))
+            value: abi.encode(presentation)
         });
         p.contractFields[3] = AbxContractField({
             field: _FIELD_EXTERNAL_URL,

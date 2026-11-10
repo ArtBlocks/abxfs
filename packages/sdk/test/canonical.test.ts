@@ -24,9 +24,9 @@ import {
 } from "../src/canonical.js";
 
 const REPO_ROOT = resolve(__dirname, "../../..");
-const SUPPORTED = [84532, 8453, 1, 11155111, 42161, 421614];
-/** Deployed, read back from the chain and rehearsed: every supported chain. */
-const DEPLOYED = SUPPORTED;
+const SUPPORTED = [84532, 8453, 1, 11155111, 42161, 421614, 4663, 46630];
+/** Verified deployments only; additional supported networks remain addressless until rehearsed. */
+const DEPLOYED = [84532, 8453, 1, 11155111, 42161, 421614];
 
 /** `0x…` addresses assigned in a Solidity function's body, by the name each is assigned to. */
 function pinnedIn(file: string, fn: string): Record<string, string> {
@@ -35,8 +35,8 @@ function pinnedIn(file: string, fn: string): Record<string, string> {
   return Object.fromEntries([...body.matchAll(/(\w+)\s*=\s*(0x[0-9a-fA-F]{40});/g)].map((m) => [m[1]!, m[2]!]));
 }
 
-describe("deployed on every supported chain", () => {
-  it("every supported chain carries the one address book", () => {
+describe("verified canonical deployments", () => {
+  it("every verified chain carries the deployed address book", () => {
     const book = CANONICAL_DEPLOYMENTS[84532]?.addresses;
     expect(book).toBeDefined();
     for (const id of DEPLOYED) {
@@ -49,12 +49,12 @@ describe("deployed on every supported chain", () => {
   });
 
   /**
-   * The registry records what was deployed, and the deploy scripts refuse to broadcast anything but their pins, so the
-   * two must agree: a re-pin (a new build) fails here until the chains are redeployed and the record moves with them.
+   * The registry records verified deployments. Candidate pins for an undeployed successor must not move this book;
+   * previousPinned preserves the complete deployed generation while the successor is being qualified.
    */
-  it("records exactly the addresses the deploy scripts are pinned to", () => {
+  it("records the verified generation rather than undeployed candidate pins", () => {
     const core = pinnedIn("packages/contracts-core/script/Deploy.s.sol", "pinned");
-    const org = pinnedIn("packages/contracts-projects/script/Deploy.s.sol", "pinned");
+    const org = pinnedIn("packages/contracts-projects/script/Deploy.s.sol", "previousPinned");
     const resolver = readFileSync(resolve(REPO_ROOT, "packages/contracts-companion/script/Deploy.s.sol"), "utf8")
       .match(/function pinned\(\)[^{]*\{\s*return (0x[0-9a-fA-F]{40});/)?.[1];
     const book = CANONICAL_DEPLOYMENTS[84532]!.addresses!;
@@ -91,6 +91,13 @@ describe("deployed on every supported chain", () => {
 });
 
 describe("registry shape", () => {
+  it("does not advertise contracts on networks awaiting deployment qualification", () => {
+    for (const id of [4663, 46630]) {
+      expect(CANONICAL_DEPLOYMENTS[id]).toBeDefined();
+      expect(isCanonicallyDeployed(id)).toBe(false);
+      expect(() => requireCanonicalAddresses(id)).toThrow(/not.*deploy/i);
+    }
+  });
   it("supports Base, Ethereum, Arbitrum One and their testnets, and keeps their environments explicit", () => {
     for (const id of SUPPORTED) expect(canonicalChainIds()).toContain(id);
     expect(CANONICAL_DEPLOYMENTS[8453]?.environment).toBe("production");

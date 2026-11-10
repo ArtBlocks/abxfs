@@ -116,7 +116,7 @@ contract OrgFactoryBranchesTest is Test {
 
     function test_createOrgNeedsEveryComponent_eachOneAlone() public {
         for (uint256 missing; missing < 5; ++missing) {
-            OrgFactory f = new OrgFactory(address(abxFactory), RENDERER, SEED, address(dirStore), address(fileStore), address(meta));
+            OrgFactory f = new OrgFactory(address(abxFactory), RENDERER, SEED, address(dirStore), address(fileStore), address(meta), address(meta.links()));
             for (uint256 k; k < 5; ++k) {
                 if (k != missing) _deployComponent(f, k);
             }
@@ -135,7 +135,7 @@ contract OrgFactoryBranchesTest is Test {
     }
 
     function test_noComponentsAtAll() public {
-        OrgFactory f = new OrgFactory(address(abxFactory), RENDERER, SEED, address(dirStore), address(fileStore), address(meta));
+        OrgFactory f = new OrgFactory(address(abxFactory), RENDERER, SEED, address(dirStore), address(fileStore), address(meta), address(meta.links()));
         assertFalse(f.componentsDeployed());
         // Components are checked before the name: a bad name on a factory with no components says so second.
         vm.expectRevert(IOrgFactory.ComponentsNotDeployed.selector);
@@ -143,7 +143,7 @@ contract OrgFactoryBranchesTest is Test {
     }
 
     function _freshFactory() internal returns (OrgFactory) {
-        return new OrgFactory(address(abxFactory), RENDERER, SEED, address(dirStore), address(fileStore), address(meta));
+        return new OrgFactory(address(abxFactory), RENDERER, SEED, address(dirStore), address(fileStore), address(meta), address(meta.links()));
     }
 
     /// @dev What the deploy helper does when a component cannot land where the factory said: the deployer is asked

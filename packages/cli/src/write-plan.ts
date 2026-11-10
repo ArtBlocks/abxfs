@@ -175,8 +175,9 @@ export function describeWritePlan(plan: WritePlan, gasPrice?: bigint): string[] 
 export async function confirmWrite(
   client: Pick<AbxfsClient, "publicClient" | "walletClient">,
   plan: WritePlan,
-  opts: { yes?: boolean | undefined },
+  opts: { yes?: boolean | undefined; stderr?: boolean | undefined },
 ): Promise<boolean> {
+  const print = opts.stderr ? console.error : console.log;
   let gasPrice: bigint | undefined;
   try {
     // Display only, so a node that cannot say leaves the line out rather than stopping the write.
@@ -184,7 +185,7 @@ export async function confirmWrite(
   } catch {
     gasPrice = undefined;
   }
-  for (const line of describeWritePlan(plan, gasPrice)) console.log(line);
+  for (const line of describeWritePlan(plan, gasPrice)) print(line);
 
   const txs = plan.steps.reduce((a, s) => a + s.txs, 0);
   const gas = plan.steps.reduce((a, s) => a + s.gas, 0);
@@ -196,7 +197,7 @@ export async function confirmWrite(
   }
   const maxCost = BigInt(gas) * maxFeeCapWei(plan.chainId);
   if (balance < maxCost) {
-    console.log(
+    print(
       kleur.yellow(
         `  ! account ${account} holds ${formatEther(balance)} ETH, less than the max cost above. That is enough if fees stay low; ` +
           "if it runs out part way, fund it and run the same command again (what is already on chain is skipped).",
@@ -206,7 +207,7 @@ export async function confirmWrite(
 
   const what = `${plan.steps.some((s) => s.upTo) ? "up to " : ""}${txs} transaction${txs === 1 ? "" : "s"}`;
   if (opts.yes) {
-    console.log(kleur.gray(`  --yes: sending ${what} without asking`));
+    print(kleur.gray(`  --yes: sending ${what} without asking`));
     return true;
   }
   if (!process.stdin.isTTY) {
@@ -215,7 +216,7 @@ export async function confirmWrite(
         " (check the plan above first; --dry-run, where a command has it, previews without sending).",
     );
   }
-  const ok = await confirmTyped(`Send ${what}?`, { flag: "--yes" });
-  if (!ok) console.log(kleur.gray("aborted: nothing was sent"));
+  const ok = await confirmTyped(`Send ${what}?`, { flag: "--yes", stderr: opts.stderr });
+  if (!ok) print(kleur.gray("aborted: nothing was sent"));
   return ok;
 }

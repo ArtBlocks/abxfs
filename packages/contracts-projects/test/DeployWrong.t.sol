@@ -45,6 +45,29 @@ contract DWFileStore {
     }
 }
 
+/// @dev Probe fixtures with independently configurable immutable wiring, never a metadata renderer alias.
+contract DWPresentationDependency {
+    address public immutable directoryStore;
+    address public immutable fileStore;
+    constructor(address dirs, address files) { directoryStore = dirs; fileStore = files; }
+}
+contract DWPresentation {
+    address public immutable directoryStore;
+    address public immutable fileStore;
+    address public reader;
+    address public ipfsResolver;
+    string internal _base;
+    constructor(address dirs, address files, string memory base) {
+        directoryStore = dirs; fileStore = files;
+        reader = address(new DWPresentationDependency(dirs, files));
+        ipfsResolver = address(new DWPresentationDependency(dirs, files));
+        _base = base;
+    }
+    function defaultChainBase() external view returns (string memory) { return bytes(_base).length == 0 ? "https://fs.abx.io" : _base; }
+    function setBase(string calldata base) external { _base = base; }
+    function setDependencies(address r, address resolver) external { reader = r; ipfsResolver = resolver; }
+}
+
 /// @dev A contract that answers every selector with a word (a catch-all), as a proxy or a lazy mock would.
 contract DWCatchAll {
     fallback(bytes calldata) external returns (bytes memory) {
@@ -61,6 +84,7 @@ contract DeployWrongMockTest is Test {
     DWSeed seed;
     DWDirectoryStore dir;
     DWFileStore files;
+    DWPresentation presentation;
     string constant GW = "https://fs.abx.io";
 
     function setUp() public {
@@ -70,10 +94,11 @@ contract DeployWrongMockTest is Test {
         seed = new DWSeed();
         dir = new DWDirectoryStore();
         files = new DWFileStore();
+        presentation = new DWPresentation(address(dir), address(files), GW);
     }
 
     function _in() internal view returns (DeployProjects.Inputs memory) {
-        return DeployProjects.Inputs(address(abx), address(renderer), address(seed), address(dir), address(files), GW);
+        return DeployProjects.Inputs(address(abx), address(renderer), address(seed), address(dir), address(files), address(presentation), GW);
     }
 
     /// @dev Run with both overrides on, so only the probes and the gateway format can fail.
@@ -198,6 +223,7 @@ contract DeployWrongMockTest is Test {
         for (uint256 k; k < bad.length; ++k) {
             DeployProjects.Inputs memory i = _in();
             i.gatewayBase = bad[k];
+            presentation.setBase(bad[k]);
             // Pass the allow-table via the chain override, so only the gateway list is under test.
             vm.chainId(84532);
             vm.expectRevert(abi.encodeWithSelector(DeployProjects.UnlistedGateway.selector, bad[k]));
@@ -239,7 +265,7 @@ contract DeployWrongMockTest is Test {
             keccak256(
                 abi.encodePacked(
                     type(OrgFactory).creationCode,
-                    abi.encode(address(abx), address(renderer), address(seed), address(dir), address(files), meta)
+                    abi.encode(address(abx), address(renderer), address(seed), address(dir), address(files), meta, address(presentation))
                 )
             ),
             deployer

@@ -15,10 +15,11 @@ import { isRevertFailure, isTransportFailure } from "./multicall.js";
  * The block to read a paged list at: the node's current block number, or `undefined` (read at "latest", as before)
  * for a client that cannot say, such as a test double with no `getBlockNumber`.
  */
-export async function snapshotBlock(client: PublicClient): Promise<bigint | undefined> {
+export async function snapshotBlock(client: PublicClient, options?: { fresh?: boolean }): Promise<bigint | undefined> {
   const get = (client as { getBlockNumber?: PublicClient["getBlockNumber"] }).getBlockNumber;
   if (typeof get !== "function") return undefined;
-  return get.call(client);
+  // Interactive previews after a confirmed write must not pin viem's cached pre-write block.
+  return options?.fresh ? get.call(client, { cacheTime: 0 }) : get.call(client);
 }
 
 /** Attempts at a pinned block before its error stands, and the wait between them. Mutable only for tests. */

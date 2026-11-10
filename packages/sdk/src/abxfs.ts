@@ -133,6 +133,12 @@ import {
 } from "./draft.js";
 import { verifyLocalIpfsCid, verifyOnChainIpfsCid, assertIpfsCidAgreement } from "./verify.js";
 import { assertWalletChain } from "./wallet-chain.js";
+import {
+  readPresentation, inspectPresentation, previewPresentation, configurePresentationTarget,
+  setPresentationMethod, setPresentationEndpoints, lockPresentation, readPresentationLockCommitment,
+  readNativeFile, readNativePath, readNativeFileRange,
+  type PresentationTarget, type PresentationMethod, type NativeReadLimits,
+} from "./presentation.js";
 
 export interface AbxfsClientOptions {
   publicClient: PublicClient;
@@ -239,7 +245,7 @@ export class AbxfsClient {
 
   /** What became of a `createOrg` whose receipt wait timed out. See {@link recoverCreateOrg}. */
   recoverCreateOrg(hash: Hex): Promise<RecoveredWrite> {
-    return recoverCreateOrg(this.publicClient, requireOrgContracts(this.registry).factory, hash);
+    return recoverCreateOrg(this.publicClient, this.registry, hash);
   }
 
   /** One org's record, or `null` if the factory does not know the address. */
@@ -762,6 +768,54 @@ export class AbxfsClient {
 
 
   // ─── verify ────────────────────────────────────────────────────────────────
+  readPresentation(tokenId: bigint) {
+    return readPresentation(this.publicClient, this.addresses, this._requireOrg(), tokenId);
+  }
+
+  inspectPresentation(tokenId: bigint) {
+    return inspectPresentation(this.publicClient, this.addresses, this._requireOrg(), tokenId);
+  }
+
+  previewPresentation(tokenId: bigint) {
+    return previewPresentation(this.publicClient, this.addresses, this._requireOrg(), tokenId);
+  }
+
+  configurePresentationTarget(tokenId: bigint, target: PresentationTarget) {
+    this._requireWallet();
+    return configurePresentationTarget({ publicClient: this.publicClient, walletClient: this.walletClient! }, this.addresses, this._requireOrg(), tokenId, target);
+  }
+
+  setPresentationMethod(tokenId: bigint, method: PresentationMethod | "auto") {
+    this._requireWallet();
+    return setPresentationMethod({ publicClient: this.publicClient, walletClient: this.walletClient! }, this.addresses, this._requireOrg(), tokenId, method);
+  }
+
+  setPresentationEndpoints(tokenId: bigint, endpoints: { chainBase: string; ipfsBase: string }) {
+    this._requireWallet();
+    return setPresentationEndpoints({ publicClient: this.publicClient, walletClient: this.walletClient! }, this.addresses, this._requireOrg(), tokenId, endpoints);
+  }
+
+  readPresentationLockCommitment(tokenId: bigint, mask: number, blockNumber?: bigint) {
+    return readPresentationLockCommitment(this.publicClient, this.addresses, this._requireOrg(), tokenId, mask, blockNumber);
+  }
+
+  lockPresentation(tokenId: bigint, mask: number, expectedCommitment: Hex) {
+    this._requireWallet();
+    return lockPresentation({ publicClient: this.publicClient, walletClient: this.walletClient! }, this.addresses, this._requireOrg(), tokenId, mask, expectedCommitment);
+  }
+
+  readNativeFile(cid: AbxfsCid, limits: NativeReadLimits) {
+    return readNativeFile(this.publicClient, this.addresses, cid, limits);
+  }
+
+  readNativePath(root: AbxfsCid, path: string, limits: NativeReadLimits) {
+    return readNativePath(this.publicClient, this.addresses, root, path, limits);
+  }
+
+  readNativeFileRange(cid: AbxfsCid, start: bigint, length: bigint, limits: NativeReadLimits) {
+    return readNativeFileRange(this.publicClient, this.addresses, cid, start, length, limits);
+  }
+
   verifyLocalIpfsCid(cid: AbxfsCid): Promise<IpfsCid> {
     return verifyLocalIpfsCid(this.publicClient, this.addresses, cid);
   }

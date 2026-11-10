@@ -42,8 +42,8 @@ export function isOpStackChain(chainId: number): boolean {
   return knownViemChain(chainId)?.contracts?.["gasPriceOracle"] !== undefined;
 }
 
-/** Arbitrum One, Arbitrum Nova and Arbitrum Sepolia: Nitro chains. */
-const ARBITRUM_CHAIN_IDS = new Set([42161, 42170, 421614]);
+/** Nitro chains, including the Robinhood Orbit networks. */
+const ARBITRUM_CHAIN_IDS = new Set([42161, 42170, 421614, 4663, 46630]);
 
 /**
  * Whether `chainId` is an Arbitrum (Nitro) chain. Such a chain charges an L1 component for each transaction's calldata

@@ -7,6 +7,7 @@ import {ProjectEnumeration} from "../src/ProjectEnumeration.sol";
 import {OrgMinter} from "../src/OrgMinter.sol";
 import {ProjectCard} from "../src/ProjectCard.sol";
 import {ProjectTraits} from "../src/ProjectTraits.sol";
+import {OrgMeta} from "../src/OrgMeta.sol";
 
 /// @title OrgComponents — deploy the five components an `OrgFactory` names
 /// @notice The factory computes where its hook, enumeration hook, minter, card and traits renderer will be and leaves
@@ -48,7 +49,15 @@ library OrgComponents {
         internal
         returns (OrgFactory factory)
     {
-        factory = new OrgFactory(abx, renderer, seed, directoryStore, fileStore, orgMeta);
+        return create(abx, renderer, seed, directoryStore, fileStore, orgMeta, address(OrgMeta(orgMeta).links()));
+    }
+
+    /// @notice Construct a factory with an explicit, already deployed animation renderer.
+    function create(
+        address abx, address renderer, address seed, address directoryStore, address fileStore,
+        address orgMeta, address presentation
+    ) internal returns (OrgFactory factory) {
+        factory = new OrgFactory(abx, renderer, seed, directoryStore, fileStore, orgMeta, presentation);
         deploy(factory, directoryStore, fileStore);
     }
 

@@ -8,6 +8,8 @@ import type { Address, PublicClient } from "viem";
 
 import { addressesForOrg, generationOfOrg, orgGenerations } from "../src/org.js";
 import type { ContractAddresses } from "../src/types.js";
+import { PresentationCapabilityError, readNativeFile } from "../src/presentation.js";
+import { asAbxfsCid } from "../src/types.js";
 
 const a = (n: number) => (`0x${n.toString(16).padStart(40, "0")}`) as Address;
 const F2 = a(2), H2 = a(22), F1 = a(1), H1 = a(11), M1 = a(111), E1 = a(112), L1 = a(113);
@@ -90,5 +92,25 @@ describe("addressesForOrg", () => {
 
   it("is undefined for a stranger", async () => {
     expect(await addressesForOrg(c, addresses, STRANGER)).toBeUndefined();
+  });
+
+  it("retains the native reader only for generations using its immutable store pair", async () => {
+    const native: ContractAddresses = { ...addresses, contentReader: a(700) };
+    expect((await addressesForOrg(c, native, ORG_NEW))?.contentReader).toBe(a(700));
+    expect((await addressesForOrg(c, native, ORG_OLD))?.contentReader).toBe(a(700));
+    const samePair: ContractAddresses = {
+      ...native,
+      previousGenerations: [{ orgFactory: F1, projectHook: H1, fileStore: addresses.fileStore, directoryStore: addresses.directoryStore }],
+    };
+    expect((await addressesForOrg(c, samePair, ORG_OLD))?.contentReader).toBe(a(700));
+    const differentPair: ContractAddresses = {
+      ...native,
+      previousGenerations: [{ orgFactory: F1, projectHook: H1, fileStore: a(701), directoryStore: a(702) }],
+    };
+    const old = await addressesForOrg(c, differentPair, ORG_OLD);
+    expect(old).toMatchObject({ fileStore: a(701), directoryStore: a(702) });
+    expect(old?.contentReader).toBeUndefined();
+    await expect(readNativeFile(c, old!, asAbxfsCid(`0x${"00".repeat(32)}`), { maxBytes: 1n, maxChunks: 1n }))
+      .rejects.toBeInstanceOf(PresentationCapabilityError);
   });
 });

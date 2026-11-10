@@ -12,8 +12,14 @@ other.
 Use the canonical addresses. The SDK ships them, so the CLI and the gateway need
 no configuration to read.
 
-ABX FS is deployed on every network below. Each was read back from the chain and
-rehearsed before the registry gained its addresses.
+The original six networks below have verified legacy deployments. Robinhood and
+Robinhood Testnet are metadata-only registry entries awaiting verified addresses;
+CLI/SDK operations there refuse rather than calling predicted addresses.
+
+The new `ContentReader`, `ProjectPresentation` and seven-argument `OrgFactory`
+build is a deployment candidate. Its source pins are predictions, not evidence of
+live contracts, and are not published here as deployed addresses. Presentation
+commands require a factory generation that actually registers the capability.
 
 <Callout type="warn">
 **Prerelease, and unaudited.** ABX FS is early software and may have bugs; we do
@@ -34,6 +40,8 @@ network, real funds are at risk.
 | **Sepolia** | `sepolia` | 11155111 | Ethereum's paired testnet | deployed |
 | **Arbitrum One** | `arbitrum-one` | 42161 | production | deployed |
 | **Arbitrum Sepolia** | `arbitrum-sepolia` | 421614 | Arbitrum One's paired testnet | deployed |
+| **Robinhood** | `robinhood` | 4663 | production | awaiting verified addresses |
+| **Robinhood Testnet** | `robinhood-testnet` | 46630 | Robinhood's paired testnet | awaiting verified addresses |
 
 No tool picks a network for you: name the production or test network of your
 choice (`--chain`, or `ABXFS_CHAIN`, with the name above). A testnet tries ABX FS
@@ -59,12 +67,12 @@ the exact source through solc's metadata hash):
   under one shared salt, anyone may deploy each to that address, and `createOrg`
   reverts with `ComponentsNotDeployed` until all five exist. The factory's address
   also depends on its constructor arguments (the chain's ABX contracts, the two
-  stores and `OrgMeta`), and those are identical on every network listed here, so
-  it too lands at one address.
+  stores and `OrgMeta`), and those are identical on the six deployed networks
+  listed here, so it too lands at one address.
 
 ## Addresses
 
-The build tagged `abx-fs-freeze-3`, at these addresses on every chain above:
+The build tagged `abx-fs-freeze-3`, at these addresses on the six deployed chains above:
 
 | Contract | Address |
 | --- | --- |
@@ -88,7 +96,8 @@ rather than copying it from here:
 ```ts
 import { requireCanonicalDeployment, isCanonicallyDeployed } from "@artblocks/abxfs-sdk";
 
-isCanonicallyDeployed(chainId);                     // true for every network above
+isCanonicallyDeployed(chainId);                     // true for the six deployed networks above
+isCanonicallyDeployed(4663);                        // false: metadata only
 isCanonicallyDeployed(137);                         // false: not a network ABX FS supports
 const { name, addresses, publicRpc } = requireCanonicalDeployment(chainId);
 ```
@@ -99,7 +108,7 @@ record, naming the chains that have them.
 ### Verified source
 
 Every contract above, the three renderers included, is source-verified on
-[Sourcify](https://sourcify.dev) on every network above, as an **exact match**: the
+[Sourcify](https://sourcify.dev) on the six deployed networks above, as an **exact match**: the
 bytecode commits to the source text through solc's metadata hash, comments
 included, so the source Sourcify shows is exactly the source that was compiled.
 For example, the factory on Base:
@@ -144,3 +153,12 @@ so the SDK clamps its bundle budget below it regardless of which RPC you point a
 
 Whether a given endpoint applies the same cap, or a lower one, is not something to
 assume. Measure it before assuming either way.
+
+## Keeping older factory generations
+
+A new factory does not upgrade existing orgs. Once a replacement is verified and
+rehearsed, its deployment record becomes current and the complete superseded
+factory bundle stays in `previousGenerations` indefinitely. The SDK resolves orgs
+against their own generation, preserving old project reads and writes. A generation
+without presentation remains without it; a reader tied to different stores must
+not be silently reused. See [presentation capabilities](/docs/reference/presentation#factory-generations-stay-available).

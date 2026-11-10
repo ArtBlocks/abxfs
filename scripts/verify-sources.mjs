@@ -1,101 +1,100 @@
 #!/usr/bin/env node
 /**
- * Publish the source of every deployed ABX FS contract on one chain: on Sourcify and on the chain's Etherscan explorer.
+ * Verify one deployed generation, without changing the canonical registry.
+ * node scripts/verify-sources.mjs <chainId> [sourcify|etherscan|blockscout|both]
+ *   [--addresses <deployment-bundle.json>] [--source-root <frozen checkout>]
  *
- *   node scripts/verify-sources.mjs <chainId> [sourcify|etherscan|both]      (default: both)
+ * Default addresses come from the built SDK; an explicit bundle supports candidate qualification
+ * before registration. Read renderer/companion addresses and constructor arguments from deployed
+ * contracts, checking immutable wiring. Old factories require their exact original source checkout;
+ * today's seven-argument factory source cannot verify an immutable six-argument generation.
  *
- * The addresses come from the SDK registry (`pnpm --filter @artblocks/abxfs-sdk build` first). The three it does not list (the
- * card, the traits renderer and the links renderer) and the factory's ABX arguments are read from the deployed
- * contracts, so no address here is entered by hand.
- *
- * Build the contracts first (`pnpm build:contracts`): forge submits the local sources, and the build keeps solc's
- * metadata hash, so only the exact frozen source text matches. Sourcify then reports `exact_match`. A contract already
- * verified is skipped, so a rerun finishes what an earlier one left.
- *
- * Etherscan needs ETHERSCAN_API_KEY; one key covers every chain. Reads use ABXFS_RPC_URL_<chainId> when it is set, else
- * the registry's first public endpoint. It exits non-zero unless every contract ends verified on every verifier asked
- * for.
+ * Build the SDK and selected source checkout's contracts first. Both means Sourcify plus the chain's
+ * explorer (Blockscout for Robinhood, Etherscan otherwise). Only Etherscan needs ETHERSCAN_API_KEY.
+ * RPCs use ABXFS_RPC_URL_<chainId>, else registry metadata. No transactions are broadcast. Exit
+ * nonzero unless every requested contract/verifier succeeds (Sourcify requires exact_match).
  */
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { assertFactorySource, explorerFor, forgeVerificationArgs, sourcePackage, verificationInventory } from "./verification-plan.mjs";
 
 const ROOT = resolve(fileURLToPath(import.meta.url), "../..");
-const { requireCanonicalDeployment } = await import(pathToFileURL(resolve(ROOT, "packages/sdk/dist/index.js")).href);
-
+const { CANONICAL_DEPLOYMENTS } = await import(pathToFileURL(resolve(ROOT, "packages/sdk/dist/index.js")).href);
 const chainId = Number(process.argv[2]);
-const which = process.argv[3] ?? "both";
-if (!Number.isInteger(chainId) || !["sourcify", "etherscan", "both"].includes(which)) {
-  console.error("usage: node scripts/verify-sources.mjs <chainId> [sourcify|etherscan|both]");
-  process.exit(2);
+const rest = process.argv.slice(3);
+const which = rest[0] && !rest[0].startsWith("--") ? rest.shift() : "both";
+let addressFile;
+let sourceRoot = ROOT;
+while (rest.length) {
+  const flag = rest.shift();
+  const value = rest.shift();
+  if (!value || !["--addresses", "--source-root"].includes(flag)) throw new Error("expected --addresses <JSON file> or --source-root <frozen checkout>");
+  if (flag === "--addresses") addressFile = value;
+  else sourceRoot = resolve(value);
 }
-const verifiers = which === "both" ? ["sourcify", "etherscan"] : [which];
+if (!Number.isInteger(chainId) || !["sourcify", "etherscan", "blockscout", "both"].includes(which)) {
+  throw new Error("usage: node scripts/verify-sources.mjs <chainId> [sourcify|etherscan|blockscout|both] [--addresses <JSON file>] [--source-root <frozen checkout>]");
+}
+const deployment = CANONICAL_DEPLOYMENTS[chainId];
+if (!deployment) throw new Error(`chain ${chainId} is not in the SDK network registry`);
+// An explicit bundle permits qualification before canonical registration, including metadata-only chains.
+const a = addressFile ? JSON.parse(readFileSync(addressFile, "utf8")) : deployment.addresses;
+if (!a) throw new Error(`chain ${chainId} has no verified deployment; supply --addresses for an explicit candidate bundle`);
+const explorer = explorerFor(chainId);
+const verifiers = which === "both" ? ["sourcify", explorer.verifier] : [which];
+if (verifiers.includes("blockscout") && explorer.verifier !== "blockscout") throw new Error("no Blockscout verifier configured for this chain");
 const apiKey = process.env.ETHERSCAN_API_KEY;
-if (verifiers.includes("etherscan") && !apiKey) {
-  console.error("ETHERSCAN_API_KEY is not set");
-  process.exit(2);
-}
-
-const deployment = requireCanonicalDeployment(chainId);
-const a = deployment.addresses;
+if (verifiers.includes("etherscan") && !apiKey) throw new Error("ETHERSCAN_API_KEY is not set");
 const rpc = process.env[`ABXFS_RPC_URL_${chainId}`] || deployment.publicRpc[0];
-
-const cast = (...args) => execFileSync("cast", args, { encoding: "utf8" }).trim();
+const cast = (...args) => {
+  try { return execFileSync("cast", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim(); }
+  catch { throw new Error(`cast ${args[0]} failed; inspect the RPC locally (credentials omitted)`); }
+};
+if (Number(cast("chain-id", "--rpc-url", rpc)) !== chainId) throw new Error("RPC chain id differs from requested verification chain");
 const readAddress = (to, getter) => cast("call", to, `${getter}()(address)`, "--rpc-url", rpc);
-const same = (x, y) => x.toLowerCase() === y.toLowerCase();
-
-// What the registry does not list, read from the contracts that hold it; and what it does list, checked against them.
+const readString = (to, getter) => JSON.parse(cast("call", to, `${getter}()(string)`, "--rpc-url", rpc));
+const same = (x, y) => x?.toLowerCase() === y?.toLowerCase();
+const check = (to, getter, expected) => {
+  if (!expected || !same(readAddress(to, getter), expected)) throw new Error(`deployment wiring mismatch: ${getter}()`);
+};
 const links = readAddress(a.orgMeta, "links");
 const card = readAddress(a.orgFactory, "card");
 const traits = readAddress(a.orgFactory, "traits");
 const abx = readAddress(a.orgFactory, "abx");
 const renderer = readAddress(a.orgFactory, "metadataRenderer");
 const seed = readAddress(a.orgFactory, "seedSource");
-const gatewayBase = JSON.parse(cast("call", a.orgMeta, "gatewayBase()(string)", "--rpc-url", rpc));
-for (const [getter, expected] of [
-  ["hook", a.projectHook],
-  ["enumeration", a.projectEnumeration],
-  ["minter", a.orgMinter],
-  ["orgMeta", a.orgMeta],
-  ["links", links],
-]) {
-  const got = readAddress(a.orgFactory, getter);
-  if (!same(got, expected)) throw new Error(`the factory's ${getter}() is ${got}, the registry says ${expected}`);
+const gatewayBase = readString(a.orgMeta, "gatewayBase");
+for (const [getter, expected] of [["hook", a.projectHook], ["enumeration", a.projectEnumeration], ["minter", a.orgMinter], ["orgMeta", a.orgMeta], ["links", links]]) check(a.orgFactory, getter, expected);
+check(a.directoryStore, "fileStore", a.fileStore);
+check(a.fileStore, "chunkStore", a.chunkStore);
+let presentation;
+try { presentation = readAddress(a.orgFactory, "presentation"); } catch { /* Legacy factories have no presentation getter. */ }
+if (a.projectPresentation && !same(presentation, a.projectPresentation)) throw new Error("factory presentation differs from deployment bundle");
+let reader;
+let resolver;
+let defaultChainBase;
+if (presentation) {
+  reader = readAddress(presentation, "reader");
+  resolver = readAddress(presentation, "ipfsResolver");
+  defaultChainBase = readString(presentation, "defaultChainBase");
+  if (a.contentReader && !same(reader, a.contentReader)) throw new Error("reader differs from deployment bundle");
+  for (const target of [reader, presentation, resolver]) {
+    check(target, "fileStore", a.fileStore);
+    check(target, "directoryStore", a.directoryStore);
+  }
+  if (defaultChainBase !== gatewayBase) throw new Error("presentation and OrgMeta gateway defaults differ");
 }
-
-// [package, contract, address, constructor signature and arguments]
-const contracts = [
-  ["contracts-core", "src/ChunkStore.sol:ChunkStore", a.chunkStore, []],
-  ["contracts-core", "src/backends/Sstore2Backend.sol:Sstore2Backend", a.sstore2Backend, []],
-  ["contracts-core", "src/backends/FastLzSstore2Backend.sol:FastLzSstore2Backend", a.fastLzBackend, []],
-  ["contracts-core", "src/FileStore.sol:FileStore", a.fileStore, ["constructor(address)", a.chunkStore]],
-  ["contracts-core", "src/DirectoryStore.sol:DirectoryStore", a.directoryStore, ["constructor(address)", a.fileStore]],
-  [
-    "contracts-companion",
-    "src/IpfsCidResolver.sol:IpfsCidResolver",
-    a.ipfsCidResolver,
-    ["constructor(address,address)", a.fileStore, a.directoryStore],
-  ],
-  ["contracts-projects", "src/OrgMeta.sol:OrgMeta", a.orgMeta, ["constructor(string)", gatewayBase]],
-  ["contracts-projects", "src/ProjectLinks.sol:ProjectLinks", links, ["constructor(string)", gatewayBase]],
-  [
-    "contracts-projects",
-    "src/OrgFactory.sol:OrgFactory",
-    a.orgFactory,
-    ["constructor(address,address,address,address,address,address)", abx, renderer, seed, a.directoryStore, a.fileStore, a.orgMeta],
-  ],
-  [
-    "contracts-projects",
-    "src/ProjectHook.sol:ProjectHook",
-    a.projectHook,
-    ["constructor(address,address,address)", a.directoryStore, a.fileStore, a.orgFactory],
-  ],
-  ["contracts-projects", "src/ProjectEnumeration.sol:ProjectEnumeration", a.projectEnumeration, ["constructor(address)", a.orgFactory]],
-  ["contracts-projects", "src/OrgMinter.sol:OrgMinter", a.orgMinter, ["constructor(address)", a.orgFactory]],
-  ["contracts-projects", "src/ProjectCard.sol:ProjectCard", card, ["constructor(address)", a.projectHook]],
-  ["contracts-projects", "src/ProjectTraits.sol:ProjectTraits", traits, ["constructor(address)", a.projectHook]],
-  ["contracts-projects", "src/Lens.sol:Lens", a.lens, ["constructor(address,address)", a.orgFactory, a.projectHook]],
-];
+const contracts = verificationInventory(a, { links, card, traits, abx, renderer, seed, gatewayBase, presentation, reader, resolver, defaultChainBase });
+// Never submit today's seven-argument source for an immutable six-argument factory (or vice versa).
+const factoryAbi = JSON.parse(execFileSync("forge", ["inspect", "src/OrgFactory.sol:OrgFactory", "abi", "--json"], {
+  cwd: sourcePackage(sourceRoot, "contracts-projects"), encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
+}));
+assertFactorySource(factoryAbi, Boolean(presentation));
+for (const [, contract, address] of contracts) {
+  if (cast("code", address, "--rpc-url", rpc) === "0x") throw new Error(`no deployed code for ${contract} at ${address}`);
+}
 
 async function status(verifier, address) {
   // A status read that fails (a dropped connection, a rate limit) counts as not verified yet: the next round asks again.
@@ -104,8 +103,11 @@ async function status(verifier, address) {
       const r = await (await fetch(`https://sourcify.dev/server/v2/contract/${chainId}/${address}`)).json();
       return r.match ?? "not verified";
     }
-    const url = `https://api.etherscan.io/v2/api?chainid=${chainId}&module=contract&action=getsourcecode&address=${address}`;
-    const r = await (await fetch(`${url}&apikey=${apiKey}`)).json();
+    const base = verifier === "blockscout" ? explorer.url : "https://api.etherscan.io/v2/api";
+    const url = new URL(base);
+    for (const [key, value] of Object.entries({ chainid: String(chainId), module: "contract", action: "getsourcecode", address })) url.searchParams.set(key, value);
+    if (verifier === "etherscan") url.searchParams.set("apikey", apiKey);
+    const r = await (await fetch(url)).json();
     return Array.isArray(r.result) && r.result[0]?.ContractName ? "verified" : "not verified";
   } catch {
     return "not verified";
@@ -118,13 +120,12 @@ for (const verifier of verifiers) {
   for (const [pkg, contract, address, ctor] of contracts) {
     if ((await status(verifier, address)) !== "not verified") continue;
     console.log(`${verifier}: submitting ${contract} at ${address}`);
-    const args = ["verify-contract", address, contract, "--chain", String(chainId), "--verifier", verifier];
-    if (ctor.length) args.push("--constructor-args", cast("abi-encode", ...ctor));
+    const args = forgeVerificationArgs(chainId, verifier, contract, address, ctor.length ? cast("abi-encode", ...ctor) : undefined);
     // forge 1.4.3 submits to Etherscan whenever ETHERSCAN_API_KEY is set, whatever `--verifier` says.
     const env = { ...process.env };
     if (verifier !== "etherscan") delete env.ETHERSCAN_API_KEY;
     try {
-      execFileSync("forge", args, { cwd: resolve(ROOT, "packages", pkg), env, stdio: ["ignore", "ignore", "inherit"] });
+      execFileSync("forge", args, { cwd: sourcePackage(sourceRoot, pkg), env, stdio: ["ignore", "ignore", "inherit"] });
     } catch {
       console.log(`${verifier}: the submission of ${contract} failed`);
     }

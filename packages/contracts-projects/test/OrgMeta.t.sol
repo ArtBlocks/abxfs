@@ -453,7 +453,7 @@ contract OrgMetaTest is Test {
 
     function test_factoryRefusesAnOrgMetaWithNoCode() public {
         vm.expectRevert();
-        new OrgFactory(address(abxFactory), RENDERER, address(0xBEEF02), address(1), address(2), address(0xdead));
+        new OrgFactory(address(abxFactory), RENDERER, address(0xBEEF02), address(1), address(2), address(0xdead), address(0xdead));
     }
 
     function _refuse(bytes memory d) internal {

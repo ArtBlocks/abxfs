@@ -3,6 +3,8 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 
+import {ProjectPresentation} from "../src/ProjectPresentation.sol";
+import {DWPresentationDependency} from "./DeployWrong.t.sol";
 import {OrgFactory} from "../src/OrgFactory.sol";
 import {OrgMeta} from "../src/OrgMeta.sol";
 import {Lens} from "../src/Lens.sol";
@@ -23,6 +25,7 @@ contract DeployGasTest is Test {
     uint256 constant BLOCK = 60_000_000;
 
     function _deploy(string memory label, bytes32 salt, bytes memory initCode) internal returns (address at) {
+        assertLt(initCode.length, 49_152, string.concat(label, ": initcode over EIP-3860"));
         vm.startStateDiffRecording();
         uint256 g = gasleft();
         (bool ok, bytes memory ret) = CREATE2_DEPLOYER.call(abi.encodePacked(salt, initCode));
@@ -30,6 +33,7 @@ contract DeployGasTest is Test {
         GasModel.Created memory created = GasModel.created(vm.stopAndReturnStateDiff());
         require(ok && ret.length == 20, "deploy failed");
         at = address(bytes20(ret));
+        assertLt(at.code.length, 24_576, string.concat(label, ": runtime over EIP-170"));
         // Under --isolate the deploy is its own transaction and lastCallGas is its total, intrinsic cost included.
         uint256 total = vm.lastCallGas().gasTotalUsed;
         if (total < used) total = used;
@@ -50,12 +54,16 @@ contract DeployGasTest is Test {
         address meta = _deploy("OrgMeta", salt, abi.encodePacked(type(OrgMeta).creationCode, abi.encode("https://fs.abx.io")));
         address dir = address(0xD1);
         address files = address(0xF1);
+        vm.etch(dir, hex"00"); vm.etch(files, hex"00");
+        address reader = address(new DWPresentationDependency(dir, files));
+        address resolver = address(new DWPresentationDependency(dir, files));
+        address presentation = _deploy("ProjectPresentation", salt, abi.encodePacked(type(ProjectPresentation).creationCode, abi.encode(reader, resolver, "https://fs.abx.io")));
         address f = _deploy(
             "OrgFactory",
             salt,
             abi.encodePacked(
                 type(OrgFactory).creationCode,
-                abi.encode(address(0xA1), address(0xA2), address(0xA3), dir, files, meta)
+                abi.encode(address(0xA1), address(0xA2), address(0xA3), dir, files, meta, presentation)
             )
         );
         bytes32 cs = OrgFactory(f).COMPONENT_SALT();

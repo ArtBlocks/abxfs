@@ -16,6 +16,7 @@ import { diffCommand } from "./commands/diff.js";
 import { devCommand } from "./commands/dev.js";
 import { infoCommand } from "./commands/info.js";
 import { orgCommand } from "./commands/org.js";
+import { presentationCommand } from "./commands/presentation.js";
 import { pinCommand } from "./commands/pin.js";
 import { readCommand } from "./commands/read.js";
 import { tagCommand } from "./commands/tag.js";
@@ -55,6 +56,7 @@ function buildProgram(): Command {
   program.addCommand(diffCommand());
   program.addCommand(tagCommand());
   program.addCommand(viewCommand());
+  program.addCommand(presentationCommand());
   program.addCommand(transferCommand());
   program.addCommand(verifyCommand());
   program.addCommand(pinCommand());
@@ -71,6 +73,11 @@ export async function run(argv: string[] = process.argv): Promise<void> {
     await program.parseAsync(args);
   } catch (err) {
     const { label, message, details } = describeCliError(err);
+    if (args.includes("presentation") && args.includes("--json")) {
+      console.log(JSON.stringify({ ok: false, error: { label, message, details } }));
+      process.exitCode = 1;
+      return;
+    }
     console.error(label === "cancelled" ? kleur.yellow("cancelled:") : kleur.red("error:"), message);
     for (const line of details ?? []) console.error(line);
     process.exitCode = 1;

@@ -60,13 +60,25 @@ export interface CanonicalDeployment {
 
 /**
  * Registry of canonical deployments, keyed by EIP-155 chain id: Base (8453), Base Sepolia (84532), Ethereum (1),
- * Sepolia (11155111), Arbitrum One (42161) and Arbitrum Sepolia (421614). A chain gains {@link ABXFS_ADDRESSES} once ABX FS is deployed
+ * Sepolia (11155111), Arbitrum One (42161) and Arbitrum Sepolia (421614), Robinhood (4663) and Robinhood Testnet (46630). A chain gains {@link ABXFS_ADDRESSES} once ABX FS is deployed
  * there, read back and rehearsed.
  *
  * Integer keys enumerate in ascending numeric order whatever the literal order below. No network is a default:
  * a caller that names none is asked to choose.
  */
 export const CANONICAL_DEPLOYMENTS: Readonly<Record<number, CanonicalDeployment>> = Object.freeze({
+  46630: Object.freeze({
+    chainId: 46630,
+    name: "Robinhood Testnet",
+    environment: "testnet",
+    publicRpc: Object.freeze(["https://rpc.testnet.chain.robinhood.com", "https://robinhood-sepolia-rpc.publicnode.com"]) as unknown as string[],
+  }) satisfies CanonicalDeployment,
+  4663: Object.freeze({
+    chainId: 4663,
+    name: "Robinhood",
+    environment: "production",
+    publicRpc: Object.freeze(["https://rpc.mainnet.chain.robinhood.com", "https://robinhood-rpc.publicnode.com"]) as unknown as string[],
+  }) satisfies CanonicalDeployment,
   84532: Object.freeze({
     chainId: 84532,
     name: "Base Sepolia",

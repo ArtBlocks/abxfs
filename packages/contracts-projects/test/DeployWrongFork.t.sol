@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {DWPresentation} from "./DeployWrong.t.sol";
 import {Test} from "forge-std/Test.sol";
 import {DeployProjects} from "../script/Deploy.s.sol";
 import {ContentLayer, CONTENT_DIRECTORY_STORE, CONTENT_FILE_STORE} from "./fork/ContentLayer.sol";
@@ -19,6 +20,7 @@ contract DeployWrongForkTest is Test {
     string constant GATEWAY = "https://fs.abx.io";
 
     DeployProjects d;
+    address presentationAddress;
 
     function setUp() public {
         string memory url = vm.envOr("ABXFS_RPC_URL_84532", string(""));
@@ -26,10 +28,15 @@ contract DeployWrongForkTest is Test {
         vm.createSelectFork(url);
         ContentLayer.deploy();
         d = new DeployProjects();
+        DWPresentation presentation = new DWPresentation(DIR, FILES, GATEWAY);
+        presentationAddress = d.expected().presentation;
+        address at = presentationAddress;
+        vm.etch(at, address(presentation).code);
+        DWPresentation(at).setDependencies(presentation.reader(), presentation.ipfsResolver());
     }
 
-    function _good() internal pure returns (DeployProjects.Inputs memory) {
-        return DeployProjects.Inputs(ABX_F, ABX_RENDERER, ABX_SEED, DIR, FILES, GATEWAY);
+    function _good() internal view returns (DeployProjects.Inputs memory) {
+        return DeployProjects.Inputs(ABX_F, ABX_RENDERER, ABX_SEED, DIR, FILES, presentationAddress, GATEWAY);
     }
 
     function test_happyPathOnRealSepoliaAddresses() public view {
@@ -83,6 +90,7 @@ contract DeployWrongForkTest is Test {
     function test_lookalikeGatewayRefused() public {
         DeployProjects.Inputs memory i = _good();
         i.gatewayBase = "https://fs.abx.io.evil.example";
+        DWPresentation(i.presentation).setBase(i.gatewayBase);
         vm.expectRevert(abi.encodeWithSelector(DeployProjects.UnlistedGateway.selector, i.gatewayBase));
         d.preflight(i, false, false);
         d.preflight(i, false, true); // admitted only by the explicit flag

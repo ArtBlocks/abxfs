@@ -1,0 +1,137 @@
+---
+title: "Project presentation and native reads"
+description: "Select a project's marketplace content, freeze presentation choices, and read stored bytes from Solidity."
+---
+
+Project presentation controls `animation_url` for orgs created by a factory with
+`projectPresentation`. It is separate from publishing: versions remain append-only,
+and presentation changes do not rewrite stored content. Check [deployment status](/docs/reference/deployments)
+before using these capabilities; candidate contracts are not live registry entries.
+
+## Choose a delivery method
+
+| Method | What the token renders | When to use it |
+| --- | --- | --- |
+| ChainGateway | A chain-specific URL for the selected root and path | The on-chain default; websites, larger files and content with dependencies |
+| Embedded | The selected file's bytes, embedded by ABX in metadata | Small supported HTML, SVG, image, audio or video payloads |
+| IPFS | `ipfs://<cid>/<path>`, or an explicit subdomain gateway URL | An explicit creator choice, with pinning arranged separately |
+
+`auto` is a CLI/SDK recommendation, not a fourth on-chain mode. It writes Embedded
+only for suitable payloads of **at most 8,192 decoded bytes and 32 chunks** with no
+detected dependencies; otherwise it writes ChainGateway. File-level codecs,
+multi-entry directories, relative/external references and detected network or opaque
+dynamic code retain a gateway origin. Inline JavaScript can qualify, but static
+inspection cannot prove arbitrary code self-contained: review `runtimeUncertain`
+and `residualDependencies` in the preview.
+
+Auto never selects IPFS. Choosing IPFS computes a CID; it does not pin anything or
+promise availability. The creator must [pin the content](/docs/using-abxfs/ipfs)
+and keep it available. An empty IPFS endpoint uses `ipfs://`; a base such as
+`https://dweb.link` produces `https://<cid>.ipfs.dweb.link/...`.
+An empty chain endpoint uses the generation's default gateway; a custom chain base
+must serve `/g/cid/<chain>/<root>/<path>`. Use HTTPS bases without a trailing slash.
+
+New CLI projects use Auto when their org supports presentation. Updating an existing
+project with `upload --project-id` preserves its method unless `--presentation` is supplied.
+`update` also preserves the owner's method. After publishing, it previews supported
+presentation and warns if the result is not Ready or the read fails, with commands
+to inspect and review a gateway method change. Publication remains successful;
+rerunning the update is unnecessary. A previously Embedded project that grows beyond
+the limits or uses a file codec may need an explicit method change. See the
+[CLI commands](/docs/reference/cli#project-presentation) and
+[SDK methods](/docs/reference/sdk#native-content-and-project-presentation).
+
+## Select the source
+
+Choose **Latest**, a 1-based **Version**, or a named **Tag**, plus an optional path
+inside that root. Latest follows new publishes; Tag follows tag movements; Version
+selects one historical root. An empty path selects a file root or `index.html` in a
+directory when reading Embedded content. A selected directory likewise reads its
+`index.html`. Paths are relative, without a leading or trailing slash.
+
+`presentation inspect` reports the exact selected root and path, method, endpoints
+and locks. `presentation preview` adds the status, MIME type, payload and dependency
+analysis without a signer. A Ready URL preview does not check that its remote
+endpoint is online. A failed renderer returns an empty animation field; inspect the
+preview status to distinguish unpublished content, an invalid target, an unsupported
+codec or MIME type, read failures and exhausted budgets.
+
+## Freeze independent choices
+
+Only the project token owner may configure or lock its presentation. Three permanent
+locks can be combined:
+
+| Lock | Commitment |
+| --- | --- |
+| Content | The reviewed selected root and path, even if Latest or a Tag later moves |
+| Method | ChainGateway, Embedded or IPFS |
+| Endpoints | The configured chain and IPFS endpoint bases |
+
+Every lock requires an explicit commitment to the reviewed state of its selected
+dimensions. Dry-run the exact CLI lock command, review the output, then copy its
+`expectedCommitment` into `--expected-commitment` for submission. The contract
+checks it when the transaction executes; changed selected state requires a fresh
+review. SDK callers read the commitment at the preview's block. Locks survive transfers and have no
+force override. Publishing later versions remains possible. Freezing content alone
+does not freeze its delivery method or the services an endpoint depends on.
+
+`external_url` remains separate: it uses the org's link renderer and `abxfs.view`
+override. A view override cannot bypass presentation locks or replace the new
+`animation_url`. [Legacy token links](/docs/using-abxfs/token-links) describes orgs
+whose animation and external links both use that older renderer.
+
+## Native Solidity reads
+
+`ContentReader` is a stateless companion with immutable file/directory store
+addresses and no roles or ETH. It adds no mutable content registry and changes no
+CIDs. Its view calls return MIME type and bytes:
+
+```solidity
+(string memory mime, bytes memory data) = reader.readPath(root, "index.html", 8192, 32);
+// Direct file or byte range:
+(mime, data) = reader.readFile(fileCid, 8192, 32);
+(mime, data) = reader.readFileRange(fileCid, 0, 128, 8192, 32);
+// Latest project root; use a 1-based version OR a tag to select history:
+bytes32 selected = reader.projectRoot(org, tokenId, 0, "");
+(mime, data) = reader.readProject(org, tokenId, 0, "stable", "index.html", 8192, 32);
+```
+
+Native reads support raw and FastLZ storage: `FileStore.readChunk` decompresses the
+storage backend. They reject file-level codecs, including gzip, Brotli and Zstandard;
+use the SDK or chain gateway to decode those. Whole-file reads check recorded byte
+and chunk totals before allocating content. Range limits include the full decoded
+sizes of touched boundary chunks, not just returned bytes. Limits bound bytes and
+chunk reads, not backend gas; Solidity callers containing failures should also cap
+call gas. `projectRoot` follows the org's own configure hook, including older orgs;
+it is a content convenience, not proof of factory registration.
+
+## Use stored content in an ABX reader field
+
+`AbxContentReader` adapts a fixed root/path to ABX's `read(address)` reader ABI.
+Deploy one with the reader address, root, path and explicit limits, then encode the
+adapter as both reader and pointer:
+
+```solidity
+AbxContentReader adapter = new AbxContentReader(address(reader), root, "index.html", 8192, 32);
+bytes memory readerValue = abi.encode(address(adapter), address(adapter));
+bytes memory data = adapter.read(address(adapter));
+```
+
+Use `readerValue` as the value of an ABX field configured with its on-chain reader
+representation. The pointer identifies this fixed adapter; any other pointer is
+rejected. Its source and limits cannot be redirected after deployment. File codecs
+remain unsupported. This adapter supplies bytes to an ABX field; it does not give an
+older ABX FS org the new presentation renderer.
+
+## Factory generations stay available
+
+Presentation is a factory-generation capability. Resolve an existing org with
+`client.resolveOrg(org)` first. An older generation without `projectPresentation`
+reports `PresentationCapabilityError` rather than borrowing the current contract.
+A native reader can still read old content using its matching stores; if the store
+pair differs, use a reader deployed for that pair or ordinary SDK reads.
+
+A replacement factory creates new orgs. Earlier factories, hooks, minters,
+enumeration contracts and lenses remain registered together in `previousGenerations`
+so their orgs can still be listed, read, minted into and published to. Those records
+are permanent compatibility history, not temporary migration entries.
