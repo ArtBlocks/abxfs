@@ -1,5 +1,14 @@
 # @artblocks/abxfs-pinning
 
+## 0.1.4
+
+### Patch Changes
+
+- Updated dependencies [23957df]
+- Updated dependencies [23957df]
+- Updated dependencies [23957df]
+  - @artblocks/abxfs-sdk@0.3.0
+
 ## 0.1.3
 
 ### Patch Changes

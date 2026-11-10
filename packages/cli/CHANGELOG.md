@@ -1,5 +1,21 @@
 # @artblocks/abxfs-cli
 
+## 0.2.0
+
+### Minor Changes
+
+- 23957df: Add generation-aware project presentation inspect, preview, configuration and immutable lock commands with JSON results and signer-free dry runs. Configure new supported projects through the SDK's auto presentation choice, preserve existing methods on updates, limit implicit new-project org choices to the current factory, and add a no-write update preview.
+  
+  Warn after a successful update when the preserved presentation is not ready or cannot be previewed, with presentation-only recovery commands and no repeated publish.
+
+### Patch Changes
+
+- Updated dependencies [23957df]
+- Updated dependencies [23957df]
+- Updated dependencies [23957df]
+  - @artblocks/abxfs-sdk@0.3.0
+  - @artblocks/abxfs-pinning@0.1.4
+
 ## 0.1.3
 
 ### Patch Changes

@@ -1,5 +1,18 @@
 # @artblocks/abxfs-sdk
 
+## 0.3.0
+
+### Minor Changes
+
+- 23957df: Add optional native on-chain content reads and generation-specific presentation controls, inspection, preview, and conservative Auto method selection. Recover org creation from one receipt across all configured factory generations and refuse ambiguous receipts.
+  
+  Do not reuse the current native reader for an older org generation with a different immutable store pair.
+
+### Patch Changes
+
+- 23957df: Pin dependent content simulations and gas estimates to successful prerequisite receipt blocks to avoid stale-replica missing-file or missing-node errors after successful receipts. Keep retries bounded and read-only, and submit the exact gas estimate without repeating a successful write.
+- 23957df: Register the verified reader/presentation factory generation on all eight supported networks. Preserve the complete original factory generation on its six original networks, while keeping Robinhood factory history empty because those chains first deployed the current generation.
+
 ## 0.2.1
 
 ### Patch Changes
