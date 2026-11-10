@@ -12,6 +12,7 @@ import {OrgMinter} from "../src/OrgMinter.sol";
 import {ProjectCard} from "../src/ProjectCard.sol";
 import {ProjectTraits} from "../src/ProjectTraits.sol";
 import {OrgComponents} from "./OrgComponents.sol";
+import {PresentationChecks} from "./PresentationChecks.sol";
 
 /// @title Deploy — contracts-projects (the ABX FS org layer; `specs/abx-fs-orgs.md`)
 /// @notice Deploys `OrgMeta` (which deploys the links renderer), then the ABX FS org factory, then its five
@@ -37,6 +38,7 @@ import {OrgComponents} from "./OrgComponents.sol";
 ///           ABX_SERIES_CODE_FACTORY ABX's canonical SeriesCode factory on this chain
 ///           ABX_METADATA_RENDERER   ABX's canonical metadata renderer
 ///           ABX_SEED_SOURCE         ABX's canonical seed source
+///           ABXFS_PRESENTATION      the predeployed immutable presentation companion
 ///           ABXFS_GATEWAY_BASE      the site tokens link to: https://fs.abx.io — no trailing
 ///                                   slash. FROZEN into every org's metadata, so it must be a domain
 ///                                   this project owns for as long as any org exists.
@@ -81,6 +83,7 @@ contract DeployProjects is Script {
         address seed;
         address directoryStore;
         address fileStore;
+        address presentation;
         string gatewayBase;
     }
 
@@ -96,8 +99,6 @@ contract DeployProjects is Script {
         address traits;
         address lens;
     }
-
-    uint256 internal constant MAX_GATEWAY_BASE_BYTES = 128;
 
     address internal constant CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
 
@@ -123,34 +124,12 @@ contract DeployProjects is Script {
     ///         `ProjectLinks` refuses in a project's own URL (`" & ' ( ) < > [ \ ] ^ \` { | }`): the base is
     ///         emitted in the same two fields.
     function validateGatewayBase(string memory base) public pure {
-        bytes memory b = bytes(base);
-        if (b.length > MAX_GATEWAY_BASE_BYTES) revert BadGatewayBase("longer than 128 bytes");
-        if (b.length < 9) revert BadGatewayBase("must be https:// followed by a host");
-        bytes memory scheme = "https://";
-        for (uint256 i; i < 8; ++i) {
-            if (b[i] != scheme[i]) revert BadGatewayBase("must start with https://");
-        }
-        if (b[8] == "/") revert BadGatewayBase("empty host");
-        if (b[b.length - 1] == "/") revert BadGatewayBase("trailing slash");
-        for (uint256 i; i < b.length; ++i) {
-            uint8 c = uint8(b[i]);
-            if (c <= 0x20 || c >= 0x7f) revert BadGatewayBase("whitespace, control or non-ASCII byte");
-            if (
-                c == 0x22 || c == 0x26 || c == 0x27 || c == 0x28 || c == 0x29 || c == 0x3c || c == 0x3e || c == 0x5b
-                    || c == 0x5c || c == 0x5d || c == 0x5e || c == 0x60 || c == 0x7b || c == 0x7c || c == 0x7d
-            ) {
-                revert BadGatewayBase("character that breaks JSON or markup");
-            }
-        }
+        PresentationChecks.gatewayBase(base);
     }
 
     function _predict(bytes32 salt, bytes memory initcode) internal pure returns (address) {
         return address(
-            uint160(
-                uint256(
-                    keccak256(abi.encodePacked(bytes1(0xff), CREATE2_DEPLOYER, salt, keccak256(initcode)))
-                )
-            )
+            uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), CREATE2_DEPLOYER, salt, keccak256(initcode)))))
         );
     }
 
@@ -165,7 +144,7 @@ contract DeployProjects is Script {
 
     function _isListedChain(uint256 chainId) internal pure returns (bool) {
         return chainId == 8453 || chainId == 84532 || chainId == 1 || chainId == 11155111 || chainId == 42161
-            || chainId == 421614;
+            || chainId == 421614 || chainId == 4663 || chainId == 46630;
     }
 
     /// @notice The allow-table entry for every listed chain (they all bind the same set).
@@ -177,6 +156,7 @@ contract DeployProjects is Script {
         // stores (any storage backend: the stores accept chunks from any backend).
         e.directoryStore = 0x4273E4E078F47303Ca15b11959eeb61F3FC94c11; // DirectoryStore
         e.fileStore = 0x8b6077a1d6953D96687005B9408D56A655b4d155; // FileStore
+        e.presentation = 0x8FD707e572d53581a9fA4d79E9D8202AD3acC208;
         e.gatewayBase = "https://fs.abx.io";
     }
 
@@ -254,6 +234,7 @@ contract DeployProjects is Script {
         _requireCode("ABX_SEED_SOURCE", i.seed);
         _requireCode("ABXFS_DIRECTORY_STORE", i.directoryStore);
         _requireCode("ABXFS_FILE_STORE", i.fileStore);
+        _requireCode("ABXFS_PRESENTATION", i.presentation);
 
         _probe(i);
 
@@ -265,6 +246,7 @@ contract DeployProjects is Script {
                 _same("ABX_SEED_SOURCE", i.seed, e.seed);
                 _same("ABXFS_DIRECTORY_STORE", i.directoryStore, e.directoryStore);
                 _same("ABXFS_FILE_STORE", i.fileStore, e.fileStore);
+                _same("ABXFS_PRESENTATION", i.presentation, e.presentation);
             }
         } else if (!allowUnlistedChain) {
             revert UnlistedChain(block.chainid);
@@ -274,6 +256,17 @@ contract DeployProjects is Script {
         if (!allowUnlistedGateway && !_gatewayAllowed(block.chainid, i.gatewayBase)) {
             revert UnlistedGateway(i.gatewayBase);
         }
+        probePresentation(i.presentation, i.directoryStore, i.fileStore, i.gatewayBase);
+    }
+
+    /// @notice Cross-check every immutable presentation dependency even when address allow-list overrides are set.
+    function probePresentation(
+        address presentation,
+        address directoryStore,
+        address fileStore,
+        string memory gatewayBase
+    ) public view {
+        PresentationChecks.presentation(presentation, directoryStore, fileStore, gatewayBase);
     }
 
     function run() external returns (address factory, address lens) {
@@ -283,9 +276,11 @@ contract DeployProjects is Script {
             seed: _env("ABX_SEED_SOURCE"),
             directoryStore: _env("ABXFS_DIRECTORY_STORE"),
             fileStore: _env("ABXFS_FILE_STORE"),
+            presentation: _env("ABXFS_PRESENTATION"),
             gatewayBase: vm.envString("ABXFS_GATEWAY_BASE")
         });
-        return runWith(i, vm.envOr("ABXFS_ALLOW_UNLISTED_CHAIN", false), vm.envOr("ABXFS_ALLOW_UNLISTED_GATEWAY", false));
+        return
+            runWith(i, vm.envOr("ABXFS_ALLOW_UNLISTED_CHAIN", false), vm.envOr("ABXFS_ALLOW_UNLISTED_GATEWAY", false));
     }
 
     /// @notice Where a run with inputs `i` deploys everything: a function of this build's creation code, the salts and
@@ -296,7 +291,7 @@ contract DeployProjects is Script {
             SALT_ORG_FACTORY,
             abi.encodePacked(
                 type(OrgFactory).creationCode,
-                abi.encode(i.abx, i.renderer, i.seed, i.directoryStore, i.fileStore, a.orgMeta)
+                abi.encode(i.abx, i.renderer, i.seed, i.directoryStore, i.fileStore, a.orgMeta, i.presentation)
             )
         );
         a.hook = _predict(
@@ -311,11 +306,8 @@ contract DeployProjects is Script {
         a.lens = _predict(SALT_LENS, abi.encodePacked(type(Lens).creationCode, abi.encode(a.factory, a.hook)));
     }
 
-    /// @notice Where the pinned build lands on every listed chain: they all bind the same table (`expected()`),
-    ///         so `predict(expected())` is one set of addresses. `test/DeployFactoryPin.t.sol` fails when it drifts from
-    ///         this, and `runWith` refuses to broadcast on a listed chain unless it holds. Re-pin deliberately, and only
-    ///         before a deployment.
-    function pinned() public view virtual returns (Addresses memory a) {
+    /// @notice Complete verified production generation retained for existing orgs; never relabel candidate pins as deployed.
+    function previousPinned() public pure returns (Addresses memory a) {
         a.orgMeta = 0xB21e65DE1c241B9BaE8b7077b6f2E8f2c3Bc0F5D;
         a.factory = 0xC5aBF9fBd94659cdfc173AF30c6052700Fa62798;
         a.hook = 0x3828Dd35AbF6a42F0d92E0F3311bd70593BD6E7B;
@@ -324,6 +316,22 @@ contract DeployProjects is Script {
         a.card = 0x0296686ED7193D27b945F121835177D6969208f0;
         a.traits = 0x087dfB523e4085A5Ae2E600c4Fc899813fB7AA3F;
         a.lens = 0x2Ef71C4780e70F64507F04BD1Fde35eC3713269e;
+    }
+
+    /// @notice Where the pinned build lands on every listed chain: they all bind the same table (`expected()`),
+    ///         so `predict(expected())` is one set of addresses. `test/DeployFactoryPin.t.sol` fails when it drifts from
+    ///         this, and `runWith` refuses to broadcast on a listed chain unless it holds. Re-pin deliberately, and only
+    ///         before a deployment.
+    /// @dev Candidate pins for the new factory generation; the SDK retains deployed previousPinned addresses until verification.
+    function pinned() public view virtual returns (Addresses memory a) {
+        a.orgMeta = 0xB21e65DE1c241B9BaE8b7077b6f2E8f2c3Bc0F5D;
+        a.factory = 0x4a5D0fCed9b2162Db4517E7248dC0f3243CCB475;
+        a.hook = 0x402b7aC4a578DFB77d498937379EEf0744c17Ba1;
+        a.enumeration = 0x4c1f7476a13e87C66C212a6BBa588511554c2412;
+        a.minter = 0xf03ef75B8bbf683dd293E2A6c22eC99c421e4eCf;
+        a.card = 0x8b53a34B922B9a6e43c649FE92282F17F3b1Faf3;
+        a.traits = 0xB91A52f43CAD56b206aef11c406c0c517745629b;
+        a.lens = 0x90A2476db90F658B8E989fa5128C0A75E864A282;
     }
 
     /// @notice Reverts `UnexpectedAddress` unless every address in `a` is `pinned()`.
@@ -375,7 +383,7 @@ contract DeployProjects is Script {
         if (factory.code.length == 0) {
             factory = address(
                 new OrgFactory{salt: SALT_ORG_FACTORY}(
-                    i.abx, i.renderer, i.seed, i.directoryStore, i.fileStore, orgMeta
+                    i.abx, i.renderer, i.seed, i.directoryStore, i.fileStore, orgMeta, i.presentation
                 )
             );
             if (factory != predicted) revert WiringMismatch("factory address != predicted");
@@ -398,6 +406,7 @@ contract DeployProjects is Script {
 
         OrgFactory f = OrgFactory(factory);
         _verify(f, i.abx, i.renderer, i.seed, i.directoryStore, i.fileStore, i.gatewayBase);
+        if (f.presentation() != i.presentation) revert WiringMismatch("presentation");
         if (f.orgMeta() != orgMeta) revert WiringMismatch("orgMeta");
         console2.log("chain id              ", block.chainid);
         console2.log("gateway base          ", i.gatewayBase);
@@ -411,7 +420,9 @@ contract DeployProjects is Script {
         console2.log("  links               ", address(f.links()));
         console2.log("Lens             ", lens);
         console2.log("");
-        console2.log("Before announcing any address: rehearse a throwaway org AND a throwaway publish on this exact build.");
+        console2.log(
+            "Before announcing any address: rehearse a throwaway org AND a throwaway publish on this exact build."
+        );
         console2.log("Prove on the paired testnet before any production chain; see docs/deploy-runbook.md.");
     }
 
@@ -472,7 +483,9 @@ contract DeployProjects is Script {
         if (address(f.card()).code.length == 0) revert WiringMismatch("card code");
         if (address(f.traits()).code.length == 0) revert WiringMismatch("traits code");
         if (address(f.links()).code.length == 0) revert WiringMismatch("links code");
-        if (address(f.links()) != address(OrgMeta(f.orgMeta()).links())) revert WiringMismatch("links != orgMeta.links");
+        if (address(f.links()) != address(OrgMeta(f.orgMeta()).links())) {
+            revert WiringMismatch("links != orgMeta.links");
+        }
         if (!f.componentsDeployed()) revert WiringMismatch("componentsDeployed");
     }
 }

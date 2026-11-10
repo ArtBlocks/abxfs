@@ -19,8 +19,8 @@ contract Audit2Sizes is Test {
 
     function test_initcodeHeadroomNumbers() public {
         uint256 creation = type(OrgFactory).creationCode.length;
-        // Six addresses, fixed size: the gateway base is OrgMeta's constructor argument, not the factory's.
-        bytes memory args = abi.encode(address(1), address(2), address(3), address(4), address(5), address(6));
+        // Seven addresses, fixed size: the gateway base is OrgMeta's constructor argument, not the factory's.
+        bytes memory args = abi.encode(address(1), address(2), address(3), address(4), address(5), address(6), address(7));
         emit log_named_uint("creation code bytes", creation);
         emit log_named_uint("ctor args bytes", args.length);
         emit log_named_uint("initcode", creation + args.length);

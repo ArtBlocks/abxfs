@@ -129,7 +129,7 @@ It mints into `--org` (or `ABXFS_ORG`, or the `org` you set for the chain in you
 `~/.config/abxfs/config.json` or the file `ABXFS_CONFIG` names; an `org` in a `.abxfs.json` in the current directory
 is ignored unless you pass `--allow-config-overrides`, because a cloned repository could otherwise choose where
 your project goes).
-With none set, it uses the newest org you administer, and otherwise creates your
+Remembered defaults from older factories are skipped for new projects. With no current-factory default, it uses the newest current-factory org you administer, and otherwise creates your
 personal org — in one transaction with the first project, which is then the one
 that gets published. An org where you only hold a project is never chosen for you. `abxfs org create [name] [--description <text>]` makes one explicitly (the name defaults to your shortened address).
 On the site, creating an org on first publish asks for an optional name and description.

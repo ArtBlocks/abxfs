@@ -6,8 +6,11 @@
 import { describe, expect, it } from "vitest";
 import type { Address, PublicClient } from "viem";
 
+import { requireCanonicalAddresses } from "../src/canonical.js";
 import { addressesForOrg, generationOfOrg, orgGenerations } from "../src/org.js";
 import type { ContractAddresses } from "../src/types.js";
+import { PresentationCapabilityError, readNativeFile } from "../src/presentation.js";
+import { asAbxfsCid } from "../src/types.js";
 
 const a = (n: number) => (`0x${n.toString(16).padStart(40, "0")}`) as Address;
 const F2 = a(2), H2 = a(22), F1 = a(1), H1 = a(11), M1 = a(111), E1 = a(112), L1 = a(113);
@@ -90,5 +93,56 @@ describe("addressesForOrg", () => {
 
   it("is undefined for a stranger", async () => {
     expect(await addressesForOrg(c, addresses, STRANGER)).toBeUndefined();
+  });
+
+  it("retains the native reader only for generations using its immutable store pair", async () => {
+    const native: ContractAddresses = { ...addresses, contentReader: a(700) };
+    expect((await addressesForOrg(c, native, ORG_NEW))?.contentReader).toBe(a(700));
+    expect((await addressesForOrg(c, native, ORG_OLD))?.contentReader).toBe(a(700));
+    const samePair: ContractAddresses = {
+      ...native,
+      previousGenerations: [{ orgFactory: F1, projectHook: H1, fileStore: addresses.fileStore, directoryStore: addresses.directoryStore }],
+    };
+    expect((await addressesForOrg(c, samePair, ORG_OLD))?.contentReader).toBe(a(700));
+    const differentPair: ContractAddresses = {
+      ...native,
+      previousGenerations: [{ orgFactory: F1, projectHook: H1, fileStore: a(701), directoryStore: a(702) }],
+    };
+    const old = await addressesForOrg(c, differentPair, ORG_OLD);
+    expect(old).toMatchObject({ fileStore: a(701), directoryStore: a(702) });
+    expect(old?.contentReader).toBeUndefined();
+    await expect(readNativeFile(c, old!, asAbxfsCid(`0x${"00".repeat(32)}`), { maxBytes: 1n, maxChunks: 1n }))
+      .rejects.toBeInstanceOf(PresentationCapabilityError);
+  });
+});
+
+
+describe("promoted canonical factory generations", () => {
+  it("resolves known current and original factories without lending presentation to old orgs", async () => {
+    for (const chainId of [8453, 84532, 1, 11155111, 42161, 421614]) {
+      const book = requireCanonicalAddresses(chainId);
+      const prior = book.previousGenerations![0]!;
+      const c = client({ [book.orgFactory!]: [ORG_NEW], [prior.orgFactory]: [ORG_OLD] });
+      expect(orgGenerations(book)).toHaveLength(2);
+      const current = await addressesForOrg(c, book, ORG_NEW);
+      expect(current).toMatchObject({ orgFactory: book.orgFactory, projectHook: book.projectHook, projectPresentation: book.projectPresentation });
+      const old = await addressesForOrg(c, book, ORG_OLD);
+      expect(old).toMatchObject({ orgFactory: prior.orgFactory, projectHook: prior.projectHook, orgMinter: prior.orgMinter, projectEnumeration: prior.projectEnumeration, lens: prior.lens });
+      expect(old?.projectPresentation).toBeUndefined();
+      expect(old?.contentReader).toBe(book.contentReader); // Same immutable store pair.
+      expect(old?.fileStore).toBe(book.fileStore);
+      expect(old?.directoryStore).toBe(book.directoryStore);
+    }
+  });
+  it("does not search an undeployed original factory on fresh Robinhood networks", async () => {
+    const oldFactory = requireCanonicalAddresses(84532).previousGenerations![0]!.orgFactory;
+    for (const chainId of [4663, 46630]) {
+      const book = requireCanonicalAddresses(chainId);
+      expect(book.previousGenerations).toEqual([]);
+      expect(orgGenerations(book).map((generation) => generation.orgFactory)).toEqual([book.orgFactory]);
+      const c = client({ [book.orgFactory!]: [ORG_NEW], [oldFactory]: [ORG_OLD] });
+      expect((await addressesForOrg(c, book, ORG_NEW))?.projectPresentation).toBe(book.projectPresentation);
+      expect(await addressesForOrg(c, book, ORG_OLD)).toBeUndefined();
+    }
   });
 });

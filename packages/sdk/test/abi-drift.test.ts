@@ -34,9 +34,11 @@ import * as abi from "../src/abi.js";
 import * as abiHook from "../src/abi-hook.js";
 import * as abiEnum from "../src/abi-enumeration.js";
 import * as abiOrg from "../src/abi-org.js";
+import * as abiReader from "../src/abi-reader.js";
+import * as abiPresentation from "../src/abi-presentation.js";
 
 /** The hook ABI lives in its own module, so look constants up across both. */
-const ABI_CONSTANTS = { ...abi, ...abiHook, ...abiEnum, ...abiOrg };
+const ABI_CONSTANTS = { ...abi, ...abiHook, ...abiEnum, ...abiOrg, ...abiReader, ...abiPresentation };
 
 interface Target {
   constName: keyof typeof ABI_CONSTANTS;
@@ -45,6 +47,8 @@ interface Target {
 }
 
 const TARGETS: Target[] = [
+  { constName: "contentReaderAbi", contractPackage: "contracts-companion", interfacePath: "src/ContentReader.sol:ContentReader" },
+  { constName: "iProjectPresentationAbi", contractPackage: "contracts-projects", interfacePath: "src/interfaces/IProjectPresentation.sol:IProjectPresentation" },
   {
     constName: "storageBackendAbi",
     contractPackage: "contracts-core",
@@ -149,7 +153,7 @@ function canonicalize(input: Abi): {
     if (entry.type === "function") {
       const e = entry as AbiFunction;
       const sig = toFunctionSignature(e);
-      const outs = e.outputs.map((o) => o.type).join(",");
+      const outs = e.outputs.map(canonicalType).join(",");
       functions.push(`${sig} ${e.stateMutability} -> (${outs})`);
     } else if (entry.type === "event") {
       const e = entry as AbiEvent;
@@ -158,7 +162,7 @@ function canonicalize(input: Abi): {
       events.push(`${sig}[indexed=${indexed}]${e.anonymous ? ",anon" : ""}`);
     } else if (entry.type === "error") {
       const e = entry as AbiError;
-      const args = e.inputs.map((i) => i.type).join(",");
+      const args = e.inputs.map(canonicalType).join(",");
       errors.push(`${e.name}(${args})`);
     }
     // constructors / fallbacks / receives aren't in the hand-maintained TS ABIs — skip.
@@ -167,6 +171,14 @@ function canonicalize(input: Abi): {
   events.sort();
   errors.sort();
   return { functions, events, errors };
+}
+
+/** Struct return fields are ABI too: a reordered Config must fail drift checks. */
+type CanonicalParameter = { type: string; components?: readonly CanonicalParameter[] };
+function canonicalType(parameter: CanonicalParameter): string {
+  if (!parameter.type.startsWith("tuple")) return parameter.type;
+  const components = parameter.components ?? [];
+  return `(${components.map(canonicalType).join(",")})${parameter.type.slice(5)}`;
 }
 
 describe("ABI drift vs on-chain interfaces", () => {

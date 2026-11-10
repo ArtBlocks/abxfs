@@ -1,16 +1,84 @@
 # Deploy runbook: ABX FS to one network
 
 How to deploy ABX FS to the network of your choice: the content layer, the optional IPFS resolver, and the org
-factory. The `abx-fs-freeze-3` build is deployed on every network in the SDK registry, and only that pinned build is
-deployed, testnets included, so every network gets the same addresses.
+factory. The current reader/presentation generation is registered on all eight supported networks. The original
+`abx-fs-freeze-3` generation remains registered on its original six networks only; Robinhood (4663) and Robinhood
+Testnet (46630) have no earlier factory history. A source prediction or allow-table entry never establishes deployment.
 
 Everything the factory deploys is frozen into every org it will ever create, so a mistake there means a new factory
 address and new org addresses (new URLs). A mistake in the content layer means a new content-address space. Nothing
 here is cosmetic.
 
+## Deploying the presentation generation
+
+The stateless reader, presentation companion and seven-argument factory form the current generation. Any future
+replacement is a candidate until its script pins match the exact frozen sources and source verification and rehearsal
+pass on that chain; only then may its addresses enter `canonical.ts` or public deployment tables. The content
+stores and backends remain the existing deployment: do not redeploy them to add presentation.
+
+With the content layer and IPFS resolver already deployed, the order is:
+
+1. **ContentReader:** in `packages/contracts-companion`, test and dry-run `script/DeployReader.s.sol`, compare its
+   prediction with `pinned()`, then broadcast that same script. `FILE_STORE` and `DIRECTORY_STORE` select the
+   existing stores (or default to their predictions); read back both immutable store addresses.
+2. **ProjectPresentation:** set `ABXFS_CONTENT_READER` to that verified reader, `ABXFS_IPFS_CID_RESOLVER` to the
+   verified resolver over the same stores, and `ABXFS_GATEWAY_BASE=https://fs.abx.io`. In
+   `packages/contracts-projects`, test and dry-run `script/DeployPresentation.s.sol`, compare its pin, then broadcast.
+   Read back `reader()`, `ipfsResolver()`, `fileStore()`, `directoryStore()` and `defaultChainBase()`.
+3. **OrgFactory:** set `ABXFS_PRESENTATION` to that companion. Dry-run and broadcast `script/Deploy.s.sol` with the
+   ABX/store/gateway environment below. The seven constructor arguments are ABX factory, metadata renderer,
+   seed source, directory store, file store, OrgMeta and presentation. Read back `presentation()` as well as all
+   existing factory/component wiring. Confirm a newly created org uses the presentation renderer only for
+   `animation_url`; `external_url` retains `ProjectLinks`.
+
+After a successful receipt, a load-balanced RPC's latest or pending nonce can still lag; reconcile the exact receipt
+and account nonces, then wait for consistent reads before the next deployment stage. Do not resend a confirmed
+deployment: continue only the remaining steps with the same frozen pins and the remaining approved budget.
+
+Each dry run omits `--broadcast`; each broadcast uses the same reviewed inputs and an encrypted account as below.
+For example, the reader's dry run is:
+
+```bash
+cd packages/contracts-companion
+forge script script/DeployReader.s.sol --rpc-url "$RPC" --sender "$DEPLOYER"
+```
+
+Run the contract suites and fork rehearsal for the exact build on the paired testnet before production. Verify
+sources for the reader, presentation, factory and every new component, including constructor arguments. The verifier
+reads the new companion addresses and all seven factory constructor arguments from deployed contracts and checks
+store wiring. Pass an explicit candidate deployment bundle before canonical registration:
+
+```bash
+node scripts/verify-sources.mjs <chainId> both --addresses /tmp/candidate-addresses.json
+```
+
+The JSON is the flat `ContractAddresses` object: all content/resolver/org addresses, plus `contentReader` and
+`projectPresentation`. Use actual deployed addresses read back from the chain, not predictions. The tool also checks
+that code exists and that the RPC names the requested chain. The JSON is qualification input, not a registry update;
+keep local deployment inputs out of the repository. No candidate address becomes canonical on the strength of a pin
+alone.
+
+Extend the throwaway rehearsal below with a raw/FastLZ native read, bounded range read, Embedded preview and
+ChainGateway preview. Confirm file-level gzip is rejected by the native reader but readable through the gateway.
+Check Latest, Version and Tag plus a nonempty path. On a throwaway project only, review a lock dry run and submit
+its explicit commitment; confirm changed selected state rejects that commitment. Freeze the reviewed target and
+verify later publishing/tag movement cannot change it; verify method and endpoint locks independently and after
+transfer. Exercise IPFS only with creator-pinned content. Finally confirm an old org's token metadata, publishing,
+tags and gateway URLs still work through its original generation.
+
+When registering the new generation, retain the complete old bundle in `previousGenerations` permanently (see
+[Superseding a factory](#superseding-a-factory)). Set the new generation's `contentReader` and
+`projectPresentation` capabilities only after they have passed the checks above. Never add presentation to an old
+factory record. A reader capability can be shared only by generations with its exact immutable store pair.
+
+## Legacy deployment procedure
+
+The remaining build tag, pins and deployment inventory describe the legacy generation. For a presentation
+generation, use the sequence above and the current scripts' pins; do not reuse the legacy factory's address.
+
 ## Prerequisites
 
-- **The build:** the working tree is the tagged commit (`abx-fs-freeze-3`, internally audited), clean, and built with the repo's pinned compiler
+- **The build:** the working tree is the tagged commit (`abx-fs-freeze-3`, internally reviewed), clean, and built with the repo's pinned compiler
   (`solc_version` in each `foundry.toml`).
   - The bytecode commits to the exact source text through solc's metadata hash, so **any edit under a contract
     package's `src/`, a comment included, moves addresses**.
@@ -23,8 +91,8 @@ here is cosmetic.
     in plain text or on a command line you paste.
 - **The allow-table:** the chain has an entry in the projects script's allow-table (`script/Deploy.s.sol`:
   `_isListedChain`, `expected()`, `_gatewayAllowed`).
-  - Listed today: every network in the SDK registry, all with the same ABX addresses, the same stores and
-    `https://fs.abx.io`.
+  - Listed today: the script's supported networks (a listing alone does not mean deployed), all with the same ABX
+    addresses, the same stores and `https://fs.abx.io`.
   - Any other chain needs a reviewed change to the table, in the same commit that adds it to the SDK registry.
 
 ## ABX dependencies
@@ -51,10 +119,12 @@ The org factory takes three of ABX's contracts as constructor arguments, so they
   (`0x4e59b44847b379578588920cA78FbF26c0B4956C`) with a fixed salt and no sender-dependent constructor argument, so
   **any key** lands it at the same address on every chain.
 - The salts are `keccak256("abx-fs/content")` (all five content contracts), `keccak256("abx-fs/ipfs-cid-resolver")`,
+  `keccak256("abx-fs/content-reader")`, `keccak256("abx-fs/project-presentation")`,
   `keccak256("abx-fs/org-meta")`, `keccak256("abx-fs/org-factory")`, `keccak256("abx-fs/org-components")` and
   `keccak256("abx-fs/lens")`.
-- Only the factory also depends on its constructor arguments (ABX's addresses, the stores, `OrgMeta`), and the lens
-  on the factory and its hook.
+- Predictions also include constructor arguments: the stores for the resolver and reader; the reader, resolver and
+  default gateway for presentation; ABX's addresses, the stores, `OrgMeta` and presentation for the factory; and the
+  factory and its hook for the lens. Use the pinned deploy scripts to derive the complete address bundle.
 
 **Choose the gas multiplier per chain.**
 - On a chain with the 2^24 per-transaction cap and the old gas schedule, a high `--gas-estimate-multiplier` is
@@ -69,6 +139,8 @@ The org factory takes three of ABX's contracts as constructor arguments, so they
 | `ABXFS_DIRECTORY_STORE`, `ABXFS_FILE_STORE` | the content layer's stores (`Deploy.predict()` in `contracts-core`) |
 | `ABX_SERIES_CODE_FACTORY`, `ABX_METADATA_RENDERER`, `ABX_SEED_SOURCE` | ABX's addresses for the chain ([above](#abx-dependencies)) |
 | `ABXFS_GATEWAY_BASE` | `https://fs.abx.io` on every listed chain; frozen into every org |
+| `ABXFS_CONTENT_READER`, `ABXFS_IPFS_CID_RESOLVER` | verified companions used when deploying the presentation generation |
+| `ABXFS_PRESENTATION` | verified presentation companion used by the seven-argument factory |
 | `FILE_STORE`, `DIRECTORY_STORE` | optional, for the IPFS resolver; they default to the content layer's predictions |
 | `ABXFS_ALLOW_UNLISTED_CHAIN=1` | explicit override: a chain not in the table, an address that differs from it, or a build whose addresses are not the pinned ones |
 | `ABXFS_ALLOW_UNLISTED_GATEWAY=1` | explicit override: a gateway base not on the chain's list (always needed on an unlisted chain) |
@@ -197,8 +269,20 @@ the testnet and then (cheaply, with a throwaway org name) on the target:
 6. **Optionally** publish a second version and tag it; `latest` and the tag should differ.
 
 Steps 1 to 4 are automated: from `packages/sdk`, run
-`ABXFS_REHEARSAL_CHAIN=<chainId> npx vitest run test/rehearsal-live.test.ts` with the RPC and key in env. Step 5
-needs a gateway.
+`ABXFS_REHEARSAL_CHAIN=<chainId> npx vitest run test/rehearsal-live.test.ts` with the RPC and key in env. For an
+unregistered candidate, use the same flat address JSON as source verification:
+
+```bash
+ABXFS_REHEARSAL_CHAIN=<chainId> ABXFS_REHEARSAL_ADDRESSES=/tmp/candidate-addresses.json \
+  npx vitest run test/rehearsal-live.test.ts --reporter=verbose
+```
+
+All registry chains, including both Robinhood networks, can be rehearsal targets. The test refuses an RPC
+with the wrong chain id. The capability-aware lane checks native file/path reads, Auto/Embedded output, chain and
+derived IPFS URLs, endpoint changes and a reviewed content lock that survives a later publish, reusing one token.
+IPFS derivation does not pin content. The legacy lane keeps its original link assertions. This command is opt-in and
+writes permanent state: rehearse the candidate on a local fork first, then the paired live testnet before production.
+Step 5 needs a gateway.
 
 Abandon the throwaway org; it is permanent and harmless. Only then announce the address.
 
@@ -210,11 +294,34 @@ Abandon the throwaway org; it is permanent and harmless. Only then announce the 
 3. **Check them together:** `pnpm --filter @artblocks/abxfs-sdk exec vitest run test/canonical.test.ts`. The docs may publish
    no address the registry does not hold.
 4. **New chain:** update the script's allow-table and `DeployFactoryPin.t.sol` / `pinned()` with its predicted address.
-5. **Publish the sources:** `node scripts/verify-sources.mjs <chainId>`, with `ETHERSCAN_API_KEY` set (one key covers
-   every chain) and the packages and contracts built. It verifies all fifteen contracts (the three renderers included)
-   on Sourcify, which must report `exact_match`, and on the chain's Etherscan explorer, reading every constructor
-   argument from the registry and the deployed contracts. A rerun skips what is already verified. Do it before
+5. **Publish the sources:** `node scripts/verify-sources.mjs <chainId>`, with the SDK and contracts built. It verifies
+   fifteen legacy contracts or seventeen presentation-generation contracts, including all renderers, on Sourcify
+   (`exact_match` required) and the chain's explorer. The original six chains use Etherscan and need
+   `ETHERSCAN_API_KEY`; Robinhood networks use Blockscout without that key, using the endpoints in
+   [Robinhood's deployment guide](https://docs.robinhood.com/chain/deploy-smart-contracts/). A rerun skips already
+   verified contracts. Every generation must use its exact frozen source text and compiler configuration:
+   `--source-root /path/to/frozen-checkout` selects the source/build checkout for all submissions. To reverify a
+   superseded generation, also supply its complete address bundle with `--addresses`; the current registry entry
+   is never silently substituted. In particular,
+   verifying the old six-argument factory with today's seven-argument source is refused before submission. Constructor
+   compatibility is a guard, not proof of matching source: Sourcify's exact match remains required. Do it before
    announcing the chain: unverified code asks users to trust bytes they cannot read.
+
+### Explorer API failures and manual evidence
+
+A failed status request or an HTML challenge from an explorer API is not evidence that a contract is unverified.
+Keep the automated verifier's failure visible; do not label that run a successful two-verifier check. Open the
+contract's normal explorer page and inspect its Contract/Code tab. If it shows an exact match, confirm the contract
+name, compiler, source path and constructor arguments, then record the address, displayed result and evidence URL
+outside the repository. Check Sourcify's `exact_match` independently. Manual explorer evidence and successful
+Sourcify checks are distinct from an automated `both` pass.
+
+Hosted Blockscout instances are migrating from per-instance APIs to the
+[documented universal API](https://docs.blockscout.com/devs/apis). Robinhood production's
+[documented API routes](https://github.com/blockscout/docs/blob/main/robinhood-api.mdx) use
+`https://api.blockscout.com/4663/api` and require a Blockscout developer key; the normal explorer UI can still display
+verified source without one. Use that supported API with its own key if automation is needed, or retain normal UI
+evidence. Do not reuse an Etherscan key, bypass a challenge, or infer a verification failure from a transport failure.
 
 ## If a check fails
 
@@ -249,8 +356,8 @@ factory is deployed to a chain that already has a live one, the old one is **not
 
 1. **Move the superseded factory into `previousGenerations`** in `packages/sdk/src/canonical.ts`, and put the new one
    at the top level.
-   - The old factory, minter, hook, enumeration and lens go in as ONE entry. Never pair a new factory with an old hook:
-     `orgGenerations` refuses that as incoherent.
+   - The old factory, minter, hook, enumeration and lens go in as ONE entry, retained permanently. Never pair a
+     new factory with an old hook: `orgGenerations` refuses that as incoherent.
    - Mirror it in `reference/deployments.mdx`.
 2. **Migrate the `abxfs-mirror` cursors.** The mirror keeps one cursor per factory; the new factory needs a new cursor,
    and the old ones stay until they have drained (see `packages/gateway/src/mirror.ts`).

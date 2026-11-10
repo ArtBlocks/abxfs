@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {Test, Vm, console2} from "forge-std/Test.sol";
 import {LibString} from "solady/utils/LibString.sol";
 
+import {ProjectPresentation} from "../src/ProjectPresentation.sol";
 import {OrgFactory} from "../src/OrgFactory.sol";
 import {OrgComponents} from "../script/OrgComponents.sol";
 import {OrgMeta} from "../src/OrgMeta.sol";
@@ -629,14 +630,18 @@ contract OrgsTest is Test {
     }
 
     /// @dev Forge does not enforce EIP-3860's 49,152-byte initcode limit, so a factory that outgrew it
-    ///      would pass every test here and fail to deploy. The constructor arguments are 192 bytes.
+    ///      would pass every test here and fail to deploy. The constructor arguments are 224 bytes.
     function test_factoryInitcodeFitsTheDeployLimit() public pure {
-        // Constructor args: six addresses. The gateway base is OrgMeta's argument now, not this one's.
-        bytes memory args = abi.encode(address(1), address(2), address(3), address(4), address(5), address(6));
+        // Constructor args: seven addresses. The gateway base is OrgMeta's argument now, not this one's.
+        bytes memory args = abi.encode(address(1), address(2), address(3), address(4), address(5), address(6), address(7));
         uint256 total = type(OrgFactory).creationCode.length + args.length;
         assertLe(total, 49_152, "over the EIP-3860 initcode limit");
         // Fail while there is still room to decide what to do, not on the byte it overflows.
         assertGe(49_152 - total, 400, "factory initcode headroom is below 400 bytes: stop adding to it");
+        uint256 presentationInitcode = type(ProjectPresentation).creationCode.length
+            + abi.encode(address(1), address(2), "https://fs.abx.io").length;
+        assertLe(presentationInitcode, 49_152, "presentation over EIP-3860");
+
     }
 
     // ─── The owner's own view URL (abxfs.view) ───────────────────────────────

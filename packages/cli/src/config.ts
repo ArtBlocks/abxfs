@@ -117,9 +117,11 @@ const ADDRESS_KEYS = new Set([
   "lens",
   "projectHook",
   "projectEnumeration",
+  "projectPresentation",
+  "contentReader",
   "ipfsCidResolver",
 ]);
-const GENERATION_KEYS = new Set(["orgFactory", "projectHook", "fileStore", "directoryStore", "orgMinter", "projectEnumeration", "lens"]);
+const GENERATION_KEYS = new Set(["orgFactory", "projectHook", "fileStore", "directoryStore", "orgMinter", "projectEnumeration", "lens", "projectPresentation"]);
 
 /** A key that names a credential. None belongs in a config file: the key is read from `ABXFS_PRIVATE_KEY` only. */
 const SECRET_KEY_NAME = /private.?key|secret|mnemonic|seed.?phrase|passphrase|password|api.?key|jwt|access.?token|auth.?token/i;

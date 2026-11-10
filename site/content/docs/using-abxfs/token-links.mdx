@@ -3,10 +3,17 @@ title: Token links and your own gateway
 description: "Where a project's marketplace links point, how to change them, and how to host a website at the root of your own domain."
 ---
 
-A project is an NFT, and marketplaces show two links from its metadata:
+This page describes **legacy orgs**, where `ProjectLinks` renders both
+`animation_url` (the marketplace animation) and `external_url` (the website link).
 
-- **`animation_url`** is the live project. Marketplaces that embed an animation render it on the token's page.
-- **`external_url`** is the "view on website" link.
+Orgs created by a factory with `projectPresentation` use the separate
+[presentation configuration](/docs/reference/presentation) for `animation_url`.
+Their `external_url` still uses the default project page or `abxfs.view` override
+described here. Setting `abxfs.view` on those orgs changes only `external_url`;
+it cannot change the presentation method, selected content or locks. Resolve the
+org's own factory generation rather than assuming the newest behavior.
+
+The animation and “both links” examples below apply to legacy orgs.
 
 ## The default, and your override
 

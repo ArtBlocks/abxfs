@@ -40,6 +40,12 @@ stages (chunks, chunk nodes by level, files, entry nodes by directory height, th
 `createDirectory`), one node per transaction or several small ones per `multicall`, and each
 stage is confirmed readable before the next is simulated.
 
+A successful receipt identifies the prerequisite state for the next content stage.
+The SDK pins dependent simulations and gas estimates to that block, waits a bounded
+number of read-only attempts if a replica has not reached it, and passes the estimated
+gas to the wallet. A reverted transaction is an error; the SDK does not resend it to
+repair a stale read. Completed content remains available for a new plan to reuse.
+
 That budget is clamped, because a transaction's execution gas is capped at
 **2<sup>24</sup> (16,777,216)** (EIP-7825), and every Base Sepolia endpoint tried,
 keyed ones included, reports exactly that cap on `eth_estimateGas` while the

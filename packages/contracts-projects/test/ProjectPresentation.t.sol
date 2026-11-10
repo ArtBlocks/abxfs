@@ -1,0 +1,577 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import {Test} from "forge-std/Test.sol";
+import {ProjectPresentation} from "../src/ProjectPresentation.sol";
+import {IProjectPresentation} from "../src/interfaces/IProjectPresentation.sol";
+import {IProjectHook} from "../src/interfaces/IProjectHook.sol";
+
+contract PresentationFactoryMock {
+    bool public registered = true;
+
+    function setRegistered(bool b) external {
+        registered = b;
+    }
+
+    function isOrg(address) external view returns (bool) {
+        return registered;
+    }
+}
+
+contract PresentationHookMock {
+    address public factory;
+    address public fileStore;
+    address public directoryStore;
+    bytes32 public head = bytes32(uint256(1));
+    bytes32 public tagged = bytes32(uint256(1));
+    bool public unpublished;
+
+    constructor(address f, address files, address dirs) {
+        factory = f;
+        fileStore = files;
+        directoryStore = dirs;
+    }
+
+    function publish(bytes32 root) external {
+        head = root;
+    }
+
+    function moveTag(bytes32 root) external {
+        tagged = root;
+    }
+
+    function setUnpublished(bool b) external {
+        unpublished = b;
+    }
+
+    function latestVersion(address, uint256) external view returns (uint256, bytes32) {
+        if (unpublished) revert IProjectHook.NoVersions(address(0), 0);
+        return (2, head);
+    }
+
+    function getTag(address, uint256, string calldata) external view returns (uint256, bytes32) {
+        return (1, tagged);
+    }
+
+    function versionAt(address, uint256, uint256) external pure returns (IProjectHook.Version memory) {
+        return IProjectHook.Version(bytes32(uint256(1)), 1, address(1));
+    }
+}
+
+contract PresentationOrgMock {
+    address public owner;
+    address public hook;
+    uint256 public malicious;
+    mapping(bytes32 => bytes32) public params;
+
+    constructor(address h, address o) {
+        hook = h;
+        owner = o;
+    }
+
+    function transfer(address o) external {
+        require(msg.sender == owner);
+        owner = o;
+    }
+
+    function ownerOf(uint256) external view returns (address) {
+        return owner;
+    }
+
+    function setMalicious(uint256 m) external {
+        malicious = m;
+    }
+
+    function paramHooks() external view returns (address, address, address) {
+        if (malicious == 1) assembly { for {} 1 {} {} }
+        if (malicious == 2) assembly { return(0, 0x1000000) }
+        return (hook, address(0), address(0));
+    }
+
+    function configureTokenParam(uint256, bytes32 key, bytes32 value) external {
+        params[key] = value;
+    }
+}
+
+contract PresentationReaderMock {
+    error CodecNotSupported(bytes32 codec);
+    error ByteLimitExceeded(uint256 required, uint256 maximum);
+    error ChunkLimitExceeded(uint256 required, uint256 maximum);
+    address public fileStore;
+    address public directoryStore;
+    uint256 public mode;
+    string public mime = "text/html";
+    bool public directory = true;
+
+    constructor(address f, address d) {
+        fileStore = f;
+        directoryStore = d;
+    }
+
+    function setMode(uint256 m) external {
+        mode = m;
+    }
+
+    function setMime(string calldata m) external {
+        mime = m;
+    }
+
+    function setDirectory(bool d) external {
+        directory = d;
+    }
+
+    function resolve(bytes32 root, string calldata path) external view returns (bytes32, bool) {
+        require(root != bytes32(0));
+        require(keccak256(bytes(path)) != keccak256("missing"));
+        require(directory || bytes(path).length == 0);
+        return (root, directory && (bytes(path).length == 0 || keccak256(bytes(path)) == keccak256("nested")));
+    }
+
+    function readPath(bytes32, string calldata, uint256 maxBytes, uint256 maxChunks)
+        external
+        view
+        returns (string memory, bytes memory)
+    {
+        require(maxBytes == 8192 && maxChunks == 32);
+        if (mode == 1) assembly { for {} 1 {} {} }
+        if (mode == 2) assembly { return(0, 0x1000000) }
+        if (mode == 3) revert CodecNotSupported(bytes32("gzip"));
+        if (mode == 4) revert ByteLimitExceeded(maxBytes + 1, maxBytes);
+        if (mode == 6) revert ChunkLimitExceeded(maxChunks + 1, maxChunks);
+        if (mode == 7) return (mime, new bytes(maxBytes + 1));
+        if (mode == 5) {
+            assembly {
+                mstore(0, 0xffffffffffffffff)
+                return(0, 32)
+            }
+        }
+        if (mode == 8) return (mime, new bytes(maxBytes));
+        if (mode == 9) {
+            // Return successfully with a large payload after consuming most of the reader budget.
+            assembly { for {} gt(gas(), 500000) {} {} }
+            return (mime, new bytes(maxBytes));
+        }
+        return (mime, bytes("<html>on chain</html>"));
+    }
+}
+
+contract PresentationIpfsMock {
+    address public fileStore;
+    address public directoryStore;
+    uint256 public mode;
+    string internal constant CID = "baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    constructor(address f, address d) {
+        fileStore = f;
+        directoryStore = d;
+    }
+
+    function setMode(uint256 m) external {
+        mode = m;
+    }
+
+    function computeIpfsCid(bytes32 root) external view returns (string memory) {
+        require(root == bytes32(uint256(1))); // Must derive the full directory, not its selected file.
+        if (mode == 1) assembly { for {} 1 {} {} }
+        if (mode == 2) assembly { return(0, 0x1000000) }
+        if (mode == 3) revert("CodecNotSupported");
+        return CID;
+    }
+
+    function computeFileCid(bytes32) external pure returns (string memory) {
+        return CID;
+    }
+}
+
+contract ProjectPresentationTest is Test {
+    ProjectPresentation internal p;
+    PresentationFactoryMock internal factory;
+    PresentationHookMock internal hook;
+    PresentationOrgMock internal org;
+    PresentationReaderMock internal reader;
+    PresentationIpfsMock internal ipfs;
+    address internal constant OTHER = address(0x1234);
+    string internal constant CID = "baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    function setUp() public {
+        address files = address(0x100);
+        address dirs = address(0x200);
+        vm.etch(files, hex"00");
+        vm.etch(dirs, hex"00");
+        factory = new PresentationFactoryMock();
+        hook = new PresentationHookMock(address(factory), files, dirs);
+        org = new PresentationOrgMock(address(hook), address(this));
+        reader = new PresentationReaderMock(files, dirs);
+        ipfs = new PresentationIpfsMock(files, dirs);
+        p = new ProjectPresentation(address(reader), address(ipfs), "https://fs.abx.io");
+    }
+
+    function _render() internal view returns (string memory mime, bytes memory data) {
+        return p.render(address(org), 0, "animation_url");
+    }
+
+    function _embedded() internal {
+        p.setMethod(address(org), 0, IProjectPresentation.Method.Embedded);
+    }
+
+    function test_defaultRawRootGatewayAndEncodedPath() public {
+        p.setTarget(address(org), 0, IProjectPresentation.Selection.Latest, 0, "", "a b/%?.html");
+        (string memory mime, bytes memory data) = _render();
+        assertEq(mime, "text/uri-list");
+        assertEq(
+            string(data),
+            string.concat(
+                "https://fs.abx.io/g/cid/",
+                vm.toString(block.chainid),
+                "/0x0000000000000000000000000000000000000000000000000000000000000001/a%20b/%25%3F.html"
+            )
+        );
+    }
+
+    function test_embeddedReturnsActualMimeAndContent() public {
+        _embedded();
+        (string memory mime, bytes memory data) = _render();
+        assertEq(mime, "text/html");
+        assertEq(string(data), "<html>on chain</html>");
+    }
+
+    function test_onlyOwnerAndRegisteredOrgMayWrite() public {
+        vm.prank(OTHER);
+        vm.expectRevert(IProjectPresentation.NotProjectOwner.selector);
+        p.setMethod(address(org), 0, IProjectPresentation.Method.Embedded);
+        factory.setRegistered(false);
+        vm.expectRevert(IProjectPresentation.InvalidOrg.selector);
+        p.setMethod(address(org), 0, IProjectPresentation.Method.Embedded);
+    }
+
+    function test_contentLockSnapshotsTagAndIgnoresFuturePublish() public {
+        p.setTarget(address(org), 0, IProjectPresentation.Selection.Tag, 0, "stable", "index.html");
+        p.lock(address(org), 0, uint8(1), p.lockCommitment(address(org), 0, uint8(1)));
+        hook.publish(bytes32(uint256(2)));
+        hook.moveTag(bytes32(uint256(3)));
+        (bytes32 root, string memory path) = p.target(address(org), 0);
+        assertEq(root, bytes32(uint256(1)));
+        assertEq(path, "index.html");
+        vm.expectRevert(abi.encodeWithSelector(IProjectPresentation.Locked.selector, uint8(1)));
+        p.setTarget(address(org), 0, IProjectPresentation.Selection.Latest, 0, "", "");
+        p.setEndpoints(address(org), 0, "https://replacement.example", "");
+        p.setMethod(address(org), 0, IProjectPresentation.Method.Ipfs);
+        (, bytes memory data) = _render();
+        assertEq(string(data), string.concat("ipfs://", CID, "/index.html"));
+    }
+
+    function test_latestAndVersionSnapshotAndIdempotentLocks() public {
+        p.lock(address(org), 0, uint8(1), p.lockCommitment(address(org), 0, uint8(1)));
+        hook.publish(bytes32(uint256(9)));
+        p.lock(address(org), 0, uint8(1), p.lockCommitment(address(org), 0, uint8(1)));
+        (bytes32 root,) = p.target(address(org), 0);
+        assertEq(root, bytes32(uint256(1)));
+        p.setTarget(address(org), 1, IProjectPresentation.Selection.Version, 1, "", "");
+        p.lock(address(org), 1, uint8(1), p.lockCommitment(address(org), 1, uint8(1)));
+        (root,) = p.target(address(org), 1);
+        assertEq(root, bytes32(uint256(1)));
+    }
+
+    function test_methodAndEndpointLocksIndependentAcrossTransfer() public {
+        p.lock(address(org), 0, uint8(2), p.lockCommitment(address(org), 0, uint8(2)));
+        p.setEndpoints(address(org), 0, "https://chain.example", "https://ipfs.example");
+        org.transfer(OTHER);
+        vm.prank(OTHER);
+        vm.expectRevert(abi.encodeWithSelector(IProjectPresentation.Locked.selector, uint8(2)));
+        p.setMethod(address(org), 0, IProjectPresentation.Method.Ipfs);
+        bytes32 commitment = p.lockCommitment(address(org), 0, uint8(4));
+        vm.prank(OTHER);
+        p.lock(address(org), 0, uint8(4), commitment);
+        vm.prank(OTHER);
+        vm.expectRevert(abi.encodeWithSelector(IProjectPresentation.Locked.selector, uint8(4)));
+        p.setEndpoints(address(org), 0, "", "");
+        vm.prank(OTHER);
+        p.setTarget(address(org), 0, IProjectPresentation.Selection.Latest, 0, "", "index.html");
+    }
+
+    function test_endpointLockStillAllowsMethodSwitch() public {
+        p.setEndpoints(address(org), 0, "https://chain.example", "https://ipfs.example");
+        p.lock(address(org), 0, uint8(4), p.lockCommitment(address(org), 0, uint8(4)));
+        p.setMethod(address(org), 0, IProjectPresentation.Method.Ipfs);
+        (, bytes memory data) = _render();
+        assertEq(string(data), string.concat("https://", CID, ".ipfs.ipfs.example/"));
+    }
+
+    function test_postParamsCannotBypassAnyLock() public {
+        p.lock(address(org), 0, 7, p.lockCommitment(address(org), 0, 7));
+        (, bytes memory beforeData) = _render();
+        org.configureTokenParam(0, "abxfs.view", bytes32("https://attacker.example"));
+        org.configureTokenParam(0, "abxfs.gateway", bytes32("https://attacker.example"));
+        org.configureTokenParam(0, "abxfs.cid", bytes32(uint256(99)));
+        (, bytes memory afterData) = _render();
+        assertEq(beforeData, afterData);
+    }
+
+    function test_noCodeSentinelWrongFieldAndUnpublishedSafe() public {
+        (, bytes memory data) = p.render(address(0xdead), 0, "animation_url");
+        assertEq(data.length, 0);
+        (, data) = p.render(address(org), type(uint256).max, "animation_url");
+        assertEq(data.length, 0);
+        (, data) = p.render(address(org), 0, "image");
+        assertEq(data.length, 0);
+        hook.setUnpublished(true);
+        (, data) = _render();
+        assertEq(data.length, 0);
+    }
+
+    function test_mimeInjectionAndUnsupportedMimeRefused() public {
+        _embedded();
+        reader.setMime("text/html,<script>alert(1)</script>");
+        (IProjectPresentation.Status status,,) = p.preview(address(org), 0);
+        assertEq(uint256(status), uint256(IProjectPresentation.Status.UnsupportedMime));
+        (, bytes memory data) = _render();
+        assertEq(data.length, 0);
+    }
+
+    function testFuzz_readerFailuresNeverRevertOrChangeLockedMethod(uint8 rawMode) public {
+        uint256 mode = bound(rawMode, 1, 7);
+        _embedded();
+        p.lock(address(org), 0, uint8(2), p.lockCommitment(address(org), 0, uint8(2)));
+        reader.setMode(mode);
+        (, bytes memory data) = _render();
+        assertEq(data.length, 0);
+        assertEq(uint256(p.config(address(org), 0).method), uint256(IProjectPresentation.Method.Embedded));
+    }
+
+    function test_ipfsFailuresDoNotFallbackToGateway() public {
+        p.setMethod(address(org), 0, IProjectPresentation.Method.Ipfs);
+        p.lock(address(org), 0, uint8(2), p.lockCommitment(address(org), 0, uint8(2)));
+        for (uint256 i = 1; i <= 3; ++i) {
+            ipfs.setMode(i);
+            (, bytes memory data) = _render();
+            assertEq(data.length, 0);
+        }
+    }
+
+    function test_hostileOrgGasAndReturndataSafe() public {
+        org.setMalicious(1);
+        (, bytes memory data) = _render();
+        assertEq(data.length, 0);
+        org.setMalicious(2);
+        (, data) = _render();
+        assertEq(data.length, 0);
+    }
+
+    function test_invalidPathsAndFailedContentLockLeaveStateMutable() public {
+        vm.expectRevert(IProjectPresentation.InvalidConfiguration.selector);
+        p.setTarget(address(org), 0, IProjectPresentation.Selection.Latest, 0, "", "../index.html");
+        p.setTarget(address(org), 0, IProjectPresentation.Selection.Latest, 0, "", "missing");
+        bytes32 commitment = p.lockCommitment(address(org), 0, uint8(1));
+        vm.expectRevert();
+        p.lock(address(org), 0, uint8(1), commitment);
+        assertEq(p.config(address(org), 0).locks, 0);
+        p.setTarget(address(org), 0, IProjectPresentation.Selection.Latest, 0, "", "index.html");
+    }
+
+    function test_directorySuffixAndFileRootUriShape() public {
+        p.setTarget(address(org), 0, IProjectPresentation.Selection.Latest, 0, "", "nested");
+        (, bytes memory data) = _render();
+        assertTrue(bytes(data)[data.length - 1] == "/");
+        reader.setDirectory(false);
+        p.setTarget(address(org), 0, IProjectPresentation.Selection.Latest, 0, "", "");
+        (, data) = _render();
+        assertTrue(bytes(data)[data.length - 1] != "/");
+        p.setMethod(address(org), 0, IProjectPresentation.Method.Ipfs);
+        (, data) = _render();
+        assertEq(string(data), string.concat("ipfs://", CID));
+    }
+
+    function testFuzz_lockBitsOnlyAccumulate(uint8 first, uint8 second) public {
+        first = uint8(bound(first, 1, 7));
+        second = uint8(bound(second, 1, 7));
+        p.lock(address(org), 0, first, p.lockCommitment(address(org), 0, first));
+        org.transfer(OTHER);
+        bytes32 commitment = p.lockCommitment(address(org), 0, second);
+        vm.prank(OTHER);
+        p.lock(address(org), 0, second, commitment);
+        assertEq(p.config(address(org), 0).locks, first | second);
+    }
+
+    function test_ipfsEndpointRejectsSharedOriginPathAndUserinfo() public {
+        vm.expectRevert(IProjectPresentation.InvalidConfiguration.selector);
+        p.setEndpoints(address(org), 0, "", "https://gateway.example/ipfs");
+        vm.expectRevert(IProjectPresentation.InvalidConfiguration.selector);
+        p.setEndpoints(address(org), 0, "", "https://user@gateway.example");
+    }
+
+    function test_unpublishedAndMissingTargetStatusDiffer() public {
+        hook.setUnpublished(true);
+        (IProjectPresentation.Status status,,) = p.preview(address(org), 0);
+        assertEq(uint256(status), uint256(IProjectPresentation.Status.Unpublished));
+        hook.setUnpublished(false);
+        p.setTarget(address(org), 0, IProjectPresentation.Selection.Latest, 0, "", "missing");
+        (status,,) = p.preview(address(org), 0);
+        assertEq(uint256(status), uint256(IProjectPresentation.Status.InvalidTarget));
+    }
+
+    function test_staleRootCannotBeFrozenAndNoLockStateChanges() public {
+        bytes32 reviewed = p.lockCommitment(address(org), 0, 7);
+        hook.publish(bytes32(uint256(2)));
+        bytes32 actual = p.lockCommitment(address(org), 0, 7);
+        vm.expectRevert(abi.encodeWithSelector(IProjectPresentation.StaleCommitment.selector, reviewed, actual));
+        p.lock(address(org), 0, 7, reviewed);
+        assertEq(p.config(address(org), 0).locks, 0);
+        p.lock(address(org), 0, 7, actual);
+        assertEq(p.config(address(org), 0).frozenRoot, bytes32(uint256(2)));
+    }
+
+    function test_invalidMaskIsConsistentForInspectionAndLock() public {
+        vm.expectRevert(IProjectPresentation.InvalidConfiguration.selector);
+        p.lockCommitment(address(org), 0, 0);
+        vm.expectRevert(IProjectPresentation.InvalidConfiguration.selector);
+        p.lock(address(org), 0, 0, bytes32(0));
+        vm.expectRevert(IProjectPresentation.InvalidConfiguration.selector);
+        p.lockCommitment(address(org), 0, 8);
+        vm.expectRevert(IProjectPresentation.InvalidConfiguration.selector);
+        p.lock(address(org), 0, 8, bytes32(0));
+    }
+
+    function test_exactMixedPathEncodingInBothGatewayMethods() public {
+        p.setTarget(address(org), 0, IProjectPresentation.Selection.Latest, 0, "", unicode"AZaz09-._~/café 100%.html");
+        (, bytes memory data) = _render();
+        assertEq(
+            string(data),
+            string.concat(
+                "https://fs.abx.io/g/cid/",
+                vm.toString(block.chainid),
+                "/0x0000000000000000000000000000000000000000000000000000000000000001/AZaz09-._~/caf%C3%A9%20100%25.html"
+            )
+        );
+        p.setMethod(address(org), 0, IProjectPresentation.Method.Ipfs);
+        (, data) = _render();
+        assertEq(string(data), string.concat("ipfs://", CID, "/AZaz09-._~/caf%C3%A9%20100%25.html"));
+    }
+
+    function test_movedTagCannotRaceContentLock() public {
+        p.setTarget(address(org), 0, IProjectPresentation.Selection.Tag, 0, "stable", "");
+        bytes32 reviewed = p.lockCommitment(address(org), 0, 1);
+        hook.moveTag(bytes32(uint256(3)));
+        bytes32 actual = p.lockCommitment(address(org), 0, 1);
+        vm.expectRevert(abi.encodeWithSelector(IProjectPresentation.StaleCommitment.selector, reviewed, actual));
+        p.lock(address(org), 0, 1, reviewed);
+        assertEq(p.config(address(org), 0).locks, 0);
+    }
+
+    function test_sameRootPathChangeCannotRaceReviewedLockAcrossTransfer() public {
+        p.setTarget(address(org), 0, IProjectPresentation.Selection.Latest, 0, "", "index.html");
+        bytes32 reviewed = p.lockCommitment(address(org), 0, 1);
+        p.setTarget(address(org), 0, IProjectPresentation.Selection.Latest, 0, "", "other.html");
+        org.transfer(OTHER);
+        bytes32 actual = p.lockCommitment(address(org), 0, 1);
+        assertNotEq(reviewed, actual);
+        vm.prank(OTHER);
+        vm.expectRevert(abi.encodeWithSelector(IProjectPresentation.StaleCommitment.selector, reviewed, actual));
+        p.lock(address(org), 0, 1, reviewed);
+        assertEq(p.config(address(org), 0).locks, 0);
+        vm.prank(OTHER);
+        p.setTarget(address(org), 0, IProjectPresentation.Selection.Latest, 0, "", "index.html");
+        assertEq(p.lockCommitment(address(org), 0, 1), reviewed);
+        vm.prank(OTHER);
+        p.lock(address(org), 0, 1, reviewed);
+        (, string memory path) = p.target(address(org), 0);
+        assertEq(path, "index.html");
+    }
+
+    function test_methodAndEndpointChangesInvalidateOnlyTheirReviewedLocks() public {
+        bytes32 content = p.lockCommitment(address(org), 0, 1);
+        bytes32 method = p.lockCommitment(address(org), 0, 2);
+        bytes32 endpoints = p.lockCommitment(address(org), 0, 4);
+        p.setMethod(address(org), 0, IProjectPresentation.Method.Ipfs);
+        assertEq(p.lockCommitment(address(org), 0, 1), content);
+        assertEq(p.lockCommitment(address(org), 0, 4), endpoints);
+        bytes32 actual = p.lockCommitment(address(org), 0, 2);
+        vm.expectRevert(abi.encodeWithSelector(IProjectPresentation.StaleCommitment.selector, method, actual));
+        p.lock(address(org), 0, 2, method);
+        p.setEndpoints(address(org), 0, "https://other.example", "https://gateway.example");
+        actual = p.lockCommitment(address(org), 0, 4);
+        vm.expectRevert(abi.encodeWithSelector(IProjectPresentation.StaleCommitment.selector, endpoints, actual));
+        p.lock(address(org), 0, 4, endpoints);
+        assertEq(p.config(address(org), 0).locks, 0);
+    }
+
+    function test_unrelatedPublicationAndTransferDoNotInvalidateMethodEndpointLocks() public {
+        bytes32 reviewed = p.lockCommitment(address(org), 0, 6);
+        hook.publish(bytes32(uint256(7)));
+        p.setTarget(address(org), 0, IProjectPresentation.Selection.Latest, 0, "", "other.html");
+        org.transfer(OTHER);
+        assertEq(p.lockCommitment(address(org), 0, 6), reviewed);
+        vm.prank(OTHER);
+        p.lock(address(org), 0, 6, reviewed);
+        assertEq(p.config(address(org), 0).locks, 6);
+    }
+
+    function test_repeatedContentLockRetainsItsOriginalCommitmentAfterOtherChanges() public {
+        bytes32 reviewed = p.lockCommitment(address(org), 0, 1);
+        p.lock(address(org), 0, 1, reviewed);
+        hook.publish(bytes32(uint256(7)));
+        p.setMethod(address(org), 0, IProjectPresentation.Method.Embedded);
+        p.setEndpoints(address(org), 0, "https://other.example", "");
+        assertEq(p.lockCommitment(address(org), 0, 1), reviewed);
+        p.lock(address(org), 0, 1, reviewed);
+    }
+
+    function test_commitmentSeparatesDomainChainOrgTokenAndMask() public {
+        bytes32 reviewed = p.lockCommitment(address(org), 0, 2);
+        assertNotEq(reviewed, p.lockCommitment(address(org), 1, 2));
+        assertNotEq(reviewed, p.lockCommitment(address(org), 0, 4));
+        assertNotEq(reviewed, p.lockCommitment(address(0x1234), 0, 2));
+        vm.chainId(block.chainid + 1);
+        assertNotEq(reviewed, p.lockCommitment(address(org), 0, 2));
+    }
+
+    function test_codecAndBudgetFailuresHaveSpecificStatuses() public {
+        _embedded();
+        reader.setMode(3);
+        (IProjectPresentation.Status status,,) = p.preview(address(org), 0);
+        assertEq(uint256(status), uint256(IProjectPresentation.Status.UnsupportedCodec));
+        reader.setMode(4);
+        (status,,) = p.preview(address(org), 0);
+        assertEq(uint256(status), uint256(IProjectPresentation.Status.OverBudget));
+        reader.setMode(6);
+        (status,,) = p.preview(address(org), 0);
+        assertEq(uint256(status), uint256(IProjectPresentation.Status.OverBudget));
+    }
+
+    function test_maximumSuccessfulPayloadRetainsParentSerializationBudget() public {
+        _embedded();
+        reader.setMode(8);
+        (IProjectPresentation.Status status, string memory mime, bytes memory data) =
+            p.preview{gas: 8_000_000}(address(org), 0);
+        assertEq(uint256(status), uint256(IProjectPresentation.Status.Ready));
+        assertEq(mime, "text/html");
+        assertEq(data.length, 8192);
+    }
+
+    function test_expensiveSuccessfulSourceReturnsEmptyBeforeParentSerialization() public {
+        _embedded();
+        reader.setMode(9);
+        (IProjectPresentation.Status status,, bytes memory data) = p.preview{gas: 8_000_000}(address(org), 0);
+        assertEq(uint256(status), uint256(IProjectPresentation.Status.OverBudget));
+        assertEq(data.length, 0);
+        (, data) = p.render{gas: 8_000_000}(address(org), 0, "animation_url");
+        assertEq(data.length, 0);
+        assertEq(uint256(p.config(address(org), 0).method), uint256(IProjectPresentation.Method.Embedded));
+    }
+
+    function test_smallPresentationStillRendersUnderReducedReadBudget() public {
+        _embedded();
+        (IProjectPresentation.Status status,, bytes memory data) = p.preview{gas: 2_000_000}(address(org), 0);
+        assertEq(uint256(status), uint256(IProjectPresentation.Status.Ready));
+        assertGt(data.length, 0);
+        (status,, data) = p.preview{gas: 900_000}(address(org), 0);
+        assertEq(uint256(status), uint256(IProjectPresentation.Status.OverBudget));
+        assertEq(data.length, 0);
+    }
+
+    function testFuzz_arbitraryEndpointCannotInjectScheme(string calldata endpoint) public {
+        bytes memory b = bytes(endpoint);
+        vm.assume(b.length > 0 && (b.length < 8 || bytes8(b) != "https://"));
+        vm.expectRevert(IProjectPresentation.InvalidConfiguration.selector);
+        p.setEndpoints(address(org), 0, endpoint, "");
+    }
+}

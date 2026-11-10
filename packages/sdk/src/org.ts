@@ -143,6 +143,7 @@ export function orgGenerations(addresses: ContractAddresses): OrgGeneration[] {
             ...(addresses.orgMinter ? { orgMinter: addresses.orgMinter } : {}),
             ...(addresses.projectEnumeration ? { projectEnumeration: addresses.projectEnumeration } : {}),
             ...(addresses.lens ? { lens: addresses.lens } : {}),
+            ...(addresses.projectPresentation ? { projectPresentation: addresses.projectPresentation } : {}),
           },
         ]
       : [];
@@ -221,8 +222,12 @@ export async function addressesForOrg(
 ): Promise<ContractAddresses | undefined> {
   const generation = await generationOfOrg(client, addresses, org);
   if (!generation) return undefined;
-  const { previousGenerations: _drop, orgMinter: _m, projectEnumeration: _e, lens: _l, ...rest } = addresses;
-  void _drop; void _m; void _e; void _l;
+  const { previousGenerations: _drop, orgMinter: _m, projectEnumeration: _e, lens: _l, projectPresentation: _p, contentReader: _reader, ...rest } = addresses;
+  void _drop; void _m; void _e; void _l; void _p;
+  // The native reader is bound to the book's immutable store pair, not to arbitrary older stores.
+  const changesStores =
+    (generation.fileStore && generation.fileStore.toLowerCase() !== addresses.fileStore.toLowerCase()) ||
+    (generation.directoryStore && generation.directoryStore.toLowerCase() !== addresses.directoryStore.toLowerCase());
   return {
     ...rest,
     orgFactory: generation.orgFactory,
@@ -234,6 +239,8 @@ export async function addressesForOrg(
     ...(generation.orgMinter ? { orgMinter: generation.orgMinter } : {}),
     ...(generation.projectEnumeration ? { projectEnumeration: generation.projectEnumeration } : {}),
     ...(generation.lens ? { lens: generation.lens } : {}),
+    ...(generation.projectPresentation ? { projectPresentation: generation.projectPresentation } : {}),
+    ...(!changesStores && _reader ? { contentReader: _reader } : {}),
   };
 }
 
@@ -1010,15 +1017,16 @@ export async function recoverMint(
 }
 
 /** {@link recoverMint} for `createOrg`: the org the first transaction made, and its first project (token 0). */
-export async function recoverCreateOrg(client: PublicClient, factory: Address, hash: Hex): Promise<RecoveredWrite> {
+export async function recoverCreateOrg(client: PublicClient, factory: Address | ContractAddresses, hash: Hex): Promise<RecoveredWrite> {
   const receipt = await receiptOrPending(client, hash);
   if (!receipt) return { state: "pending" };
   if (receipt.status !== "success") return { state: "reverted" };
-  const created = parseEventLogs({ abi: iOrgFactoryAbi, eventName: "OrgCreated", logs: receipt.logs }).find(
-    (l) => l.address.toLowerCase() === factory.toLowerCase(),
+  const factories = new Set((typeof factory === "string" ? [factory] : [...(factory.orgFactory ? [factory.orgFactory] : []), ...(factory.previousGenerations ?? []).map(g => g.orgFactory)]).map(a => a.toLowerCase()));
+  const created = parseEventLogs({ abi: iOrgFactoryAbi, eventName: "OrgCreated", logs: receipt.logs }).filter(
+    (l) => factories.has(l.address.toLowerCase()),
   );
-  if (!created) return { state: "unknown", reason: `transaction ${hash} succeeded but created no org from ${factory}` };
-  return { state: "mined", org: created.args.org as Address, tokenId: 0n };
+  if (created.length !== 1) return { state: "unknown", reason: `transaction ${hash} succeeded but has ${created.length} matching org creations across the configured factories; refusing to guess` };
+  return { state: "mined", org: created[0]!.args.org as Address, tokenId: 0n };
 }
 
 async function mintedIdFromReceipt(
@@ -1055,8 +1063,8 @@ async function mintedIdFromReceipt(
  * locks it. Callers building a `forbid` list for {@link assertSafeRecipient} use this.
  */
 export function abxfsContractAddresses(a: ContractAddresses): (string | undefined)[] {
-  const out: (string | undefined)[] = [a.orgFactory, a.orgMinter, a.projectHook, a.projectEnumeration, a.lens];
-  for (const g of a.previousGenerations ?? []) out.push(g.orgFactory, g.orgMinter, g.projectHook, g.projectEnumeration, g.lens);
+  const out: (string | undefined)[] = [a.orgFactory, a.orgMinter, a.projectHook, a.projectEnumeration, a.lens, a.projectPresentation, a.contentReader];
+  for (const g of a.previousGenerations ?? []) out.push(g.orgFactory, g.orgMinter, g.projectHook, g.projectEnumeration, g.lens, g.projectPresentation);
   return out;
 }
 

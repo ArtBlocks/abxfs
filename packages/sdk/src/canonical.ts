@@ -15,7 +15,7 @@
  */
 import type { Address } from "viem";
 
-import type { ContractAddresses } from "./types.js";
+import type { ContractAddresses, OrgGeneration } from "./types.js";
 
 /**
  * The ABX FS address book. Every contract is deployed with CREATE2 through the keyless deployer, with fixed salts and no
@@ -30,11 +30,26 @@ const ABXFS_ADDRESSES: ContractAddresses = Object.freeze({
   directoryStore: "0x4273E4E078F47303Ca15b11959eeb61F3FC94c11",
   ipfsCidResolver: "0x7CE58c2945CbE3C2bDb0D3d276Ba3b9bD294008d",
   orgMeta: "0xB21e65DE1c241B9BaE8b7077b6f2E8f2c3Bc0F5D",
-  orgFactory: "0xC5aBF9fBd94659cdfc173AF30c6052700Fa62798",
-  projectHook: "0x3828Dd35AbF6a42F0d92E0F3311bd70593BD6E7B",
-  projectEnumeration: "0x2b2a84df4d62d18329899b66c744E6C643cDC065",
-  orgMinter: "0xc009135a8b9DdB14De53868773Fc1dc97963De1e",
-  lens: "0x2Ef71C4780e70F64507F04BD1Fde35eC3713269e",
+  orgFactory: "0x4a5D0fCed9b2162Db4517E7248dC0f3243CCB475",
+  projectHook: "0x402b7aC4a578DFB77d498937379EEf0744c17Ba1",
+  projectEnumeration: "0x4c1f7476a13e87C66C212a6BBa588511554c2412",
+  orgMinter: "0xf03ef75B8bbf683dd293E2A6c22eC99c421e4eCf",
+  lens: "0x90A2476db90F658B8E989fa5128C0A75E864A282",
+  contentReader: "0xe6d62620A284565B7F0B3581A6972BA3Be5C8B13",
+  projectPresentation: "0x8FD707e572d53581a9fA4d79E9D8202AD3acC208",
+  previousGenerations: Object.freeze([]) as unknown as OrgGeneration[],
+} satisfies ContractAddresses);
+
+/** The original generation remains available forever, only on the six chains where it was deployed. */
+const WITH_PREVIOUS_GENERATION: ContractAddresses = Object.freeze({
+  ...ABXFS_ADDRESSES,
+  previousGenerations: Object.freeze([Object.freeze({
+    orgFactory: "0xC5aBF9fBd94659cdfc173AF30c6052700Fa62798",
+    projectHook: "0x3828Dd35AbF6a42F0d92E0F3311bd70593BD6E7B",
+    projectEnumeration: "0x2b2a84df4d62d18329899b66c744E6C643cDC065",
+    orgMinter: "0xc009135a8b9DdB14De53868773Fc1dc97963De1e",
+    lens: "0x2Ef71C4780e70F64507F04BD1Fde35eC3713269e",
+  })]) as unknown as OrgGeneration[],
 } satisfies ContractAddresses);
 
 /** A canonical deployment record: the chain, how to reach it, and (once deployed) its addresses. */
@@ -60,53 +75,67 @@ export interface CanonicalDeployment {
 
 /**
  * Registry of canonical deployments, keyed by EIP-155 chain id: Base (8453), Base Sepolia (84532), Ethereum (1),
- * Sepolia (11155111), Arbitrum One (42161) and Arbitrum Sepolia (421614). A chain gains {@link ABXFS_ADDRESSES} once ABX FS is deployed
+ * Sepolia (11155111), Arbitrum One (42161) and Arbitrum Sepolia (421614), Robinhood (4663) and Robinhood Testnet (46630). A chain gains {@link ABXFS_ADDRESSES} once ABX FS is deployed
  * there, read back and rehearsed.
  *
  * Integer keys enumerate in ascending numeric order whatever the literal order below. No network is a default:
  * a caller that names none is asked to choose.
  */
 export const CANONICAL_DEPLOYMENTS: Readonly<Record<number, CanonicalDeployment>> = Object.freeze({
+  46630: Object.freeze({
+    chainId: 46630,
+    name: "Robinhood Testnet",
+    environment: "testnet",
+    addresses: ABXFS_ADDRESSES,
+    publicRpc: Object.freeze(["https://rpc.testnet.chain.robinhood.com", "https://robinhood-sepolia-rpc.publicnode.com"]) as unknown as string[],
+  }) satisfies CanonicalDeployment,
+  4663: Object.freeze({
+    chainId: 4663,
+    name: "Robinhood",
+    environment: "production",
+    addresses: ABXFS_ADDRESSES,
+    publicRpc: Object.freeze(["https://rpc.mainnet.chain.robinhood.com", "https://robinhood-rpc.publicnode.com"]) as unknown as string[],
+  }) satisfies CanonicalDeployment,
   84532: Object.freeze({
     chainId: 84532,
     name: "Base Sepolia",
     environment: "testnet",
-    addresses: ABXFS_ADDRESSES,
+    addresses: WITH_PREVIOUS_GENERATION,
     publicRpc: Object.freeze(["https://sepolia.base.org", "https://base-sepolia-rpc.publicnode.com"]) as unknown as string[],
   }) satisfies CanonicalDeployment,
   8453: Object.freeze({
     chainId: 8453,
     name: "Base",
     environment: "production",
-    addresses: ABXFS_ADDRESSES,
+    addresses: WITH_PREVIOUS_GENERATION,
     publicRpc: Object.freeze(["https://mainnet.base.org"]) as unknown as string[],
   }) satisfies CanonicalDeployment,
   1: Object.freeze({
     chainId: 1,
     name: "Ethereum",
     environment: "production",
-    addresses: ABXFS_ADDRESSES,
+    addresses: WITH_PREVIOUS_GENERATION,
     publicRpc: Object.freeze(["https://ethereum-rpc.publicnode.com", "https://eth.llamarpc.com"]) as unknown as string[],
   }) satisfies CanonicalDeployment,
   11155111: Object.freeze({
     chainId: 11155111,
     name: "Sepolia",
     environment: "testnet",
-    addresses: ABXFS_ADDRESSES,
+    addresses: WITH_PREVIOUS_GENERATION,
     publicRpc: Object.freeze(["https://ethereum-sepolia-rpc.publicnode.com", "https://sepolia.gateway.tenderly.co"]) as unknown as string[],
   }) satisfies CanonicalDeployment,
   421614: Object.freeze({
     chainId: 421614,
     name: "Arbitrum Sepolia",
     environment: "testnet",
-    addresses: ABXFS_ADDRESSES,
+    addresses: WITH_PREVIOUS_GENERATION,
     publicRpc: Object.freeze(["https://sepolia-rollup.arbitrum.io/rpc"]) as unknown as string[],
   }) satisfies CanonicalDeployment,
   42161: Object.freeze({
     chainId: 42161,
     name: "Arbitrum One",
     environment: "production",
-    addresses: ABXFS_ADDRESSES,
+    addresses: WITH_PREVIOUS_GENERATION,
     publicRpc: Object.freeze(["https://arb1.arbitrum.io/rpc"]) as unknown as string[],
   }) satisfies CanonicalDeployment,
 });

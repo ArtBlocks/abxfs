@@ -607,6 +607,8 @@ contract Audit2Invariant is Test {
         if (bytes(url).length == 0) vm.skip(true);
         vm.createSelectFork(url);
         h = new A2Handler();
+        // Fix only the handler entry sender; SUT actors are still selected and pranked from fuzzed arguments.
+        targetSender(address(this));
         targetContract(address(h));
         bytes4[] memory sels = new bytes4[](11);
         sels[0] = A2Handler.mint.selector;

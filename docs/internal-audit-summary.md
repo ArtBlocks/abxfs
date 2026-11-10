@@ -1,5 +1,14 @@
 # Internal audit summary
 
+## Scope
+
+The historical review below covers the original `abx-fs-freeze-3` generation only. It does not describe the later
+native reader and presentation generation. See [presentation](../site/content/docs/reference/presentation.mdx)
+for current behavior and [deployments](../site/content/docs/reference/deployments.mdx) for verified addresses
+and generation history. Source verification is not an independent security audit.
+
+## Original generation — 2026-10-29 to 2026-10-31
+
 ABX FS, 2026-10-29 to 2026-10-31. One page for everything the internal audit found, fixed, decided and left open.
 This page is the published record of it: what each pass found, what was fixed, and what was decided or accepted.
 

@@ -97,6 +97,10 @@ export interface ContractAddresses {
   previousGenerations?: OrgGeneration[];
   /** `IpfsCidResolver`: view-only IPFS CIDv1 derivation from on-chain content. */
   ipfsCidResolver?: Address;
+  /** Native bounded on-chain content reader, independent of org generations. */
+  contentReader?: Address;
+  /** Presentation contract of the current org factory generation, when supported. */
+  projectPresentation?: Address;
 }
 
 /** The org-layer contracts one factory deployed: what an org it created reads and writes through. */
@@ -113,6 +117,7 @@ export interface OrgGeneration {
   orgMinter?: Address;
   projectEnumeration?: Address;
   lens?: Address;
+  projectPresentation?: Address;
 }
 
 export interface FileDescriptor {

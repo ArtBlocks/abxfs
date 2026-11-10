@@ -14,7 +14,7 @@ optimizer_runs = 10_000
 via_ir = false
 verbosity = 2
 fuzz = { runs = 256 }
-fs_permissions = [{ access = "read-write", path = "./out" }, { access = "read", path = "../contracts-core/out" }]
+fs_permissions = [{ access = "read-write", path = "./out" }, { access = "read", path = "../contracts-core/out" }, { access = "read", path = "../contracts-companion/out" }]
 
 # Branch coverage (`forge coverage` builds without the optimizer, so the pin tests, the initcode-size tests and the gas
 # bounds fail there and are excluded):

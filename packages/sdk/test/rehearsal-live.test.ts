@@ -6,17 +6,25 @@
  *
  *   ( set -a; . ../../.env; set +a; ABXFS_REHEARSAL_CHAIN=8453 npx vitest run test/rehearsal-live.test.ts --reporter=verbose )
  *
+ * Set ABXFS_REHEARSAL_ADDRESSES to a JSON file containing the candidate ContractAddresses bundle
+ * before canonical promotion. The presentation lane reuses token 0 for two further publishes and
+ * exercises native reads, delivery choices, endpoints and a permanent reviewed content lock.
+ *
  * createOrg -> publish a two-file directory to token 0 with a tag -> read the project and the version back ->
  * decode tokenURI and contractURI: the token is named after its project, its links use the frozen gateway base, and the
  * collection document (OrgMeta) carries the org's name, its description, a logo, a banner and the site link.
  */
 import { describe, expect, it } from "vitest";
-import { createPublicClient, createWalletClient, http, type Chain, type Hex } from "viem";
+import { createPublicClient, createWalletClient, http, type Hex } from "viem";
 import { nonceManager, privateKeyToAccount } from "viem/accounts";
-import { arbitrum, arbitrumSepolia, base, baseSepolia, mainnet, sepolia } from "viem/chains";
+import { rehearsalAddresses, rehearsalChain } from "./helpers/rehearsal-config.js";
 
 import { autoRegisterNodeCodecs } from "../src/compression.js";
-import { requireCanonicalAddresses } from "../src/canonical.js";
+import { AbxfsClient } from "../src/abxfs.js";
+import { PresentationLock, PresentationMethod, PresentationSelection, PresentationStatus, recommendPresentationMethod } from "../src/presentation.js";
+import { lookupEntry } from "../src/read.js";
+import { verifyOnChainIpfsCid } from "../src/verify.js";
+import { publishRootAndTag } from "../src/publish.js";
 import { applyNewProject, executeNewProjectPublish } from "../src/draft.js";
 import { locateContent } from "../src/kind.js";
 import { createOrg, requireOrgContracts } from "../src/org.js";
@@ -25,11 +33,10 @@ import { hookAcceptsContent } from "../src/stores.js";
 import { ProjectKind } from "../src/types.js";
 import { iProjectHookAbi } from "../src/abi-hook.js";
 
-const CHAINS: Record<number, Chain> = { 8453: base, 84532: baseSepolia, 1: mainnet, 11155111: sepolia, 42161: arbitrum, 421614: arbitrumSepolia };
 /** The gateway base frozen into `OrgMeta` on every listed chain (`script/Deploy.s.sol`, `_gatewayAllowed`). */
 const GATEWAY_BASE = "https://fs.abx.io";
 const CHAIN_ID = Number(process.env.ABXFS_REHEARSAL_CHAIN ?? 0);
-const chain = CHAINS[CHAIN_ID];
+const chain = rehearsalChain(CHAIN_ID);
 const RPC = process.env[`ABXFS_RPC_URL_${CHAIN_ID}`];
 const KEY = process.env.ABXFS_PRIVATE_KEY;
 const live = Boolean(chain && RPC && KEY);
@@ -53,7 +60,8 @@ describe.skipIf(!live)(`live: throwaway rehearsal on chain ${CHAIN_ID}`, () => {
   const walletClient = live ? createWalletClient({ chain, transport: http(RPC!), account: account!, pollingInterval: 1000 }) : undefined;
 
   it("creates an org, publishes a directory with a tag, and reads the project and its metadata back", async () => {
-    const addresses = requireCanonicalAddresses(CHAIN_ID);
+    const addresses = rehearsalAddresses(CHAIN_ID, process.env.ABXFS_REHEARSAL_ADDRESSES);
+    expect(await publicClient!.getChainId()).toBe(CHAIN_ID);
     await autoRegisterNodeCodecs();
     const clients = { publicClient: publicClient!, walletClient: walletClient! };
     const contracts = { ...requireOrgContracts(addresses), hook: addresses.projectHook! };
@@ -116,7 +124,68 @@ describe.skipIf(!live)(`live: throwaway rehearsal on chain ${CHAIN_ID}`, () => {
     expect(String(collection.banner_image)).toMatch(/^data:image\/svg\+xml;base64,/);
     expect(String(token.animation_url).startsWith(`${GATEWAY_BASE}/`)).toBe(true);
     expect(String(token.external_url).startsWith(`${GATEWAY_BASE}/`)).toBe(true);
-    expect(String(token.animation_url).toLowerCase()).toContain(created.org.toLowerCase().slice(2));
+    if (addresses.projectPresentation) {
+      expect(String(token.animation_url).toLowerCase()).toContain(`/g/cid/${CHAIN_ID}/${result.rootCid.toLowerCase()}/`);
+    } else {
+      expect(String(token.animation_url).toLowerCase()).toContain(created.org.toLowerCase().slice(2));
+    }
     expect(typeof token.image).toBe("string");
+
+    if (addresses.projectPresentation) {
+      expect(addresses.contentReader).toBeDefined();
+      const sdk = new AbxfsClient({ ...clients, addresses, org: created.org });
+      const limits = { maxBytes: 8192n, maxChunks: 32n };
+      const index = await lookupEntry(publicClient!, addresses, result.rootCid, "index.html");
+      expect((await sdk.readNativeFile(index.cid, limits)).bytes).toEqual(files[0]!.bytes);
+      expect((await sdk.readNativePath(result.rootCid, "index.html", limits)).bytes).toEqual(files[0]!.bytes);
+      expect((await sdk.readNativePath(result.rootCid, "", limits)).bytes).toEqual(files[0]!.bytes);
+      expect((await recommendPresentationMethod(publicClient!, addresses, result.rootCid)).method).toBe(PresentationMethod.ChainGateway);
+
+      // Keep the same project token: a second directory version is a small self-contained artwork.
+      const embeddedBytes = enc.encode(`<!doctype html><title>embedded ${salt}</title><p>self-contained</p>`);
+      const next = await applyNewProject(publicClient!, addresses, [{ path: "index.html", bytes: embeddedBytes, mimeType: "text/html" }]);
+      const second = await executeNewProjectPublish(clients, addresses, project, 0n, "", next, { expectedHead: result.rootCid });
+      expect(second.versionNumber).toBe(2n);
+      expect((await recommendPresentationMethod(publicClient!, addresses, second.rootCid)).method).toBe(PresentationMethod.Embedded);
+      await sdk.configurePresentationTarget(0n, { selection: PresentationSelection.Latest, path: "" });
+      await sdk.setPresentationMethod(0n, "auto");
+      let preview = await sdk.previewPresentation(0n);
+      expect(preview.method).toBe(PresentationMethod.Embedded);
+      expect(preview.status).toBe(PresentationStatus.Ready);
+      expect(preview.contentType).toBe("text/html");
+      expect(preview.bytes).toEqual(embeddedBytes);
+      const embeddedToken = decodeJsonUri(await publicClient!.readContract({ address: created.org, abi: uriAbi, functionName: "tokenURI", args: [0n] }));
+      expect(String(embeddedToken.animation_url)).toMatch(/^data:text\/html;base64,/);
+
+      await sdk.setPresentationMethod(0n, PresentationMethod.ChainGateway);
+      preview = await sdk.previewPresentation(0n);
+      expect(preview.status).toBe(PresentationStatus.Ready);
+      const chainUri = `${GATEWAY_BASE}/g/cid/${CHAIN_ID}/${second.rootCid}/`;
+      expect(new TextDecoder().decode(preview.bytes)).toBe(chainUri);
+      await sdk.setPresentationEndpoints(0n, { chainBase: "https://gateway.example", ipfsBase: "https://dweb.link" });
+      expect(new TextDecoder().decode((await sdk.previewPresentation(0n)).bytes)).toBe(chainUri.replace(GATEWAY_BASE, "https://gateway.example"));
+      const ipfsCid = await verifyOnChainIpfsCid(publicClient!, addresses, second.rootCid);
+      await sdk.setPresentationMethod(0n, PresentationMethod.Ipfs);
+      preview = await sdk.previewPresentation(0n);
+      expect(preview.status).toBe(PresentationStatus.Ready);
+      expect(new TextDecoder().decode(preview.bytes)).toBe(`https://${ipfsCid}.ipfs.dweb.link/`);
+      await sdk.setPresentationEndpoints(0n, { chainBase: "", ipfsBase: "" });
+      preview = await sdk.previewPresentation(0n);
+      expect(new TextDecoder().decode(preview.bytes)).toBe(`ipfs://${ipfsCid}/`);
+      // Derivation proves the URI, not pinning or remote availability. Finish on the chain gateway.
+      await sdk.setPresentationMethod(0n, PresentationMethod.ChainGateway);
+      const reviewed = await sdk.previewPresentation(0n);
+      expect(reviewed.root?.toLowerCase()).toBe(second.rootCid.toLowerCase());
+      const commitment = await sdk.readPresentationLockCommitment(0n, PresentationLock.Content, reviewed.blockNumber);
+      await sdk.lockPresentation(0n, PresentationLock.Content, commitment);
+      const third = await publishRootAndTag(clients, project, 0n, result.rootCid);
+      expect(third.versionNumber).toBe(3n);
+      expect((await sdk.readProject(0n)).cid?.toLowerCase()).toBe(result.rootCid.toLowerCase());
+      const frozen = await sdk.inspectPresentation(0n);
+      expect(frozen.root?.toLowerCase()).toBe(second.rootCid.toLowerCase());
+      expect(frozen.path).toBe("");
+      expect(frozen.locks & PresentationLock.Content).toBe(PresentationLock.Content);
+      expect(new TextDecoder().decode((await sdk.previewPresentation(0n)).bytes)).toBe(chainUri);
+    }
   }, 900_000);
 });

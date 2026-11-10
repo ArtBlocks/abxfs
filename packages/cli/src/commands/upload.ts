@@ -12,6 +12,10 @@ import {
   gasScheduleForChain,
   assertValidPublishInputs,
   orgGenerations,
+  PresentationSelection,
+  PresentationLock,
+  PresentationMethod,
+  recommendPresentationMethod,
   readOrgsAdministeredAcrossGenerations,
   readOrgsHeld,
   type AbxfsCid,
@@ -21,6 +25,7 @@ import {
   type UploadResult,
 } from "@artblocks/abxfs-sdk";
 
+import { parsePresentationMethod } from "./presentation.js";
 import { parsePositiveInt, parseTokenId } from "../args.js";
 import { createClient } from "../client.js";
 import { FASTLZ_HELP, resolveContentOptions } from "../codec.js";
@@ -30,6 +35,7 @@ import { loadSingleFile, scanTreeForUpload, validateAllowPublicGlob } from "../s
 import { describeStage, summarizeUpload, type UploadSummary } from "../plan-summary.js";
 import { withMintRecovery } from "../recover.js";
 import { printProjectLinks, printRootLink } from "../links.js";
+import { CliRefusal, redact } from "../redact.js";
 import { safe, shellArg, txHash } from "../text.js";
 import { confirmWrite, describeOrg, estimateCreateOrgGas, WRITE_GAS, type WriteStep } from "../write-plan.js";
 
@@ -57,6 +63,7 @@ export interface UploadOpts {
   allowPublic: string[];
   maxBundleGas?: string;
   yes?: boolean;
+  presentation?: string;
 }
 
 export function uploadCommand(): Command {
@@ -73,7 +80,7 @@ export function uploadCommand(): Command {
     .option("-c, --chain <name>", "the network (else ABXFS_CHAIN, else defaultChain)")
     .option(
       "--org <address>",
-      "the org to mint the project in (default: ABXFS_ORG, the chain's `org`, then the newest org you ADMINISTER; " +
+      "the org to mint the project in (defaults only use the current factory: ABXFS_ORG, configured org, then newest administered org; " +
         "if you administer none, a personal org is created for you)",
     )
     .option("--codec <codec>", "file codec, decoded off chain by readers: none|gzip (defaults to the chain's defaultCodec, else none)")
@@ -87,6 +94,7 @@ export function uploadCommand(): Command {
       "--kind <kind>",
       "force file|directory (defaults to auto-detect from local FS)",
     )
+    .option("--presentation <method>", "presentation: auto|chain-gateway|embedded|ipfs (new projects default to auto; existing projects keep their method)")
     .option("--dry-run", "compute CIDs and the plan only; no transactions (needs no --yes)")
     .option("--include-hidden", "include dotfiles and dot-directories (skipped by default, except .well-known)")
     .option("--allow-public <glob>", ALLOW_PUBLIC_HELP, collectAllowPublic, [] as string[])
@@ -100,6 +108,8 @@ export function uploadCommand(): Command {
       // Everything that can be checked offline is checked FIRST: a bad tag, name, id, kind or gas budget must not be
       // found after content was uploaded and a project minted.
       assertValidPublishInputs({ tag: opts.tag, name: opts.name });
+      if (opts.presentation !== undefined) parsePresentationMethod(opts.presentation);
+      if (opts.presentation && !opts.name && opts.projectId === undefined) throw new Error("--presentation requires --name or --project-id");
       if (opts.tag && !opts.name && !opts.projectId) {
         throw new Error("--tag requires --name or --project-id (a tag points at a version of a project)");
       }
@@ -110,6 +120,9 @@ export function uploadCommand(): Command {
       await autoRegisterNodeCodecs();
       const cfg = loadConfig();
       const chain = resolveChain(cfg, opts.chain);
+      // Keep recovery on the selected network even when it came from env/config defaults.
+      const chainName = opts.chain ?? (process.env["ABXFS_CHAIN"]?.trim() || undefined)
+        ?? cfg.defaultChain ?? Object.keys(cfg.chains)[0]!;
       const client = createClient(chain, { write: !opts.dryRun });
 
       const { codec, fastLz } = resolveContentOptions(chain, opts);
@@ -167,6 +180,13 @@ export function uploadCommand(): Command {
       // The content is the expensive part, and an account that may not mint into the org would otherwise pay for the
       // whole upload and only then learn it cannot use it.
       const target = opts.name || projectId !== undefined ? await planTarget(client, chain, opts, projectId) : undefined;
+      const presentationClient = target?.org ? await client.resolveOrg(target.org) : client;
+      const presentationSupported = Boolean(presentationClient.addresses.projectPresentation);
+      if (target && opts.presentation !== undefined && !presentationSupported)
+        throw new Error("this org generation does not support presentation");
+      if (target && projectId !== undefined && opts.presentation !== undefined &&
+        ((await presentationClient.readPresentation(projectId)).locks & PresentationLock.Method) !== 0)
+        throw new Error("presentation method is permanently locked; omit --presentation to preserve it");
 
       const steps: WriteStep[] = [];
       const permanent: string[] = [];
@@ -200,6 +220,8 @@ export function uploadCommand(): Command {
           `the version: the root is appended to ${projectId !== undefined ? `project #${projectId}` : "the project"}'s history for good`,
         );
         if (opts.tag) steps.push({ what: `point tag "${safe(opts.tag)}" at it (a tag can be moved later)`, txs: 1, gas: WRITE_GAS.setTag });
+        if (opts.presentation !== undefined || (projectId === undefined && presentationSupported))
+          steps.push({ what: "configure presentation target and method (auto never selects IPFS)", txs: projectId === undefined ? 2 : 1, gas: 600_000 });
         if (opts.name) steps.push({ what: `set the project's name to "${safe(opts.name)}" (it can be renamed later)`, txs: 1, gas: WRITE_GAS.setName });
       }
       const ok = await confirmWrite(
@@ -218,7 +240,9 @@ export function uploadCommand(): Command {
       if (!ok) return;
 
       // What a recovery command must reproduce: every choice that decides the root, resolved, and the root itself.
-      const recovery = recoveryCommand(path, opts, { codec, fastLz, kind, maxBundleGas, root: preflight.rootCid });
+      const recoveryOpts = projectId === undefined && target && presentationSupported
+        ? { ...opts, presentation: opts.presentation ?? "auto" } : opts;
+      const recovery = recoveryCommand(path, recoveryOpts, { codec, fastLz, kind, maxBundleGas, root: preflight.rootCid });
       const resolved = target ? await executeTarget(client, target, recovery) : undefined;
 
       console.log(kleur.gray("  large uploads are many transactions; if one is interrupted, run the same command again: what is already on chain is skipped"));
@@ -228,7 +252,7 @@ export function uploadCommand(): Command {
         ? await client.uploadFile(file, { codec, fastLz, ...gas, onProgress, onFileUploaded })
         : await client.upload(files, { codec, fastLz, emptyDirectories, ...gas, onProgress, onFileUploaded });
       console.log(kleur.green("✓"), file ? "file root:" : "root directory:", result.rootCid);
-      await maybeCreateProject(client, result, opts, resolved, projectId, recovery);
+      await maybeCreateProject(client, result, opts, resolved, projectId, recovery, { name: chainName, chainId: chain.chainId });
       if (!resolved) await printRootLink(client, chain.chainId, result.rootCid);
     });
 }
@@ -348,6 +372,7 @@ export function recoveryCommand(path: string, opts: UploadOpts, choices: RootCho
       ...(choices.maxBundleGas !== undefined ? ["--max-bundle-gas", String(choices.maxBundleGas)] : []),
       ...(opts.tag ? ["--tag", sh(opts.tag)] : []),
       ...(opts.name ? ["--name", sh(opts.name)] : []),
+      ...(opts.presentation ? ["--presentation", sh(opts.presentation)] : []),
     ].join(" ");
   return { command, root: choices.root };
 }
@@ -400,13 +425,18 @@ async function planTarget(client: Client, chain: ChainConfig, opts: UploadOpts, 
   const account = client.walletClient?.account?.address;
   if (!account) throw new Error("no account to mint with — set ABXFS_PRIVATE_KEY");
   let org = resolveOrg(chain, opts.org);
+  // Configured orgs are remembered defaults, not permission to silently mint into an old generation.
+  if (org && !opts.org) {
+    const remembered = await client.resolveOrg(org);
+    if (remembered.addresses.orgFactory?.toLowerCase() !== client.registry.orgFactory?.toLowerCase()) org = undefined;
+  }
   if (!org) {
     // "You administer no org" must be a fact read from chain, never a read that failed: it leads to a paid, permanent
     // org creation. It is read from the factories' administered lists alone: the held list is never used to choose
     // (anyone can mint into a wallet from an open org), so a failed read of it must not stop the choice either.
     const { orgs: mine, failed, failedGenerations, truncated } = await readOrgsAdministeredAcrossGenerations(
       client.publicClient,
-      client.registry,
+      { ...client.registry, previousGenerations: [] },
       account,
     );
     const unread = [
@@ -436,7 +466,7 @@ async function planTarget(client: Client, chain: ChainConfig, opts: UploadOpts, 
       return { org: undefined, orgLabel: `a new personal org "${safe(name)}", administered by you`, createOrgName: name, mint: false };
     }
     org = administered.org;
-    console.log(kleur.gray(`  no --org given: using the newest org you administer, "${safe(administered.name)}" ${administered.org}`));
+    console.log(kleur.gray(`  no --org given: using the newest org you administer, "${safe(administered.name)}" ${administered.org} (current factory)`));
   }
   if (!(await (await client.resolveOrg(org)).mayMint(account))) {
     throw new Error(
@@ -502,6 +532,7 @@ async function maybeCreateProject(
   target: Target | undefined,
   projectId: bigint | undefined,
   recovery: Recovery,
+  network: { name: string; chainId: number },
 ): Promise<void> {
   if (result.txHashes.length > 0) {
     console.log(kleur.gray(`  ${result.txHashes.length} content transaction(s) sent`));
@@ -568,7 +599,69 @@ async function maybeCreateProject(
     console.log(kleur.green("✓"), `name set: "${safe(opts.name)}" on project #${tokenId} in org ${orgLabel}`, kleur.gray(txHash(nameTx)));
   }
 
+  const requestedPresentation = opts.presentation ?? (projectId === undefined && orgClient.addresses.projectPresentation ? "auto" : undefined);
+  if (requestedPresentation !== undefined) {
+    let phase = "set-target";
+    let targetConfigured = projectId !== undefined;
+    let methodConfigured = false;
+    let recoveryMethod = requestedPresentation;
+    try {
+      if (!targetConfigured) {
+        await orgClient.configurePresentationTarget(tokenId, { selection: PresentationSelection.Latest, path: "" });
+        targetConfigured = true;
+      }
+      phase = "inspect-target";
+      const requested = parsePresentationMethod(requestedPresentation);
+      const inspected = await orgClient.inspectPresentation(tokenId);
+      if (requested === "auto" && !inspected.root) throw new Error("auto requires a resolved presentation target");
+      const recommendation = requested === "auto"
+        ? await recommendPresentationMethod(orgClient.publicClient, orgClient.addresses, inspected.root!, inspected.path) : null;
+      const method = recommendation?.method ?? requested;
+      recoveryMethod = method === PresentationMethod.ChainGateway ? "chain-gateway"
+        : method === PresentationMethod.Embedded ? "embedded" : "ipfs";
+      phase = "set-method";
+      const hash = await orgClient.setPresentationMethod(tokenId, method);
+      methodConfigured = true;
+      phase = "inspect-result";
+      const presentation = await orgClient.inspectPresentation(tokenId);
+      console.log(kleur.green("✓"), "presentation:", safe(JSON.stringify({ ...presentation,
+        targetError: presentation.targetError ? redact(presentation.targetError) : null,
+        reason: recommendation ? redact(recommendation.reason) : "explicit selection", residualDependencies: recommendation?.residualDependencies, runtimeUncertain: recommendation?.runtimeUncertain })), kleur.gray(txHash(hash)));
+    } catch (error) {
+      const flags = `--project-id ${tokenId} --org ${org} --chain ${sh(network.name)}`;
+      const commands = [
+        ...(!targetConfigured ? [`abxfs presentation set-target --latest --path '' ${flags}`] : []),
+        ...(!methodConfigured ? [`abxfs presentation set-method ${sh(recoveryMethod)} ${flags}`] : []),
+        `abxfs presentation inspect ${flags}`,
+      ];
+      throw new UploadPresentationError({ org, tokenId, root: result.rootCid, chainId: network.chainId, phase }, commands.join(" && "), error);
+    }
+  }
   await printProjectLinks(orgClient, tokenId);
+}
+
+/** Publication already succeeded; recovery must never mint or publish that root again. */
+export class UploadPresentationError extends CliRefusal {
+  readonly recoveryCommand: string;
+  readonly org: Address;
+  readonly tokenId: bigint;
+  readonly root: AbxfsCid;
+  readonly chainId: number;
+  readonly phase: string;
+
+  constructor(state: { org: Address; tokenId: bigint; root: AbxfsCid; chainId: number; phase: string }, command: string, cause: unknown) {
+    super(`Root ${state.root} is already published to project #${state.tokenId} in org ${state.org} on chain ${state.chainId}. ` +
+      `Presentation setup stopped during ${state.phase}: ${redact(cause instanceof Error ? cause.message : String(cause))}. ` +
+      "Do NOT rerun the original upload --name command: it would mint another project. Run the presentation-only recovery command below.");
+    this.name = "UploadPresentationError";
+    this.cause = cause;
+    this.org = state.org;
+    this.tokenId = state.tokenId;
+    this.root = state.root;
+    this.chainId = state.chainId;
+    this.phase = state.phase;
+    this.recoveryCommand = command;
+  }
 }
 
 /** `--kind`, validated before any work: `file`, `directory` or `auto` (the default). */

@@ -247,6 +247,78 @@ the token after the last one it has: a consumer that pauses mid-walk for longer 
 state for old blocks (a non-archive node keeps about 128 blocks, minutes on most chains) gets an error
 at the next page, not a shorter list. Pull the walk through promptly, or start a new one.
 
+### Native content and project presentation
+
+See [Project presentation and native reads](/docs/reference/presentation) for Solidity reads, the fixed ABX adapter and delivery semantics.
+
+`ContractAddresses.contentReader` enables `readNativeFile`, `readNativePath`, and
+`readNativeFileRange`. Pass `{ maxBytes: 8192n, maxChunks: 32n }` explicitly. These
+calls decode raw and FastLZ storage on chain and reject file-level codecs such as
+gzip. Range limits count the entire decoded chunks touched, including bytes outside
+the returned slice. `readNativePath` uses `index.html` for a selected directory.
+
+Presentation is optional per factory generation. Resolve an existing org with
+`await client.resolveOrg(org)` before using it; an older generation without
+`projectPresentation` raises `PresentationCapabilityError` and never inherits a
+newer generation's presentation contract.
+An older generation with a different file/directory store pair also loses the
+current `contentReader` capability, because that reader is immutable to its own
+stores. Ordinary SDK content reads continue to use the generation's store pair.
+
+```ts
+import { PresentationSelection, PresentationLock } from "@artblocks/abxfs-sdk";
+
+const project = await client.resolveOrg(org);
+await project.configurePresentationTarget(tokenId, {
+  selection: PresentationSelection.Latest,
+  path: "", // or a file/directory path, a Version + version, or a Tag + tag
+});
+await project.setPresentationMethod(tokenId, "auto");
+const preview = await project.previewPresentation(tokenId);
+// root, path, method, status, locks, contentType, bytes, residualDependencies,
+// runtimeUncertain, recommendation, blockNumber
+```
+
+Auto is a tooling choice that writes a concrete `Embedded` or `ChainGateway`
+method. It never chooses IPFS. It favors supported content of at most 8 KiB and
+32 chunks without detected dependencies. File-level codecs, multi-entry
+directories, external or relative references, network calls, imports, and opaque
+dynamic code retain a gateway origin. Typical inline canvas JavaScript can embed,
+but `runtimeUncertain` remains true: static scanning cannot prove arbitrary
+JavaScript self-contained. Review the returned reason and residual dependencies.
+Choose `PresentationMethod.Ipfs` explicitly when wanted.
+
+`readPresentation(tokenId)` reads configuration; `inspectPresentation(tokenId)`
+adds the selected root and path. `previewPresentation` reads configuration,
+target, and contract status at one block and exposes failures through
+`PresentationStatus`. A successful gateway preview does not promise that its
+external endpoint is online. `setPresentationEndpoints(tokenId, { chainBase,
+ipfsBase })` sets the optional endpoint bases.
+
+Locks are irreversible. Review the preview, then read the lock commitment at the
+same block so it acknowledges exactly the state reviewed:
+
+```ts
+const mask = PresentationLock.Content | PresentationLock.Method;
+const reviewed = await project.previewPresentation(tokenId);
+const commitment = await project.readPresentationLockCommitment(tokenId, mask, reviewed.blockNumber);
+// Review reviewed.root/path, method, endpoints and status before submitting.
+await project.lockPresentation(tokenId, mask, commitment);
+```
+
+Every mask requires an explicit commitment, including method-only and endpoint-only
+locks. It binds the selected dimensions to the project, chain, presentation contract
+and mask. The contract rejects a stale commitment when the selected state changes;
+review a fresh preview before retrying. Method and endpoint locks use
+`PresentationLock.Method` and `PresentationLock.Endpoints`; combine bits as needed.
+Every presentation write verifies wallet/read chain agreement and reports success
+only after a successful receipt.
+
+`recoverCreateOrg(publicClient, addresses, hash)` inspects one transaction receipt
+across the address book's factory generations, returning the org actually created
+or an explicit unknown result for an ambiguous receipt. The original
+single-factory address argument remains supported. Neither form scans logs.
+
 ## Addresses
 
 ```ts

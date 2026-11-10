@@ -9,6 +9,7 @@
  */
 import { assertReceiptSuccess, explorerTxUrl, isUserRejection, TransactionTimeoutError, waitForSuccessfulReceipt } from "./receipts.js";
 import { settle } from "./settle.js";
+import { pinnedReadPolicy } from "./snapshot.js";
 import { mapInSlices } from "./util.js";
 import {
   BaseError,
@@ -107,10 +108,21 @@ export async function sendBundles(
      * where a caller waits for what it already sent to become visible.
      */
     beforeEachBundle?: (b: Bundle, i: number) => Promise<void>;
+    /** Exact state containing the prerequisites confirmed by an earlier content stage. */
+    simulationBlockNumber?: bigint;
+    /** Successful receipts only; lets the next stage use the same confirmed state. */
+    onBundleConfirmed?: (blockNumber: bigint) => void;
   },
 ): Promise<Hex[]> {
   assertWalletChain(clients.publicClient, clients.walletClient);
   const hashes: Hex[] = [];
+  let simulationBlockNumber = opts?.simulationBlockNumber;
+  const confirmed = (blockNumber: bigint | undefined): void => {
+    // Test doubles may omit the block; real transaction receipts always provide it.
+    if (blockNumber === undefined) return;
+    if (simulationBlockNumber === undefined || blockNumber > simulationBlockNumber) simulationBlockNumber = blockNumber;
+    opts?.onBundleConfirmed?.(simulationBlockNumber);
+  };
   // A key held locally (a CLI, a script) signs over a load-balanced RPC whose replicas lag each other, so the nonce
   // viem would fetch for each transaction (`eth_getTransactionCount`) can come from a node that has not yet counted
   // the one just mined: the next send then reuses a nonce and fails `replacement transaction underpriced` (observed
@@ -131,24 +143,51 @@ export async function sendBundles(
     let sent = false;
     try {
       const data = b.calls.map((c) => c.data);
-      const { request } = await clients.publicClient.simulateContract({
+      // Header availability is a bounded readonly retry, with the same classification as
+      // readAtBlock. Never retry a real revert or a failed connection, and never send here.
+      const atConfirmedBlock = async <T>(read: () => Promise<T>): Promise<T> => {
+        for (let attempt = 1; ; attempt++) {
+          try { return await read(); }
+          catch (err) {
+            if (simulationBlockNumber === undefined || isRevertFailure(err) || isTransportFailure(err) || attempt >= pinnedReadPolicy.attempts) throw err;
+            await new Promise((resolve) => setTimeout(resolve, pinnedReadPolicy.delayMs));
+          }
+        }
+      };
+      const params = {
         address: b.target,
         abi,
         functionName: "multicall",
         args: [data],
         account: clients.walletClient.account,
-      });
+        ...(simulationBlockNumber !== undefined ? { blockNumber: simulationBlockNumber } : {}),
+      } as const;
+      // A fresh presence probe can hit a different replica from this call. Pin dependencies to
+      // the exact state containing the previous successful receipts.
+      const simulated = await atConfirmedBlock(() => clients.publicClient.simulateContract(params));
+      // viem echoes simulation arguments into request. A transaction must execute at the mined
+      // head, not carry the historical eth_call block into the wallet's estimate or submission.
+      const request = { ...simulated.request } as Record<string, unknown>;
+      delete request.blockNumber;
+      // A local wallet otherwise estimates again at latest, reopening the same replica race.
+      // Preserve the RPC's gas calculation (including its chain's state-gas schedule), then pass
+      // the exact estimate so wallet preparation need not perform an unpinned second estimate.
+      if (simulationBlockNumber !== undefined && typeof clients.publicClient.estimateContractGas === "function") {
+        request.gas = await atConfirmedBlock(() => clients.publicClient.estimateContractGas(params));
+      }
       if (explicitNonces) {
-        const tx = await sendWithFeeBumps(clients, request as Record<string, unknown>, nonce, () => (sent = true));
+        const { hash: tx, blockNumber } = await sendWithFeeBumps(clients, request, nonce, () => (sent = true));
+        confirmed(blockNumber);
         hashes.push(tx);
         // Reported once, with the hash that mined (a raised-fee replacement is the same bundle, not another one).
         opts?.onBundleSent?.(b, i, tx);
       } else {
-        const tx = await clients.walletClient.writeContract(request);
+        const tx = await clients.walletClient.writeContract(request as never);
         sent = true;
         hashes.push(tx);
         opts?.onBundleSent?.(b, i, tx);
-        await waitForSuccessfulReceipt(clients.publicClient, tx);
+        const receipt = await waitForSuccessfulReceipt(clients.publicClient, tx);
+        confirmed(receipt.blockNumber);
       }
     } catch (err) {
       if (sent || b.calls.length < 2 || depth >= MAX_BUNDLE_SPLIT_DEPTH || !isGasRefusal(err)) throw err;
@@ -198,7 +237,7 @@ async function sendWithFeeBumps(
   request: Record<string, unknown>,
   nonce: number,
   onSent?: () => void,
-): Promise<Hex> {
+): Promise<{ hash: Hex; blockNumber: bigint }> {
   const sent: Hex[] = [];
   let fees: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } = {};
   for (let attempt = 0; ; attempt++) {
@@ -216,7 +255,7 @@ async function sendWithFeeBumps(
     const mined = await firstMined(clients.publicClient, sent, last ? feeBumpPolicy.stallMs * 4 : feeBumpPolicy.stallMs);
     if (mined) {
       assertReceiptSuccess(mined.receipt, mined.hash, "multicall bundle");
-      return mined.hash;
+      return { hash: mined.hash, blockNumber: mined.receipt.blockNumber };
     }
     if (last) throw new TransactionTimeoutError(sent[sent.length - 1]!, "multicall bundle", explorerTxUrl(clients.publicClient, sent[sent.length - 1]!));
     fees = await raisedFees(clients.publicClient, sent[sent.length - 1]!, fees);
