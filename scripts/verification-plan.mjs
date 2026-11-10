@@ -67,3 +67,8 @@ export function sourcePackage(sourceRoot, pkg) {
   if (!["contracts-core", "contracts-companion", "contracts-projects"].includes(pkg)) throw new Error(`unknown contract package ${pkg}`);
   return resolve(sourceRoot, "packages", pkg);
 }
+
+/** Partial Sourcify matches must be resubmitted with the exact deployed sources. */
+export function verificationComplete(verifier, status) {
+  return verifier === "sourcify" ? status === "exact_match" : status === "verified";
+}

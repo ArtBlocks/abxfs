@@ -18,7 +18,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { assertFactorySource, explorerFor, forgeVerificationArgs, sourcePackage, verificationInventory } from "./verification-plan.mjs";
+import { assertFactorySource, explorerFor, forgeVerificationArgs, sourcePackage, verificationInventory, verificationComplete } from "./verification-plan.mjs";
 
 const ROOT = resolve(fileURLToPath(import.meta.url), "../..");
 const { CANONICAL_DEPLOYMENTS } = await import(pathToFileURL(resolve(ROOT, "packages/sdk/dist/index.js")).href);
@@ -118,7 +118,7 @@ async function status(verifier, address) {
 
 for (const verifier of verifiers) {
   for (const [pkg, contract, address, ctor] of contracts) {
-    if ((await status(verifier, address)) !== "not verified") continue;
+    if (verificationComplete(verifier, await status(verifier, address))) continue;
     console.log(`${verifier}: submitting ${contract} at ${address}`);
     const args = forgeVerificationArgs(chainId, verifier, contract, address, ctor.length ? cast("abi-encode", ...ctor) : undefined);
     // forge 1.4.3 submits to Etherscan whenever ETHERSCAN_API_KEY is set, whatever `--verifier` says.
@@ -140,7 +140,7 @@ for (let round = 0; round < 40; round++) {
   for (const verifier of verifiers) {
     for (const [, contract, address] of contracts) {
       const s = await status(verifier, address);
-      if (s !== "verified" && s !== "exact_match") left.push(`${verifier}: ${contract} at ${address}: ${s}`);
+      if (!verificationComplete(verifier, s)) left.push(`${verifier}: ${contract} at ${address}: ${s}`);
     }
   }
   if (left.every((l) => !l.endsWith(": not verified"))) break;

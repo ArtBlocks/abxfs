@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { assertFactorySource, explorerFor, forgeVerificationArgs, sourcePackage, verificationInventory } from "./verification-plan.mjs";
+import { assertFactorySource, explorerFor, forgeVerificationArgs, sourcePackage, verificationInventory, verificationComplete } from "./verification-plan.mjs";
 
 const address = (n) => `0x${n.toString(16).padStart(40, "0")}`;
 const a = Object.fromEntries(["chunkStore", "sstore2Backend", "fastLzBackend", "fileStore", "directoryStore", "ipfsCidResolver", "orgMeta", "orgFactory", "projectHook", "projectEnumeration", "orgMinter", "lens"].map((key, i) => [key, address(i + 1)]));
@@ -52,4 +52,14 @@ test("source-root selects the frozen checkout for every contract package", () =>
     assert.equal(sourcePackage("/tmp/frozen-generation", pkg), resolve("/tmp/frozen-generation", "packages", pkg));
   }
   assert.throws(() => sourcePackage("/tmp/frozen-generation", "../../other"), /unknown contract package/);
+});
+
+test("partial source matches are resubmitted and never satisfy exact verification", () => {
+  for (const status of ["partial_match", "match", "not verified", "verified", null])
+    assert.equal(verificationComplete("sourcify", status), false);
+  assert.equal(verificationComplete("sourcify", "exact_match"), true);
+  for (const verifier of ["etherscan", "blockscout"]) {
+    assert.equal(verificationComplete(verifier, "verified"), true);
+    assert.equal(verificationComplete(verifier, "not verified"), false);
+  }
 });
