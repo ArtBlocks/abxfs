@@ -52,9 +52,14 @@ directory when reading Embedded content. A selected directory likewise reads its
 `presentation inspect` reports the exact selected root and path, method, endpoints
 and locks. `presentation preview` adds the status, MIME type, payload and dependency
 analysis without a signer. A Ready URL preview does not check that its remote
-endpoint is online. A failed renderer returns an empty animation field; inspect the
-preview status to distinguish unpublished content, an invalid target, an unsupported
-codec or MIME type, read failures and exhausted budgets.
+endpoint is online. On failure, the renderer returns an empty `text/plain` payload,
+which ABX encodes as the inert `data:text/plain;base64,` animation URI; token metadata
+remains retrievable. Inspect the preview status to distinguish unpublished content,
+an invalid target, an unsupported codec or MIME type, read failures and exhausted budgets.
+
+Browser and marketplace support for HTML, data URIs and IPFS varies. Preserved bytes
+and valid token metadata do not guarantee that every viewer can display or execute
+the content.
 
 ## Freeze independent choices
 
