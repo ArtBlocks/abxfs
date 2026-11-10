@@ -469,6 +469,7 @@ export async function runContentStages(
   const kindDone = new Map<StageId, number>();
 
   let confirmed: ProbeTarget[] = [];
+  let confirmedBlock: bigint | undefined;
   let txsDone = 0;
   let lastPhase: PublishPhase | undefined;
 
@@ -481,6 +482,8 @@ export async function runContentStages(
     }
     let stageDone = 0;
     await sendBundles(clients, bundles, stage.abi as never, {
+      simulationBlockNumber: confirmedBlock,
+      onBundleConfirmed: (blockNumber) => { confirmedBlock = blockNumber; },
       onBundleSent: (b, _i, txHash) => {
         stageDone += b.calls.length;
         txsDone++;

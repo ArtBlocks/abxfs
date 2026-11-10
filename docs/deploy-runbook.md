@@ -115,10 +115,12 @@ The org factory takes three of ABX's contracts as constructor arguments, so they
   (`0x4e59b44847b379578588920cA78FbF26c0B4956C`) with a fixed salt and no sender-dependent constructor argument, so
   **any key** lands it at the same address on every chain.
 - The salts are `keccak256("abx-fs/content")` (all five content contracts), `keccak256("abx-fs/ipfs-cid-resolver")`,
+  `keccak256("abx-fs/content-reader")`, `keccak256("abx-fs/project-presentation")`,
   `keccak256("abx-fs/org-meta")`, `keccak256("abx-fs/org-factory")`, `keccak256("abx-fs/org-components")` and
   `keccak256("abx-fs/lens")`.
-- Only the factory also depends on its constructor arguments (ABX's addresses, the stores, `OrgMeta`), and the lens
-  on the factory and its hook.
+- Predictions also include constructor arguments: the stores for the resolver and reader; the reader, resolver and
+  default gateway for presentation; ABX's addresses, the stores, `OrgMeta` and presentation for the factory; and the
+  factory and its hook for the lens. Use the pinned deploy scripts to derive the complete address bundle.
 
 **Choose the gas multiplier per chain.**
 - On a chain with the 2^24 per-transaction cap and the old gas schedule, a high `--gas-estimate-multiplier` is

@@ -8,7 +8,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AbxfsCid } from "@artblocks/abxfs-sdk";
 
 import { denylistFilter } from "../src/filters.js";
@@ -204,6 +204,56 @@ describe("runMirror", () => {
   });
 });
 
+describe("a replica with an empty publish page", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("waits the configured poll interval, preserves its cursor, then resumes", async () => {
+    vi.useFakeTimers();
+    const chain = chainWith([cid(1)]);
+    const read = chain.client.readContract.bind(chain.client);
+    let pages = 0;
+    chain.client.readContract = (async (call: Parameters<typeof read>[0]) => {
+      if (call.functionName === "publishRange" && ++pages === 1) return [];
+      return read(call);
+    }) as typeof read;
+    const cursor = memoryCursor();
+    const pinned: AbxfsCid[] = [];
+    const done = runMirror({ chain, provider: noProvider, cursor, once: true, pollMs: 1000, pinRoot: async (root) => void pinned.push(root) });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pages).toBe(1);
+    expect(await cursor.load()).toBe(0);
+    await vi.advanceTimersByTimeAsync(999);
+    expect(pages).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(done).resolves.toMatchObject({ next: 1, pinned: 1 });
+    expect(pages).toBe(2);
+    expect(pinned).toEqual([cid(1)]);
+  });
+
+  it("cancels an empty-page wait without advancing the cursor", async () => {
+    vi.useFakeTimers();
+    const chain = chainWith([cid(1)]);
+    const read = chain.client.readContract.bind(chain.client);
+    let pages = 0;
+    chain.client.readContract = (async (call: Parameters<typeof read>[0]) => {
+      if (call.functionName === "publishRange") {
+        if (++pages > 2) throw new Error("empty page was polled without waiting");
+        return [];
+      }
+      return read(call);
+    }) as typeof read;
+    const controller = new AbortController();
+    const cursor = memoryCursor();
+    const done = runMirror({ chain, provider: noProvider, cursor, signal: controller.signal, pollMs: 60_000, pinRoot: async () => {} });
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort();
+    await expect(done).resolves.toMatchObject({ next: 0 });
+    expect(pages).toBe(1);
+    expect(await cursor.load()).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
 describe("fileCursor", () => {
   let dir: string;
   afterEach(() => dir && rmSync(dir, { recursive: true, force: true }));
@@ -275,6 +325,52 @@ describe("runMirrorGenerations", () => {
     expect(stats.pinned).toBe(3);
     expect(await cursors.get(HOOK)!.load()).toBe(2);
     expect(await cursors.get(OLD_HOOK)!.load()).toBe(1);
+  });
+
+  it("keeps watching every generation while one waits for a visible page", async () => {
+    vi.useFakeTimers();
+    const current = [cid(1)];
+    const old = [cid(2)];
+    const chain = twoGenerations(current, old);
+    const read = chain.client.readContract.bind(chain.client);
+    let currentPageVisible = false;
+    let emptyReads = 0;
+    chain.client.readContract = (async (call: Parameters<typeof read>[0]) => {
+      if (call.address === LENS && call.functionName === "publishRange" && !currentPageVisible) {
+        if (++emptyReads > 2) throw new Error("empty generation was polled without waiting");
+        return [];
+      }
+      return read(call);
+    }) as typeof read;
+    const controller = new AbortController();
+    const cursors = new Map<string, ReturnType<typeof memoryCursor>>();
+    const pinned: AbxfsCid[] = [];
+    const done = runMirrorGenerations({
+      chain, provider: noProvider, signal: controller.signal, pollMs: 1000,
+      cursorFor: (generation) => {
+        const cursor = memoryCursor(); cursors.set(generation.projectHook, cursor); return cursor;
+      },
+      pinRoot: async (root) => void pinned.push(root),
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(emptyReads).toBe(1);
+      expect(pinned).toEqual([cid(2)]);
+      expect(await cursors.get(HOOK)!.load()).toBe(0);
+      expect(await cursors.get(OLD_HOOK)!.load()).toBe(1);
+      currentPageVisible = true;
+      old.push(cid(3)); // An older org can publish again after its generation was caught up.
+      await vi.advanceTimersByTimeAsync(999);
+      expect(pinned).toEqual([cid(2)]);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(pinned).toEqual(expect.arrayContaining([cid(1), cid(2), cid(3)]));
+      expect(await cursors.get(HOOK)!.load()).toBe(1);
+      expect(await cursors.get(OLD_HOOK)!.load()).toBe(2);
+    } finally {
+      controller.abort();
+      await expect(done).resolves.toMatchObject({ pinned: 3, failures: [] });
+      vi.useRealTimers();
+    }
   });
 
   // Delta round 6, I-1: the bin's `--api-key` warning rides `onStart`, so it must follow every refusal and precede any read.

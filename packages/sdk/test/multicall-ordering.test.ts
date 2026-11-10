@@ -7,10 +7,13 @@
  * transaction exists. That is what a web upload of one image hit: `ChunkMissing` from a
  * `FileStore.multicall`, for a chunk already on chain.
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Hex, PublicClient, WalletClient } from "viem";
 
 import { sendBundles, type Bundle } from "../src/multicall.js";
+import { pinnedReadPolicy } from "../src/snapshot.js";
+const savedReadPolicy = { ...pinnedReadPolicy };
+afterEach(() => { Object.assign(pinnedReadPolicy, savedReadPolicy); });
 
 const TARGET = "0x00000000000000000000000000000000000000aa" as const;
 
@@ -110,5 +113,96 @@ describe("sendBundles", () => {
     // The second wait must come after the first receipt, or it would be confirming nothing.
     expect(log.indexOf("receipt")).toBeLessThan(log.lastIndexOf("wait"));
     expect(hook).toHaveBeenCalledTimes(2);
+  });
+});
+
+
+describe("confirmed-block content simulation", () => {
+  it("carries successful receipt blocks into later bundles and strips the read block before each send", async () => {
+    const clients = fakeClients([]);
+    const blocks: Array<bigint | undefined> = [];
+    const estimateBlocks: Array<bigint | undefined> = [];
+    clients.publicClient.estimateContractGas = vi.fn(async (args: { blockNumber?: bigint }) => {
+      estimateBlocks.push(args.blockNumber); return 123456n;
+    }) as never;
+    let receiptBlock = 12n;
+    clients.publicClient.simulateContract = vi.fn(async (args: { blockNumber?: bigint }) => {
+      blocks.push(args.blockNumber);
+      return { request: { blockNumber: args.blockNumber } };
+    }) as never;
+    clients.publicClient.waitForTransactionReceipt = vi.fn(async () => ({ status: "success", blockNumber: receiptBlock++ })) as never;
+    const write = vi.fn(async (args: object) => {
+      expect(args).not.toHaveProperty("blockNumber"); expect(args).toHaveProperty("gas", 123456n); return "0x01";
+    });
+    clients.walletClient.writeContract = write as never;
+    const confirmed: bigint[] = [];
+    await sendBundles(clients, [bundle(1), bundle(1)], [] as never, { simulationBlockNumber: 10n, onBundleConfirmed: (block) => confirmed.push(block) });
+    expect(blocks).toEqual([10n, 12n]); expect(estimateBlocks).toEqual([10n, 12n]); expect(confirmed).toEqual([12n, 13n]);
+    expect(write).toHaveBeenCalledTimes(2);
+  });
+
+  it("waits a bounded number of readonly attempts for an unavailable confirmed block", async () => {
+    Object.assign(pinnedReadPolicy, { attempts: 3, delayMs: 0 });
+    const clients = fakeClients([]);
+    const simulate = vi.fn(async () => { throw Object.assign(new Error("header not found"), { code: -32000 }); });
+    const write = vi.fn();
+    clients.publicClient.simulateContract = simulate as never;
+    clients.walletClient.writeContract = write as never;
+    await expect(sendBundles(clients, [bundle(1)], [] as never, { simulationBlockNumber: 10n })).rejects.toThrow(/header not found/);
+    expect(simulate).toHaveBeenCalledTimes(3); expect(write).not.toHaveBeenCalled();
+  });
+
+  it("retries only the readonly simulation before one successful broadcast when a replica catches up", async () => {
+    Object.assign(pinnedReadPolicy, { attempts: 3, delayMs: 0 });
+    const clients = fakeClients([]);
+    const simulate = vi.fn().mockRejectedValueOnce(Object.assign(new Error("header not found"), { code: -32000 }))
+      .mockResolvedValue({ request: { blockNumber: 10n } });
+    const write = vi.fn(async () => "0x01");
+    clients.publicClient.simulateContract = simulate as never;
+    clients.walletClient.writeContract = write as never;
+    await sendBundles(clients, [bundle(1)], [] as never, { simulationBlockNumber: 10n });
+    expect(simulate).toHaveBeenCalledTimes(2); expect(write).toHaveBeenCalledTimes(1);
+  });
+
+  it("bounds estimate retries at the same block and sends only once after the block becomes available", async () => {
+    Object.assign(pinnedReadPolicy, { attempts: 3, delayMs: 0 });
+    const clients = fakeClients([]);
+    const estimate = vi.fn().mockRejectedValueOnce(Object.assign(new Error("header not found"), { code: -32000 })).mockResolvedValue(54321n);
+    const write = vi.fn(async (args: object) => { expect(args).toHaveProperty("gas", 54321n); return "0x01"; });
+    clients.publicClient.estimateContractGas = estimate as never;
+    clients.walletClient.writeContract = write as never;
+    await sendBundles(clients, [bundle(1)], [] as never, { simulationBlockNumber: 10n });
+    expect(estimate).toHaveBeenCalledTimes(2);
+    for (const call of estimate.mock.calls) expect(call[0]).toHaveProperty("blockNumber", 10n);
+    expect(write).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry a real reverted gas estimate or broadcast it", async () => {
+    const clients = fakeClients([]);
+    const error = Object.assign(new Error("execution reverted: CidNotFound"), { code: 3 });
+    const estimate = vi.fn().mockRejectedValue(error); const write = vi.fn();
+    clients.publicClient.estimateContractGas = estimate as never; clients.walletClient.writeContract = write as never;
+    await expect(sendBundles(clients, [bundle(1)], [] as never, { simulationBlockNumber: 10n })).rejects.toBe(error);
+    expect(estimate).toHaveBeenCalledTimes(1); expect(write).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    Object.assign(new Error("execution reverted: CidNotFound"), { code: 3 }),
+    Object.assign(new Error("request timed out"), { code: -32603 }),
+  ])("throws real reverts or transport failures without retry or broadcast: %s", async (error) => {
+    const clients = fakeClients([]);
+    const simulate = vi.fn().mockRejectedValue(error); const write = vi.fn();
+    clients.publicClient.simulateContract = simulate as never; clients.walletClient.writeContract = write as never;
+    await expect(sendBundles(clients, [bundle(1)], [] as never, { simulationBlockNumber: 10n })).rejects.toBe(error);
+    expect(simulate).toHaveBeenCalledTimes(1); expect(write).not.toHaveBeenCalled();
+  });
+
+  it("never retries a broadcast whose receipt reverted, or propagates its block as confirmed", async () => {
+    const clients = fakeClients([]);
+    const simulate = vi.fn(async () => ({ request: {} })); const write = vi.fn(async () => "0x01"); const confirmed = vi.fn();
+    clients.publicClient.simulateContract = simulate as never; clients.walletClient.writeContract = write as never;
+    clients.publicClient.waitForTransactionReceipt = vi.fn(async () => ({ status: "reverted", blockNumber: 12n })) as never;
+    await expect(sendBundles(clients, [bundle(1)], [] as never, { simulationBlockNumber: 10n, onBundleConfirmed: confirmed })).rejects.toThrow(/reverted on chain/);
+    expect(simulate).toHaveBeenCalledTimes(1); expect(write).toHaveBeenCalledTimes(1); expect(confirmed).not.toHaveBeenCalled();
   });
 });

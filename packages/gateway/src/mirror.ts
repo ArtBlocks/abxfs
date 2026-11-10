@@ -360,7 +360,12 @@ export async function runMirror(options: MirrorOptions): Promise<MirrorStats> {
     }
 
     const page = await readGlobalPublishes(chain.client, lens, { start: BigInt(stats.next), count: pageSize });
-    if (page.length === 0) continue;
+    if (page.length === 0) {
+      // A replica may expose the hook's new count before its lens page. Keep the cursor in place
+      // and use the same cancellable poll wait as a caught-up ledger instead of busy-polling.
+      await sleep(pollMs, signal);
+      continue;
+    }
 
     for (const entry of page) {
       if (signal?.aborted) break;

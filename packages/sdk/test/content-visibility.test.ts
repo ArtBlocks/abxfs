@@ -10,7 +10,7 @@
  */
 import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { createPublicClient, createWalletClient, http } from "viem";
+import { createPublicClient, createWalletClient, custom, http, numberToHex } from "viem";
 import { foundry } from "viem/chains";
 
 import { autoRegisterNodeCodecs } from "../src/compression.js";
@@ -66,3 +66,64 @@ it("every stage waits for the previous one to be visible on a replica three bloc
   const dir = await readDirectory(h.publicClient, h.addresses, r.applied.newRootCid);
   expect(dir.entries.map((e) => e.name)).toEqual(["a.txt", "d"]);
 }, 300_000);
+
+
+it("pins dependent simulations when presence probes are fresh but latest eth_call hits a stale replica", async () => {
+  const enc = new TextEncoder();
+  const salt = randomBytes(6).toString("hex");
+  const fastPublic = createPublicClient({ chain: foundry, transport: http(h.rpcUrl), pollingInterval: 100 });
+  const staleBlock = await fastPublic.getBlockNumber({ cacheTime: 0 });
+  let unpinnedWalletEstimates = 0;
+  const fastWallet = createWalletClient({ chain: foundry, account: h.account, pollingInterval: 100, transport: custom({
+    request: async ({ method, params }: { method: string; params?: readonly unknown[] }) => {
+      if (method === "eth_estimateGas" && (params?.[1] === undefined || params[1] === "latest")) {
+        unpinnedWalletEstimates++;
+        // The wallet's next estimate would see the same stale prerequisites as its eth_call.
+        return fastPublic.request({ method, params: [params?.[0], numberToHex(staleBlock)] } as never);
+      }
+      return fastPublic.request({ method, params } as never);
+    },
+  }) });
+  const simulatedBlocks: Array<bigint | undefined> = [];
+  const estimatedBlocks: Array<bigint | undefined> = [];
+  let writes = 0;
+  const alternating = new Proxy(fastPublic, {
+    get(target, prop, receiver) {
+      const v = Reflect.get(target, prop, receiver);
+      if (prop !== "simulateContract" && prop !== "estimateContractGas") return v;
+      return async (args: Record<string, unknown>) => {
+        // Existence multicalls have no account and reach the fresh replica. Content simulation
+        // and estimation reach the stale replica unless an exact confirmed block is requested.
+        if (prop === "simulateContract" && args.account === undefined)
+          return (v as (args: unknown) => Promise<unknown>).call(target, args);
+        (prop === "simulateContract" ? simulatedBlocks : estimatedBlocks).push(args.blockNumber as bigint | undefined);
+        return (v as (args: unknown) => Promise<unknown>).call(target, { ...args, blockNumber: args.blockNumber ?? staleBlock });
+      };
+    },
+  }) as typeof fastPublic;
+  const wallet = new Proxy(fastWallet, {
+    get(target, prop, receiver) {
+      const v = Reflect.get(target, prop, receiver);
+      if (prop !== "writeContract") return v;
+      return async (args: Record<string, unknown>) => {
+        expect(args).not.toHaveProperty("blockNumber");
+        if (writes > 0) expect(typeof args.gas).toBe("bigint");
+        writes++;
+        return (v as (args: unknown) => Promise<unknown>).call(target, args);
+      };
+    },
+  }) as typeof fastWallet;
+  const files = [
+    { path: "index.html", bytes: enc.encode(`<p>replica ${salt}</p>`), mimeType: "text/html" },
+    { path: "a.txt", bytes: enc.encode(`asset ${salt}`), mimeType: "text/plain" },
+  ];
+  const result = await uploadContent({ publicClient: alternating, walletClient: wallet as never }, h.addresses, files);
+  expect(simulatedBlocks[0]).toBeUndefined();
+  expect(simulatedBlocks.slice(1).every((block) => block !== undefined && block >= staleBlock)).toBe(true);
+  expect(estimatedBlocks.length).toBeGreaterThan(0);
+  expect(estimatedBlocks.every((block) => block !== undefined && block >= staleBlock)).toBe(true);
+  expect(unpinnedWalletEstimates).toBe(1); // Only the first write has no prerequisite receipts.
+  expect(writes).toBe(result.txHashes.length); // No repeated broadcast to repair stale reads.
+  const dir = await readDirectory(h.publicClient, h.addresses, result.applied.newRootCid);
+  expect(dir.entries.map((entry) => entry.name)).toEqual(["a.txt", "index.html"]);
+}, 120_000);

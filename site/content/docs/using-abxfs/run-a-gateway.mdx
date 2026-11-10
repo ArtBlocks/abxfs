@@ -156,6 +156,10 @@ Each factory has its own ledger and its own cursor file, named for that factory'
 own first publish and cannot inherit another's position. One factory failing does not stop the others, and a
 factory with no lens is a startup error, never a silent skip.
 
+If a replica reports a newer head but its publish page is still empty, the mirror waits `--poll-seconds`
+and keeps that cursor unchanged. Other generations continue while it waits, including later publishes
+from older orgs after their generation has caught up.
+
 A root over a size, file-count or read cap (`--max-root-bytes`, `--max-files-per-root`, `--max-entries-per-root`:
 directory entries read to assess it, across all its directories) is skipped with a log line saying why, and the
 cursor moves on. The same `--deny`, `--allow` and `--allow-orgs` lists as the gateway apply to each publish and to
