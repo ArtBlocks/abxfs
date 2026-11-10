@@ -1,5 +1,16 @@
 # @artblocks/abxfs-gateway
 
+## 0.1.4
+
+### Patch Changes
+
+- 23957df: Wait the configured poll interval when a replica reports a newer publish count but an empty ledger page, preserving the cursor and cancellation behavior. Other factory generations continue mirroring independently.
+- Updated dependencies [23957df]
+- Updated dependencies [23957df]
+- Updated dependencies [23957df]
+  - @artblocks/abxfs-sdk@0.3.0
+  - @artblocks/abxfs-pinning@0.1.4
+
 ## 0.1.3
 
 ### Patch Changes

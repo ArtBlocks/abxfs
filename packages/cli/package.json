@@ -1,6 +1,6 @@
 {
   "name": "@artblocks/abxfs-cli",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "description": "ABX FS command-line interface — upload a folder to the blockchain and read it back.",
   "license": "MIT",
   "repository": {
