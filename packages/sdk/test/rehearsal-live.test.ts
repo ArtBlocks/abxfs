@@ -15,13 +15,13 @@
  * collection document (OrgMeta) carries the org's name, its description, a logo, a banner and the site link.
  */
 import { describe, expect, it } from "vitest";
-import { createPublicClient, createWalletClient, http, type Hex } from "viem";
+import { createPublicClient, createWalletClient, http, parseEventLogs, type Hex } from "viem";
 import { nonceManager, privateKeyToAccount } from "viem/accounts";
 import { rehearsalAddresses, rehearsalChain } from "./helpers/rehearsal-config.js";
 
 import { autoRegisterNodeCodecs } from "../src/compression.js";
 import { AbxfsClient } from "../src/abxfs.js";
-import { PresentationLock, PresentationMethod, PresentationSelection, PresentationStatus, recommendPresentationMethod } from "../src/presentation.js";
+import { PresentationLock, PresentationMethod, PresentationSelection, PresentationStatus, presentationVersion, recommendPresentationMethod } from "../src/presentation.js";
 import { lookupEntry } from "../src/read.js";
 import { verifyOnChainIpfsCid } from "../src/verify.js";
 import { publishRootAndTag } from "../src/publish.js";
@@ -31,6 +31,7 @@ import { createOrg, requireOrgContracts } from "../src/org.js";
 import { readProject, type ProjectContracts } from "../src/project.js";
 import { hookAcceptsContent } from "../src/stores.js";
 import { ProjectKind } from "../src/types.js";
+import { iProjectPresentationAbi } from "../src/abi-presentation.js";
 import { iProjectHookAbi } from "../src/abi-hook.js";
 
 /** The gateway base frozen into `OrgMeta` on every listed chain (`script/Deploy.s.sol`, `_gatewayAllowed`). */
@@ -80,9 +81,10 @@ describe.skipIf(!live)(`live: throwaway rehearsal on chain ${CHAIN_ID}`, () => {
 
     const enc = new TextEncoder();
     const salt = Date.now().toString(36);
+    const imageBytes = new Uint8Array(Buffer.from("R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==", "base64"));
     const files = [
-      { path: "index.html", bytes: enc.encode(`<!doctype html><title>rehearsal ${salt}</title><p>ABX FS rehearsal</p><img src="a.txt">`), mimeType: "text/html" },
-      { path: "a.txt", bytes: enc.encode(`rehearsal asset ${salt}`), mimeType: "text/plain" },
+      { path: "index.html", bytes: enc.encode(`<!doctype html><title>rehearsal ${salt}</title><p>ABX FS rehearsal</p><img src="asset.gif">`), mimeType: "text/html" },
+      { path: "asset.gif", bytes: imageBytes, mimeType: "image/gif" },
     ];
     const applied = await applyNewProject(publicClient!, addresses, files);
     const result = await executeNewProjectPublish(clients, addresses, project, 0n, "Rehearsal", applied, { tag: "v1" });
@@ -134,35 +136,61 @@ describe.skipIf(!live)(`live: throwaway rehearsal on chain ${CHAIN_ID}`, () => {
     if (addresses.projectPresentation) {
       expect(addresses.contentReader).toBeDefined();
       const sdk = new AbxfsClient({ ...clients, addresses, org: created.org });
-      const limits = { maxBytes: 8192n, maxChunks: 32n };
+      expect(await presentationVersion(publicClient!, addresses)).toBe(2);
+      const assertEvent = async (hash: Hex, eventName: string, expected: Record<string, unknown>) => {
+        const receipt = await publicClient!.getTransactionReceipt({ hash });
+        expect(receipt.status).toBe("success");
+        const events = parseEventLogs({ abi: iProjectPresentationAbi, logs: receipt.logs })
+          .filter((event) => event.address.toLowerCase() === addresses.projectPresentation!.toLowerCase() && event.eventName === eventName);
+        expect(events).toHaveLength(1);
+        expect(events[0]!.args).toMatchObject(expected);
+      };
+      // Caller-selected native-read limits; v2 presentation itself imposes no byte/chunk policy.
+      const limits = { maxBytes: 102_400n, maxChunks: 64n };
       const index = await lookupEntry(publicClient!, addresses, result.rootCid, "index.html");
       expect((await sdk.readNativeFile(index.cid, limits)).bytes).toEqual(files[0]!.bytes);
+      const image = await lookupEntry(publicClient!, addresses, result.rootCid, "asset.gif");
+      const nativeImage = await sdk.readNativeFile(image.cid, limits);
+      expect(nativeImage.mimeType).toBe("image/gif");
+      expect(nativeImage.bytes).toEqual(imageBytes);
       expect((await sdk.readNativePath(result.rootCid, "index.html", limits)).bytes).toEqual(files[0]!.bytes);
       expect((await sdk.readNativePath(result.rootCid, "", limits)).bytes).toEqual(files[0]!.bytes);
       expect((await recommendPresentationMethod(publicClient!, addresses, result.rootCid)).method).toBe(PresentationMethod.ChainGateway);
 
-      // Keep the same project token: a second directory version is a small self-contained artwork.
-      const embeddedBytes = enc.encode(`<!doctype html><title>embedded ${salt}</title><p>self-contained</p>`);
+      // Keep the same token. Decoded HTML exceeds the historical 8 KiB ceiling while remaining self-contained.
+      const embeddedBytes = enc.encode(`<!doctype html><title>embedded ${salt}</title><p>self-contained</p><!--${"onchain ".repeat(1_200)}-->`);
+      expect(embeddedBytes.length).toBeGreaterThan(8_192);
       const next = await applyNewProject(publicClient!, addresses, [{ path: "index.html", bytes: embeddedBytes, mimeType: "text/html" }]);
       const second = await executeNewProjectPublish(clients, addresses, project, 0n, "", next, { expectedHead: result.rootCid });
       expect(second.versionNumber).toBe(2n);
       expect((await recommendPresentationMethod(publicClient!, addresses, second.rootCid)).method).toBe(PresentationMethod.Embedded);
-      await sdk.configurePresentationTarget(0n, { selection: PresentationSelection.Latest, path: "" });
-      await sdk.setPresentationMethod(0n, "auto");
+      const targetHash = await sdk.configurePresentationTarget(0n, { selection: PresentationSelection.Latest, path: "" });
+      await assertEvent(targetHash, "TargetChanged", { org: created.org, tokenId: 0n, selection: PresentationSelection.Latest, version: 0, tag: "", path: "" });
+      expect((await sdk.readPresentation(0n)).configuredFlags! & PresentationLock.Content).toBe(PresentationLock.Content);
+      const embeddedHash = await sdk.setPresentationMethod(0n, "auto");
+      await assertEvent(embeddedHash, "MethodChanged", { org: created.org, tokenId: 0n, method: PresentationMethod.Embedded });
+      expect((await sdk.readPresentation(0n)).configuredFlags! & 3).toBe(3);
       let preview = await sdk.previewPresentation(0n);
       expect(preview.method).toBe(PresentationMethod.Embedded);
       expect(preview.status).toBe(PresentationStatus.Ready);
       expect(preview.contentType).toBe("text/html");
       expect(preview.bytes).toEqual(embeddedBytes);
       const embeddedToken = decodeJsonUri(await publicClient!.readContract({ address: created.org, abi: uriAbi, functionName: "tokenURI", args: [0n] }));
-      expect(String(embeddedToken.animation_url)).toMatch(/^data:text\/html;base64,/);
+      expect(embeddedToken.animation_url).toBe(`data:text/html;base64,${Buffer.from(embeddedBytes).toString("base64")}`);
+      const verification = await sdk.verifyPresentationTokenUri(0n, { afterTransactionHash: embeddedHash });
+      expect(verification.ok).toBe(true);
+      expect(verification.status).toBe("ready");
+      expect((await sdk.readNativePath(second.rootCid, "", limits)).bytes).toEqual(embeddedBytes);
+      console.log(`[rehearsal ${CHAIN_ID}] embedded decodedBytes=${embeddedBytes.length} presentationVersion=2 exact tokenURI bytes verified`);
 
       await sdk.setPresentationMethod(0n, PresentationMethod.ChainGateway);
       preview = await sdk.previewPresentation(0n);
       expect(preview.status).toBe(PresentationStatus.Ready);
       const chainUri = `${GATEWAY_BASE}/g/cid/${CHAIN_ID}/${second.rootCid}/`;
       expect(new TextDecoder().decode(preview.bytes)).toBe(chainUri);
-      await sdk.setPresentationEndpoints(0n, { chainBase: "https://gateway.example", ipfsBase: "https://dweb.link" });
+      const endpointsHash = await sdk.setPresentationEndpoints(0n, { chainBase: "https://gateway.example", ipfsBase: "https://dweb.link" });
+      await assertEvent(endpointsHash, "EndpointsChanged", { org: created.org, tokenId: 0n, chainBase: "https://gateway.example", ipfsBase: "https://dweb.link" });
+      expect((await sdk.readPresentation(0n)).configuredFlags).toBe(7);
       expect(new TextDecoder().decode((await sdk.previewPresentation(0n)).bytes)).toBe(chainUri.replace(GATEWAY_BASE, "https://gateway.example"));
       const ipfsCid = await verifyOnChainIpfsCid(publicClient!, addresses, second.rootCid);
       await sdk.setPresentationMethod(0n, PresentationMethod.Ipfs);
@@ -177,7 +205,8 @@ describe.skipIf(!live)(`live: throwaway rehearsal on chain ${CHAIN_ID}`, () => {
       const reviewed = await sdk.previewPresentation(0n);
       expect(reviewed.root?.toLowerCase()).toBe(second.rootCid.toLowerCase());
       const commitment = await sdk.readPresentationLockCommitment(0n, PresentationLock.Content, reviewed.blockNumber);
-      await sdk.lockPresentation(0n, PresentationLock.Content, commitment);
+      const lockHash = await sdk.lockPresentation(0n, PresentationLock.Content, commitment);
+      await assertEvent(lockHash, "PresentationLocked", { org: created.org, tokenId: 0n, locks: PresentationLock.Content, frozenRoot: second.rootCid });
       const third = await publishRootAndTag(clients, project, 0n, result.rootCid);
       expect(third.versionNumber).toBe(3n);
       expect((await sdk.readProject(0n)).cid?.toLowerCase()).toBe(result.rootCid.toLowerCase());
@@ -185,6 +214,7 @@ describe.skipIf(!live)(`live: throwaway rehearsal on chain ${CHAIN_ID}`, () => {
       expect(frozen.root?.toLowerCase()).toBe(second.rootCid.toLowerCase());
       expect(frozen.path).toBe("");
       expect(frozen.locks & PresentationLock.Content).toBe(PresentationLock.Content);
+      expect(frozen.configuredFlags).toBe(7);
       expect(new TextDecoder().decode((await sdk.previewPresentation(0n)).bytes)).toBe(chainUri);
     }
   }, 900_000);
