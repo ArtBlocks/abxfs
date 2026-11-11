@@ -18,7 +18,7 @@ import {
 } from "./DeployWrong.t.sol";
 
 contract DeployPresentationTest is Test {
-    bytes32 constant CREATION_CODE_HASH = 0xe3672596f7e7e0a2eeac704e9da6ececd2cf49d75747197c6dac6ee14667d3b3;
+    bytes32 constant CREATION_CODE_HASH = 0x4bb71a6c892f621a2b13ee2a93a35bcb092a8932066d9bdb17e986e098772b3b;
     address constant READER = 0xe6d62620A284565B7F0B3581A6972BA3Be5C8B13;
     address constant RESOLVER = 0x7CE58c2945CbE3C2bDb0D3d276Ba3b9bD294008d;
     string constant GATEWAY = "https://fs.abx.io";

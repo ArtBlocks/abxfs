@@ -40,6 +40,8 @@ interface IProjectPresentation is IAbxFieldRenderer {
         string ipfsBase;
     }
 
+    /// @notice An indeterminate dependency/resource failure; consumers must retry the read rather than cache neutral metadata.
+    error RenderFailed(Status status);
     error NotProjectOwner();
     error InvalidOrg();
     error Locked(uint8 dimension);

@@ -187,12 +187,12 @@ contract PresentationForkTest is Test {
         (bool ok, bytes memory ret) = org.staticcall{gas: 50_000_000}(abi.encodeCall(IPresentationForkToken.tokenURI, (0)));
         assertTrue(ok, "100 KiB fixture completes with this caller's 50M gas");
         assertEq(abi.decode(ret, (string)), uri);
-        // A much smaller caller can naturally fail. A returned document must never pretend to contain partial bytes.
-        (ok, ret) = org.staticcall{gas: 2_000_000}(abi.encodeCall(IPresentationForkToken.tokenURI, (0)));
-        if (ok) {
-            json = string(Base64.decode(abi.decode(ret, (string)).slice(bytes(JSON_PREFIX).length)));
-            string memory value = vm.parseJsonString(json, ".animation_url");
-            assertTrue(value.eq("data:text/plain;base64,") || value.eq(string.concat("data:", mime, ";base64,", Base64.encode(body))));
+        // Sweep callers below and around the measured boundary. A successful call must contain all bytes;
+        // resource or dependency failures must fail the entire metadata call rather than cache neutral output.
+        uint256[9] memory budgets = [uint256(2_000_000), 8_000_000, 16_000_000, 32_000_000, 40_000_000, 44_000_000, 46_000_000, 48_000_000, 49_000_000];
+        for (uint256 i; i < budgets.length; ++i) {
+            (ok, ret) = org.staticcall{gas: budgets[i]}(abi.encodeCall(IPresentationForkToken.tokenURI, (0)));
+            if (ok) assertEq(abi.decode(ret, (string)), uri, "successful metadata must be exact at every caller budget");
         }
     }
 
@@ -239,7 +239,7 @@ contract PresentationForkTest is Test {
             string memory uri = abi.decode(ret, (string));
             string memory json = string(Base64.decode(uri.slice(bytes(JSON_PREFIX).length)));
             string memory animation = vm.parseJsonString(json, ".animation_url");
-            assertTrue(animation.eq(expected) || animation.eq("data:text/plain;base64,"), "only exact output or neutral catchable failure");
+            assertEq(animation, expected, "successful metadata must contain the exact configured content");
         }
         assertEq(_animationAtBudget(8_000_000), expected);
     }
@@ -307,7 +307,7 @@ contract PresentationForkTest is Test {
         _largeMetadata(true, "text/html", body, 2048);
     }
 
-    function test_realMutableBackendCannotSubstituteBytesAndGasFailureIsNeutral() public {
+    function test_realMutableBackendCannotSubstituteBytesAndGasFailureRejectsMetadata() public {
         PresentationAvailabilityBackend backend = new PresentationAvailabilityBackend();
         bytes memory original = "original";
         bytes32 chunk =
@@ -322,18 +322,49 @@ contract PresentationForkTest is Test {
         vm.stopPrank();
         assertEq(_animationAtBudget(8_000_000), string.concat("data:text/html;base64,", Base64.encode(original)));
         backend.setData("changed!"); // Same length; only the committed hash detects this mutation.
-        assertEq(_animationAtBudget(8_000_000), "data:text/plain;base64,");
+        (bool integrityOk,) = org.staticcall{gas: 8_000_000}(abi.encodeCall(IPresentationForkToken.tokenURI, (0)));
+        assertFalse(integrityOk, "integrity failure must fail metadata");
         backend.setData(original);
         backend.setBurn(true);
         for (uint256 budget = 2_000_000; budget <= 8_000_000; budget += 500_000) {
-            (bool ok, bytes memory ret) = org.staticcall{gas: budget}(abi.encodeCall(IPresentationForkToken.tokenURI, (0)));
-            if (ok) {
-                string memory uri = abi.decode(ret, (string));
-                string memory json = string(Base64.decode(uri.slice(bytes(JSON_PREFIX).length)));
-                assertEq(vm.parseJsonString(json, ".animation_url"), "data:text/plain;base64,");
-            }
+            (bool ok,) = org.staticcall{gas: budget}(abi.encodeCall(IPresentationForkToken.tokenURI, (0)));
+            assertFalse(ok, "backend exhaustion wrapped as RetrieveFailed must fail metadata");
         }
         assertEq(uint256(presentation.config(org, 0).method), uint256(IProjectPresentation.Method.Embedded));
+    }
+
+    function test_realMetadataUnexpectedHookFailuresCannotBecomeNeutral() public {
+        _publish(_file("<p>valid</p>", true));
+        bytes memory callData = abi.encodeWithSignature("latestVersion(address,uint256)", org, uint256(0));
+        bytes[3] memory failures = [
+            abi.encodeWithSignature("DependencyFailed(uint256)", uint256(1)),
+            abi.encodePacked(bytes4(keccak256("NoVersions(address,uint256)"))),
+            bytes("")
+        ];
+        for (uint256 i; i < failures.length; ++i) {
+            vm.mockCallRevert(address(factory.hook()), callData, failures[i]);
+            (IProjectPresentation.Status status,,) = presentation.preview(org, 0);
+            assertEq(uint256(status), uint256(IProjectPresentation.Status.ReadFailed));
+            (bool ok,) = org.staticcall{gas: 8_000_000}(abi.encodeCall(IPresentationForkToken.tokenURI, (0)));
+            assertFalse(ok, "indeterminate hook failure must fail complete metadata");
+            vm.clearMockedCalls();
+        }
+        vm.mockCall(address(factory.hook()), callData, hex"00");
+        (bool malformedOk,) = org.staticcall{gas: 8_000_000}(abi.encodeCall(IPresentationForkToken.tokenURI, (0)));
+        assertFalse(malformedOk, "malformed hook return must fail complete metadata");
+    }
+
+    function test_realMetadataResolveDependencyFailuresCannotBecomeNeutral() public {
+        bytes32 root = _file("<p>valid</p>", true);
+        _publish(root);
+        bytes memory callData = abi.encodeWithSignature("resolve(bytes32,string)", root, "");
+        vm.mockCallRevert(reader, callData, abi.encodeWithSelector(IChunkStore.RetrieveFailed.selector, root, RAW));
+        (bool ok,) = org.staticcall{gas: 8_000_000}(abi.encodeCall(IPresentationForkToken.tokenURI, (0)));
+        assertFalse(ok, "unexpected resolution dependency error must fail complete metadata");
+        vm.clearMockedCalls();
+        vm.mockCall(reader, callData, abi.encode(root, uint256(2)));
+        (ok,) = org.staticcall{gas: 8_000_000}(abi.encodeCall(IPresentationForkToken.tokenURI, (0)));
+        assertFalse(ok, "malformed resolver bool must fail complete metadata");
     }
 
     function test_realAbxReaderRepresentationUsesFixedAdapter() public {

@@ -97,7 +97,7 @@ contract Audit2DeployFork is Audit2Base {
     address constant STORE_DIR = CONTENT_DIRECTORY_STORE;
     address constant STORE_FILES = CONTENT_FILE_STORE;
     /// @dev The candidate generation's PREDICTED address (the deploy script's `pinned()`); not yet deployed.
-    address constant CURRENT_FACTORY = 0xAa87993eFd0507Ee0d62AF5b333241091855826E;
+    address constant CURRENT_FACTORY = 0xb057b5b6641717EB85E9D8b3Ba23988E0A6d147A;
 
     function setUp() public {
         string memory url = vm.envOr("ABXFS_RPC_URL_84532", string(""));

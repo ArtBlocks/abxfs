@@ -156,7 +156,7 @@ contract DeployProjects is Script {
         // stores (any storage backend: the stores accept chunks from any backend).
         e.directoryStore = 0x4273E4E078F47303Ca15b11959eeb61F3FC94c11; // DirectoryStore
         e.fileStore = 0x8b6077a1d6953D96687005B9408D56A655b4d155; // FileStore
-        e.presentation = 0x1C136Aa2E8cD9d46d8242FE69cEDC70835f5fe86;
+        e.presentation = 0x5F7801b644596d68c3bbcf2f08ac56641745775F;
         e.gatewayBase = "https://fs.abx.io";
     }
 
@@ -325,13 +325,13 @@ contract DeployProjects is Script {
     /// @dev Candidate pins for the new factory generation; the SDK retains deployed previousPinned addresses until verification.
     function pinned() public view virtual returns (Addresses memory a) {
         a.orgMeta = 0xB21e65DE1c241B9BaE8b7077b6f2E8f2c3Bc0F5D;
-        a.factory = 0xAa87993eFd0507Ee0d62AF5b333241091855826E;
-        a.hook = 0xea1Da4Cb2C5C38665F1cF98203A64697671A9896;
-        a.enumeration = 0x214aF3AABA5De7010556C0e30b65F5a41C5F53a2;
-        a.minter = 0xF6C1e2f36c447D62FA5EF1fDD7C0c24EF7521a74;
-        a.card = 0x03123FF7998BD3A7f58Eb7c3ce3EE86Ef7084D3B;
-        a.traits = 0x907aba4e5613F173BB6B3FbBE1D74dFdF20a05b6;
-        a.lens = 0x02696De76a1243278098db04451bF473eE86ddde;
+        a.factory = 0xb057b5b6641717EB85E9D8b3Ba23988E0A6d147A;
+        a.hook = 0x73E2E4945b54D0D98F0A81932b831B32Ed7edecb;
+        a.enumeration = 0x6928e670C7e92e8d3824209447cC7Bd10d77db7A;
+        a.minter = 0x53383C2a4c36Ab9fbc5fe3D2BEEA7D23D72cc69f;
+        a.card = 0x67beCeAe265A81FFa5375355417B0C6755E25766;
+        a.traits = 0x3eaFef43e76c627db2A99A13f53b7f88C4f6CFE5;
+        a.lens = 0x28f30bB97Fb2a29Bf19b3AB04323B186ba461DE5;
     }
 
     /// @notice Reverts `UnexpectedAddress` unless every address in `a` is `pinned()`.

@@ -213,6 +213,7 @@ contract ProjectPresentation is IProjectPresentation {
     {
         if (field != bytes32("animation_url")) return ("text/plain", "");
         (Status s, string memory mime, bytes memory payload) = preview(org, tokenId);
+        if (s == Status.ReadFailed || s == Status.IpfsFailed) revert RenderFailed(s);
         if (s != Status.Ready) return ("text/plain", "");
         return (mime, payload);
     }
@@ -226,13 +227,16 @@ contract ProjectPresentation is IProjectPresentation {
             root = r;
             path = p;
         } catch (bytes memory reason) {
-            bytes4 selector;
-            if (reason.length >= 4) assembly { selector := mload(add(reason, 32)) }
-            return (
-                selector == IProjectHook.NoVersions.selector ? Status.Unpublished : Status.InvalidTarget,
-                "text/plain",
-                ""
-            );
+            bytes4 selector = _selector(reason);
+            if (selector == IProjectHook.NoVersions.selector && reason.length == 68) {
+                return (Status.Unpublished, "text/plain", "");
+            }
+            if (
+                (selector == InvalidOrg.selector && reason.length == 4)
+                    || (selector == IProjectHook.InvalidVersion.selector && reason.length == 68)
+                    || (selector == IProjectHook.TagNotFound.selector && _stringError(reason, 96))
+            ) return (Status.InvalidTarget, "text/plain", "");
+            return (Status.ReadFailed, "text/plain", "");
         }
         Config storage c = _configs[org][tokenId];
         if (c.method == Method.Embedded) {
@@ -242,12 +246,11 @@ contract ProjectPresentation is IProjectPresentation {
                 if (!_mime(mime)) return (Status.UnsupportedMime, "text/plain", "");
                 return (Status.Ready, mime, data);
             } catch (bytes memory reason) {
-                bytes4 selector;
-                if (reason.length >= 4) assembly { selector := mload(add(reason, 32)) }
-                if (selector == bytes4(keccak256("CodecNotSupported(bytes32)"))) {
+                bytes4 selector = _selector(reason);
+                if (selector == bytes4(keccak256("CodecNotSupported(bytes32)")) && reason.length == 36) {
                     return (Status.UnsupportedCodec, "text/plain", "");
                 }
-                return (Status.ReadFailed, "text/plain", "");
+                return (_missingTarget(reason) ? Status.InvalidTarget : Status.ReadFailed, "text/plain", "");
             }
         }
         bool directory;
@@ -255,15 +258,15 @@ contract ProjectPresentation is IProjectPresentation {
         try reader.resolve(root, "") returns (bytes32, bool d) {
             directory = d;
             selectedDirectory = d;
-        } catch {
-            return (Status.InvalidTarget, "text/plain", "");
+        } catch (bytes memory reason) {
+            return (_missingTarget(reason) ? Status.InvalidTarget : Status.ReadFailed, "text/plain", "");
         }
         // Validate the selected path as well, without reading any file bytes.
         if (bytes(path).length != 0) {
             try reader.resolve(root, path) returns (bytes32, bool d) {
                 selectedDirectory = d;
-            } catch {
-                return (Status.InvalidTarget, "text/plain", "");
+            } catch (bytes memory reason) {
+                return (_missingTarget(reason) ? Status.InvalidTarget : Status.ReadFailed, "text/plain", "");
             }
         }
         if (c.method == Method.ChainGateway) {
@@ -288,6 +291,39 @@ contract ProjectPresentation is IProjectPresentation {
         } catch {
             return (Status.IpfsFailed, "text/plain", "");
         }
+    }
+
+    function _selector(bytes memory reason) internal pure returns (bytes4 selector) {
+        if (reason.length >= 4) assembly { selector := mload(add(reason, 32)) }
+    }
+
+    // Recognize only complete semantic errors from the immutable reader/store implementation. A backend
+    // retrieval failure, empty revert, panic or malformed return must fail rendering, never cache empty metadata.
+    function _missingTarget(bytes memory reason) internal pure returns (bool) {
+        bytes4 selector = _selector(reason);
+        if (reason.length == 36) {
+            return selector == bytes4(keccak256("RootNotFound(bytes32)"))
+                || selector == bytes4(keccak256("NotDirectory(bytes32)"))
+                || selector == bytes4(keccak256("IsDirectory(bytes32)"))
+                || selector == bytes4(keccak256("DirectoryNotFound(bytes32)"))
+                || selector == bytes4(keccak256("FileNotFound(bytes32)"));
+        }
+        if (selector == bytes4(keccak256("PathNotFound(string)"))) return _stringError(reason, 32);
+        return selector == bytes4(keccak256("PathTooDeep(uint256,uint256)")) && reason.length == 68;
+    }
+
+    // ABI string errors have one final string after `headBytes` bytes of arguments. Check its layout without
+    // decoding untrusted revert data; length arithmetic is bounded by the already allocated reason bytes.
+    function _stringError(bytes memory reason, uint256 headBytes) internal pure returns (bool) {
+        if (reason.length < 4 + headBytes + 32) return false;
+        uint256 offset;
+        uint256 length;
+        assembly {
+            offset := mload(add(add(reason, 4), headBytes))
+            length := mload(add(add(reason, 36), headBytes))
+        }
+        uint256 available = reason.length - 4 - headBytes - 32;
+        return offset == headBytes && length <= available && available - length < 32 && available % 32 == 0;
     }
 
     function ipfsUri(bytes32 root, bool directory, bool selectedDirectory, string calldata path, string calldata base)

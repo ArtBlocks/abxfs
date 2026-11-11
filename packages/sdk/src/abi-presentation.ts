@@ -490,6 +490,17 @@ export const iProjectPresentationAbi = [
   },
   {
     "type": "error",
+    "name": "RenderFailed",
+    "inputs": [
+      {
+        "name": "status",
+        "type": "uint8",
+        "internalType": "enum IProjectPresentation.Status"
+      }
+    ]
+  },
+  {
+    "type": "error",
     "name": "StaleCommitment",
     "inputs": [
       {

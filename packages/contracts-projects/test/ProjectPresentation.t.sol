@@ -26,6 +26,9 @@ contract PresentationHookMock {
     bytes32 public head = bytes32(uint256(1));
     bytes32 public tagged = bytes32(uint256(1));
     bool public unpublished;
+    bytes public failure;
+
+    function setFailure(bytes calldata reason) external { failure = reason; }
 
     constructor(address f, address files, address dirs) {
         factory = f;
@@ -46,6 +49,8 @@ contract PresentationHookMock {
     }
 
     function latestVersion(address, uint256) external view returns (uint256, bytes32) {
+        bytes memory reason = failure;
+        if (reason.length != 0) assembly { revert(add(reason, 32), mload(reason)) }
         if (unpublished) revert IProjectHook.NoVersions(address(0), 0);
         return (2, head);
     }
@@ -86,6 +91,7 @@ contract PresentationOrgMock {
     function paramHooks() external view returns (address, address, address) {
         if (malicious == 1) assembly { for {} 1 {} {} }
         if (malicious == 2) assembly { return(0, 0x1000000) }
+        if (malicious == 3) assembly { return(0, 32) }
         return (hook, address(0), address(0));
     }
 
@@ -96,6 +102,13 @@ contract PresentationOrgMock {
 
 contract PresentationReaderMock {
     error CodecNotSupported(bytes32 codec);
+    error RootNotFound(bytes32 root);
+    error PathNotFound(string path);
+    error NotDirectory(bytes32 root);
+    error RetrieveFailed(bytes32 chunk, address backend);
+    bytes public resolutionFailure;
+
+    function setResolutionFailure(bytes calldata reason) external { resolutionFailure = reason; }
     error ByteLimitExceeded(uint256 required, uint256 maximum);
     error ChunkLimitExceeded(uint256 required, uint256 maximum);
     address public fileStore;
@@ -122,9 +135,12 @@ contract PresentationReaderMock {
     }
 
     function resolve(bytes32 root, string calldata path) external view returns (bytes32, bool) {
-        require(root != bytes32(0));
-        require(keccak256(bytes(path)) != keccak256("missing"));
-        require(directory || bytes(path).length == 0);
+        if (mode == 11) assembly { return(0, 32) }
+        bytes memory reason = resolutionFailure;
+        if (reason.length != 0) assembly { revert(add(reason, 32), mload(reason)) }
+        if (root == bytes32(0)) revert RootNotFound(root);
+        if (keccak256(bytes(path)) == keccak256("missing")) revert PathNotFound(path);
+        if (!directory && bytes(path).length != 0) revert NotDirectory(root);
         return (root, directory && (bytes(path).length == 0 || keccak256(bytes(path)) == keccak256("nested")));
     }
 
@@ -146,6 +162,7 @@ contract PresentationReaderMock {
                 return(0, 32)
             }
         }
+        if (mode == 10) revert RetrieveFailed(bytes32(uint256(1)), address(this));
         if (mode == 8) return (mime, new bytes(102_400));
         if (mode == 9) {
             // A caller with enough gas can render a source that uses more than the old fixed 5M allowance.
@@ -310,9 +327,9 @@ contract ProjectPresentationTest is Test {
     }
 
     function test_noCodeSentinelWrongFieldAndUnpublishedSafe() public {
-        (, bytes memory data) = p.render(address(0xdead), 0, "animation_url");
-        assertEq(data.length, 0);
-        (, data) = p.render(address(org), type(uint256).max, "animation_url");
+        vm.expectRevert(abi.encodeWithSelector(IProjectPresentation.RenderFailed.selector, IProjectPresentation.Status.ReadFailed));
+        p.render(address(0xdead), 0, "animation_url");
+        (, bytes memory data) = p.render(address(org), type(uint256).max, "animation_url");
         assertEq(data.length, 0);
         (, data) = p.render(address(org), 0, "image");
         assertEq(data.length, 0);
@@ -333,12 +350,16 @@ contract ProjectPresentationTest is Test {
     function test_catchableReaderFailuresKeepMethodAndReturnTypedStatuses() public {
         _embedded();
         p.lock(address(org), 0, uint8(2), p.lockCommitment(address(org), 0, uint8(2)));
-        uint256[4] memory modes = [uint256(3), 4, 5, 6];
+        uint256[5] memory modes = [uint256(3), 4, 5, 6, 10];
         for (uint256 i; i < modes.length; ++i) {
             reader.setMode(modes[i]);
             (IProjectPresentation.Status status,, bytes memory data) = p.preview(address(org), 0);
             assertEq(uint256(status), uint256(modes[i] == 3 ? IProjectPresentation.Status.UnsupportedCodec : IProjectPresentation.Status.ReadFailed));
             assertEq(data.length, 0);
+            if (modes[i] != 3) {
+                vm.expectRevert(abi.encodeWithSelector(IProjectPresentation.RenderFailed.selector, status));
+                _render();
+            }
             assertEq(uint256(p.config(address(org), 0).method), uint256(IProjectPresentation.Method.Embedded));
         }
     }
@@ -348,12 +369,11 @@ contract ProjectPresentationTest is Test {
         p.lock(address(org), 0, uint8(2), p.lockCommitment(address(org), 0, uint8(2)));
         for (uint256 mode = 1; mode <= 2; ++mode) {
             reader.setMode(mode);
-            // A natural resource failure may prevent any ABI result. If a result is possible it is neutral,
-            // never a locator or a change to the owner's configured delivery method.
-            (bool ok, bytes memory ret) = address(p).staticcall{gas: 2_000_000}(
+            // Resource/dependency failures must fail rendering, preserving the owner's configured method.
+            (bool ok,) = address(p).staticcall{gas: 2_000_000}(
                 abi.encodeCall(p.render, (address(org), 0, bytes32("animation_url")))
             );
-            if (ok) { (, bytes memory data) = abi.decode(ret, (string, bytes)); assertEq(data.length, 0); }
+            assertFalse(ok, "resource failure must not become successful neutral metadata");
             assertEq(uint256(p.config(address(org), 0).method), uint256(IProjectPresentation.Method.Embedded));
         }
     }
@@ -365,23 +385,25 @@ contract ProjectPresentationTest is Test {
         (IProjectPresentation.Status status,, bytes memory data) = p.preview(address(org), 0);
         assertEq(uint256(status), uint256(IProjectPresentation.Status.IpfsFailed));
         assertEq(data.length, 0);
+        vm.expectRevert(abi.encodeWithSelector(IProjectPresentation.RenderFailed.selector, status));
+        _render();
         for (uint256 mode = 1; mode <= 2; ++mode) {
             ipfs.setMode(mode);
-            (bool ok, bytes memory ret) = address(p).staticcall{gas: 2_000_000}(
+            (bool ok,) = address(p).staticcall{gas: 2_000_000}(
                 abi.encodeCall(p.render, (address(org), 0, bytes32("animation_url")))
             );
-            if (ok) { (, data) = abi.decode(ret, (string, bytes)); assertEq(data.length, 0); }
+            assertFalse(ok, "IPFS resource failure must fail metadata");
         }
         assertEq(uint256(p.config(address(org), 0).method), uint256(IProjectPresentation.Method.Ipfs));
     }
 
-    function test_hostileOrgResourceFailureCanBeCaughtWithoutInventingPayload() public {
-        for (uint256 mode = 1; mode <= 2; ++mode) {
+    function test_hostileOrgResourceOrMalformedReturnCannotBecomeSuccessfulMetadata() public {
+        for (uint256 mode = 1; mode <= 3; ++mode) {
             org.setMalicious(mode);
-            (bool ok, bytes memory ret) = address(p).staticcall{gas: 2_000_000}(
+            (bool ok,) = address(p).staticcall{gas: 2_000_000}(
                 abi.encodeCall(p.render, (address(org), 0, bytes32("animation_url")))
             );
-            if (ok) { (, bytes memory data) = abi.decode(ret, (string, bytes)); assertEq(data.length, 0); }
+            assertFalse(ok, "resource failure must not become successful neutral metadata");
         }
     }
 
@@ -435,6 +457,62 @@ contract ProjectPresentationTest is Test {
         p.setTarget(address(org), 0, IProjectPresentation.Selection.Latest, 0, "", "missing");
         (status,,) = p.preview(address(org), 0);
         assertEq(uint256(status), uint256(IProjectPresentation.Status.InvalidTarget));
+    }
+
+    function test_targetOnlyRecognizesCompleteSemanticHookErrors() public {
+        bytes[3] memory semantic = [
+            abi.encodeWithSelector(IProjectHook.NoVersions.selector, address(org), uint256(0)),
+            abi.encodeWithSelector(IProjectHook.InvalidVersion.selector, uint256(3), uint256(2)),
+            abi.encodeWithSelector(IProjectHook.TagNotFound.selector, address(org), uint256(0), "missing")
+        ];
+        for (uint256 i; i < semantic.length; ++i) {
+            hook.setFailure(semantic[i]);
+            (IProjectPresentation.Status status,,) = p.preview(address(org), 0);
+            assertEq(uint256(status), uint256(i == 0 ? IProjectPresentation.Status.Unpublished : IProjectPresentation.Status.InvalidTarget));
+            (, bytes memory data) = _render();
+            assertEq(data.length, 0);
+        }
+        bytes[4] memory unexpected = [
+            abi.encodeWithSignature("DependencyFailed(uint256)", 1),
+            abi.encodePacked(IProjectHook.NoVersions.selector),
+            abi.encodePacked(IProjectHook.TagNotFound.selector, bytes32(0), bytes32(0), bytes32(uint256(96))),
+            abi.encodeWithSignature("Error(string)", "transport or dependency failure")
+        ];
+        for (uint256 i; i < unexpected.length; ++i) {
+            hook.setFailure(unexpected[i]);
+            (IProjectPresentation.Status status,,) = p.preview(address(org), 0);
+            assertEq(uint256(status), uint256(IProjectPresentation.Status.ReadFailed));
+            vm.expectRevert(abi.encodeWithSelector(IProjectPresentation.RenderFailed.selector, status));
+            _render();
+        }
+    }
+
+    function test_resolveUnexpectedAndMalformedFailuresAreNotMissingTargets() public {
+        bytes[3] memory failures = [
+            abi.encodeWithSignature("RetrieveFailed(bytes32,address)", bytes32(uint256(1)), address(reader)),
+            abi.encodeWithSignature("Panic(uint256)", uint256(0x41)),
+            abi.encodePacked(PresentationReaderMock.PathNotFound.selector)
+        ];
+        for (uint256 i; i < failures.length; ++i) {
+            reader.setResolutionFailure(failures[i]);
+            (IProjectPresentation.Status status,,) = p.preview(address(org), 0);
+            assertEq(uint256(status), uint256(IProjectPresentation.Status.ReadFailed));
+            vm.expectRevert(abi.encodeWithSelector(IProjectPresentation.RenderFailed.selector, status));
+            _render();
+        }
+        reader.setResolutionFailure(abi.encodeWithSelector(PresentationReaderMock.PathNotFound.selector, "missing"));
+        (IProjectPresentation.Status missing,,) = p.preview(address(org), 0);
+        assertEq(uint256(missing), uint256(IProjectPresentation.Status.InvalidTarget));
+        (, bytes memory data) = _render();
+        assertEq(data.length, 0);
+    }
+
+    function test_malformedResolveReturnIsIndeterminate() public {
+        reader.setMode(11);
+        (IProjectPresentation.Status status,,) = p.preview(address(org), 0);
+        assertEq(uint256(status), uint256(IProjectPresentation.Status.ReadFailed));
+        vm.expectRevert(abi.encodeWithSelector(IProjectPresentation.RenderFailed.selector, status));
+        _render();
     }
 
     function test_staleRootCannotBeFrozenAndNoLockStateChanges() public {

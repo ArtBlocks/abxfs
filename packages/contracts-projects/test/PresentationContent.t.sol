@@ -93,7 +93,7 @@ contract PresentationContentTest is Test {
         bytes32 empty = IDirectoryStore(DIRS).createDirectory(bytes32(0));
         hook.publish(empty);
         (IProjectPresentation.Status status,, bytes memory data) = presentation.preview(address(org), 0);
-        assertEq(uint256(status), uint256(IProjectPresentation.Status.ReadFailed));
+        assertEq(uint256(status), uint256(IProjectPresentation.Status.InvalidTarget));
         assertEq(data.length, 0);
         hook.publish(_file("gzip bytes", false, 2048, bytes32("gzip")));
         (status,, data) = presentation.preview(address(org), 0);
