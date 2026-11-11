@@ -25,6 +25,7 @@ const content = (s: string) => new TextEncoder().encode(s);
 
 function clients(locks = 0, status = "success") {
   const readContract = vi.fn(async ({ functionName }: { functionName: string }) => {
+    if (functionName === "presentationVersion") return 2n;
     if (functionName === "config") return { ...config, locks };
     if (functionName === "target") return [ROOT, ""];
     if (functionName === "lockCommitment") return HASH;
@@ -43,6 +44,16 @@ function clients(locks = 0, status = "success") {
 beforeEach(() => vi.restoreAllMocks());
 
 describe("presentation generations and writes", () => {
+  it("probes capability before decoding the historical nine-field config ABI", async () => {
+    const readContract=vi.fn(async ({functionName,abi}: {functionName:string;abi:readonly any[]})=>{
+      if(functionName === "presentationVersion") throw Object.assign(new Error("execution reverted"),{code:3});
+      const components=abi.find(entry=>entry.name === "config").outputs[0].components;
+      expect(components).toHaveLength(9);expect(components.some((field:{name:string})=>field.name === "configuredFlags")).toBe(false);
+      return config;
+    });
+    expect(await readPresentation({readContract} as unknown as PublicClient,addresses,ORG,0n)).toEqual(config);
+    expect(readContract.mock.calls.map(([r])=>r.functionName)).toEqual(["presentationVersion","config"]);
+  });
   it("keeps global reader but never inherits current presentation for an old org", async () => {
     const client = { readContract: async ({ address }: { address: Address }) => address === a(60) } as unknown as PublicClient;
     const old = await addressesForOrg(client, addresses, ORG);
@@ -86,7 +97,8 @@ describe("presentation generations and writes", () => {
     const c = clients();
     c.publicClient.getBlockNumber = vi.fn(async (options) => options?.cacheTime === 0 ? 2n : 1n);
     c.readContract.mockImplementation(async ({ functionName, blockNumber }: { functionName: string; blockNumber?: bigint }) => {
-      if (functionName === "config") return { ...config, method: blockNumber === 2n ? 1 : 0 };
+      if (functionName === "presentationVersion") return 2n;
+    if (functionName === "config") return { ...config, method: blockNumber === 2n ? 1 : 0 };
       if (functionName === "target") return [ROOT, ""];
       if (functionName === "preview") return [0, "text/html", stringToHex("<p>hi</p>")];
       throw new Error(functionName);
@@ -94,7 +106,7 @@ describe("presentation generations and writes", () => {
     const preview = await previewPresentation(c.publicClient, addresses, ORG, 0n);
     expect(preview.blockNumber).toBe(2n);
     expect(preview.method).toBe(PresentationMethod.Embedded);
-    expect(c.readContract.mock.calls.every(([request]) => (request as { blockNumber?: bigint }).blockNumber === 2n)).toBe(true);
+    expect(c.readContract.mock.calls.filter(([request]) => request.functionName !== "presentationVersion").every(([request]) => (request as { blockNumber?: bigint }).blockNumber === 2n)).toBe(true);
   });
 
   it("rejects reverted receipts and uses exact target selectors", async () => {
@@ -134,9 +146,9 @@ function mockContent(opts: { mime?: string; body?: string; codec?: `0x${string}`
 describe("Auto is conservative tooling only", () => {
   it("prefers a tiny static self-contained HTML or media payload", async () => {
     mockContent();
-    expect(await recommendPresentationMethod({} as PublicClient, addresses, ROOT)).toMatchObject({ method: PresentationMethod.Embedded, residualDependencies: [], runtimeUncertain: false });
+    expect(await recommendPresentationMethod({ readContract: async () => 2n } as unknown as PublicClient, addresses, ROOT)).toMatchObject({ method: PresentationMethod.Embedded, residualDependencies: [], runtimeUncertain: false });
     vi.restoreAllMocks(); mockContent({ mime: "image/png", body: "png" });
-    expect((await recommendPresentationMethod({} as PublicClient, addresses, ROOT)).method).toBe(PresentationMethod.Embedded);
+    expect((await recommendPresentationMethod({ readContract: async () => 2n } as unknown as PublicClient, addresses, ROOT)).method).toBe(PresentationMethod.Embedded);
   });
   it.each([
     { codec: stringToHex("gzip", { size: 32 }) },
@@ -144,11 +156,11 @@ describe("Auto is conservative tooling only", () => {
     { body: '<script>fetch("https://cdn.example/x")</script>' },
     { body: '<script type="module">import helper from "./helper.js"</script>' },
     { directory: true, entries: 2 },
-    { size: 8_193 },
+    { size: 102_401 },
     { mime: "text/plain" },
   ])("chooses chain gateway and never IPFS for excluded content %o", async opts => {
     mockContent(opts);
-    const recommendation = await recommendPresentationMethod({} as PublicClient, addresses, ROOT);
+    const recommendation = await recommendPresentationMethod({ readContract: async () => 2n } as unknown as PublicClient, addresses, ROOT);
     expect(recommendation.method).toBe(PresentationMethod.ChainGateway);
     expect(recommendation.reason.length).toBeGreaterThan(10);
   });
@@ -157,11 +169,18 @@ describe("Auto is conservative tooling only", () => {
   });
   it("uses existing codec reads to expose residual dependencies of gzip HTML while retaining gateway delivery", async () => {
     mockContent({ codec: stringToHex("gzip", { size: 32 }), body: '<img src="https://cdn.example/art.png">' });
-    expect(await recommendPresentationMethod({} as PublicClient, addresses, ROOT)).toMatchObject({ method: PresentationMethod.ChainGateway, residualDependencies: ["https://cdn.example/art.png"] });
+    expect(await recommendPresentationMethod({ readContract: async () => 2n } as unknown as PublicClient, addresses, ROOT)).toMatchObject({ method: PresentationMethod.ChainGateway, residualDependencies: ["https://cdn.example/art.png"] });
+  });
+  it("retains a proven native codec incompatibility when optional off-chain inspection fails",async()=>{
+    mockContent({codec:stringToHex("gzip",{size:32})});
+    vi.mocked(reads.readFile).mockRejectedValue(new Error("decoder unavailable"));
+    const result=await recommendPresentationMethod({readContract:async()=>2n} as unknown as PublicClient,addresses,ROOT);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({code:"unsupported_codec",technical:true}));
+    expect(result.readReach).toMatchObject({nativeReadable:false,inspection:"onchain"});
   });
   it("supports typical inline canvas JavaScript while exposing runtime uncertainty", async () => {
     mockContent({ body: '<canvas id="art"></canvas><script>const c=document.getElementById("art").getContext("2d");c.fillRect(0,0,100,100)</script>' });
-    expect(await recommendPresentationMethod({} as PublicClient, addresses, ROOT)).toMatchObject({ method: PresentationMethod.Embedded, runtimeUncertain: true, residualDependencies: [] });
+    expect(await recommendPresentationMethod({ readContract: async () => 2n } as unknown as PublicClient, addresses, ROOT)).toMatchObject({ method: PresentationMethod.Embedded, runtimeUncertain: true, residualDependencies: [] });
   });
   it("resolves Auto to a concrete method before sending", async () => {
     mockContent(); const c = clients();
@@ -175,7 +194,7 @@ describe("Auto is conservative tooling only", () => {
     const preview = await previewPresentation(client, addresses, ORG, 0n);
     expect(preview).toMatchObject({ root: ROOT, path: "", method: 0, status: 0, locks: 5, blockNumber: 42n, residualDependencies: ["other.png"] });
     expect(getBlockNumber).toHaveBeenCalledTimes(1);
-    for (const call of c.readContract.mock.calls) expect(call[0]).toMatchObject({ blockNumber: 42n });
+    for (const call of c.readContract.mock.calls.filter(([request]) => request.functionName !== "presentationVersion")) expect(call[0]).toMatchObject({ blockNumber: 42n });
     expect(await inspectPresentation(c.publicClient, addresses, ORG, 0n)).toMatchObject({ root: ROOT });
   });
 });

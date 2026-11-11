@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {ProjectPresentation} from "../src/ProjectPresentation.sol";
 import {IProjectPresentation} from "../src/interfaces/IProjectPresentation.sol";
 import {IProjectHook} from "../src/interfaces/IProjectHook.sol";
@@ -25,6 +26,9 @@ contract PresentationHookMock {
     bytes32 public head = bytes32(uint256(1));
     bytes32 public tagged = bytes32(uint256(1));
     bool public unpublished;
+    bytes public failure;
+
+    function setFailure(bytes calldata reason) external { failure = reason; }
 
     constructor(address f, address files, address dirs) {
         factory = f;
@@ -45,6 +49,8 @@ contract PresentationHookMock {
     }
 
     function latestVersion(address, uint256) external view returns (uint256, bytes32) {
+        bytes memory reason = failure;
+        if (reason.length != 0) assembly { revert(add(reason, 32), mload(reason)) }
         if (unpublished) revert IProjectHook.NoVersions(address(0), 0);
         return (2, head);
     }
@@ -85,6 +91,7 @@ contract PresentationOrgMock {
     function paramHooks() external view returns (address, address, address) {
         if (malicious == 1) assembly { for {} 1 {} {} }
         if (malicious == 2) assembly { return(0, 0x1000000) }
+        if (malicious == 3) assembly { return(0, 32) }
         return (hook, address(0), address(0));
     }
 
@@ -95,6 +102,13 @@ contract PresentationOrgMock {
 
 contract PresentationReaderMock {
     error CodecNotSupported(bytes32 codec);
+    error RootNotFound(bytes32 root);
+    error PathNotFound(string path);
+    error NotDirectory(bytes32 root);
+    error RetrieveFailed(bytes32 chunk, address backend);
+    bytes public resolutionFailure;
+
+    function setResolutionFailure(bytes calldata reason) external { resolutionFailure = reason; }
     error ByteLimitExceeded(uint256 required, uint256 maximum);
     error ChunkLimitExceeded(uint256 required, uint256 maximum);
     address public fileStore;
@@ -121,9 +135,12 @@ contract PresentationReaderMock {
     }
 
     function resolve(bytes32 root, string calldata path) external view returns (bytes32, bool) {
-        require(root != bytes32(0));
-        require(keccak256(bytes(path)) != keccak256("missing"));
-        require(directory || bytes(path).length == 0);
+        if (mode == 11) assembly { return(0, 32) }
+        bytes memory reason = resolutionFailure;
+        if (reason.length != 0) assembly { revert(add(reason, 32), mload(reason)) }
+        if (root == bytes32(0)) revert RootNotFound(root);
+        if (keccak256(bytes(path)) == keccak256("missing")) revert PathNotFound(path);
+        if (!directory && bytes(path).length != 0) revert NotDirectory(root);
         return (root, directory && (bytes(path).length == 0 || keccak256(bytes(path)) == keccak256("nested")));
     }
 
@@ -132,24 +149,26 @@ contract PresentationReaderMock {
         view
         returns (string memory, bytes memory)
     {
-        require(maxBytes == 8192 && maxChunks == 32);
+        require(maxBytes == type(uint256).max && maxChunks == type(uint256).max);
         if (mode == 1) assembly { for {} 1 {} {} }
         if (mode == 2) assembly { return(0, 0x1000000) }
         if (mode == 3) revert CodecNotSupported(bytes32("gzip"));
-        if (mode == 4) revert ByteLimitExceeded(maxBytes + 1, maxBytes);
-        if (mode == 6) revert ChunkLimitExceeded(maxChunks + 1, maxChunks);
-        if (mode == 7) return (mime, new bytes(maxBytes + 1));
+        if (mode == 4) revert ByteLimitExceeded(1, 0);
+        if (mode == 6) revert ChunkLimitExceeded(1, 0);
+        if (mode == 7) return (mime, new bytes(16_385));
         if (mode == 5) {
             assembly {
                 mstore(0, 0xffffffffffffffff)
                 return(0, 32)
             }
         }
-        if (mode == 8) return (mime, new bytes(maxBytes));
+        if (mode == 10) revert RetrieveFailed(bytes32(uint256(1)), address(this));
+        if (mode == 8) return (mime, new bytes(102_400));
         if (mode == 9) {
-            // Return successfully with a large payload after consuming most of the reader budget.
-            assembly { for {} gt(gas(), 500000) {} {} }
-            return (mime, new bytes(maxBytes));
+            // A caller with enough gas can render a source that uses more than the old fixed 5M allowance.
+            uint256 start = gasleft();
+            while (start - gasleft() < 6_000_000) {}
+            return (mime, bytes("expensive but successful"));
         }
         return (mime, bytes("<html>on chain</html>"));
     }
@@ -308,9 +327,9 @@ contract ProjectPresentationTest is Test {
     }
 
     function test_noCodeSentinelWrongFieldAndUnpublishedSafe() public {
-        (, bytes memory data) = p.render(address(0xdead), 0, "animation_url");
-        assertEq(data.length, 0);
-        (, data) = p.render(address(org), type(uint256).max, "animation_url");
+        vm.expectRevert(abi.encodeWithSelector(IProjectPresentation.RenderFailed.selector, IProjectPresentation.Status.ReadFailed));
+        p.render(address(0xdead), 0, "animation_url");
+        (, bytes memory data) = p.render(address(org), type(uint256).max, "animation_url");
         assertEq(data.length, 0);
         (, data) = p.render(address(org), 0, "image");
         assertEq(data.length, 0);
@@ -328,33 +347,64 @@ contract ProjectPresentationTest is Test {
         assertEq(data.length, 0);
     }
 
-    function testFuzz_readerFailuresNeverRevertOrChangeLockedMethod(uint8 rawMode) public {
-        uint256 mode = bound(rawMode, 1, 7);
+    function test_catchableReaderFailuresKeepMethodAndReturnTypedStatuses() public {
         _embedded();
         p.lock(address(org), 0, uint8(2), p.lockCommitment(address(org), 0, uint8(2)));
-        reader.setMode(mode);
-        (, bytes memory data) = _render();
-        assertEq(data.length, 0);
-        assertEq(uint256(p.config(address(org), 0).method), uint256(IProjectPresentation.Method.Embedded));
+        uint256[5] memory modes = [uint256(3), 4, 5, 6, 10];
+        for (uint256 i; i < modes.length; ++i) {
+            reader.setMode(modes[i]);
+            (IProjectPresentation.Status status,, bytes memory data) = p.preview(address(org), 0);
+            assertEq(uint256(status), uint256(modes[i] == 3 ? IProjectPresentation.Status.UnsupportedCodec : IProjectPresentation.Status.ReadFailed));
+            assertEq(data.length, 0);
+            if (modes[i] != 3) {
+                vm.expectRevert(abi.encodeWithSelector(IProjectPresentation.RenderFailed.selector, status));
+                _render();
+            }
+            assertEq(uint256(p.config(address(org), 0).method), uint256(IProjectPresentation.Method.Embedded));
+        }
+    }
+
+    function test_resourceExhaustionDoesNotChangeLockedConfiguration() public {
+        _embedded();
+        p.lock(address(org), 0, uint8(2), p.lockCommitment(address(org), 0, uint8(2)));
+        for (uint256 mode = 1; mode <= 2; ++mode) {
+            reader.setMode(mode);
+            // Resource/dependency failures must fail rendering, preserving the owner's configured method.
+            (bool ok,) = address(p).staticcall{gas: 2_000_000}(
+                abi.encodeCall(p.render, (address(org), 0, bytes32("animation_url")))
+            );
+            assertFalse(ok, "resource failure must not become successful neutral metadata");
+            assertEq(uint256(p.config(address(org), 0).method), uint256(IProjectPresentation.Method.Embedded));
+        }
     }
 
     function test_ipfsFailuresDoNotFallbackToGateway() public {
         p.setMethod(address(org), 0, IProjectPresentation.Method.Ipfs);
         p.lock(address(org), 0, uint8(2), p.lockCommitment(address(org), 0, uint8(2)));
-        for (uint256 i = 1; i <= 3; ++i) {
-            ipfs.setMode(i);
-            (, bytes memory data) = _render();
-            assertEq(data.length, 0);
+        ipfs.setMode(3);
+        (IProjectPresentation.Status status,, bytes memory data) = p.preview(address(org), 0);
+        assertEq(uint256(status), uint256(IProjectPresentation.Status.IpfsFailed));
+        assertEq(data.length, 0);
+        vm.expectRevert(abi.encodeWithSelector(IProjectPresentation.RenderFailed.selector, status));
+        _render();
+        for (uint256 mode = 1; mode <= 2; ++mode) {
+            ipfs.setMode(mode);
+            (bool ok,) = address(p).staticcall{gas: 2_000_000}(
+                abi.encodeCall(p.render, (address(org), 0, bytes32("animation_url")))
+            );
+            assertFalse(ok, "IPFS resource failure must fail metadata");
         }
+        assertEq(uint256(p.config(address(org), 0).method), uint256(IProjectPresentation.Method.Ipfs));
     }
 
-    function test_hostileOrgGasAndReturndataSafe() public {
-        org.setMalicious(1);
-        (, bytes memory data) = _render();
-        assertEq(data.length, 0);
-        org.setMalicious(2);
-        (, data) = _render();
-        assertEq(data.length, 0);
+    function test_hostileOrgResourceOrMalformedReturnCannotBecomeSuccessfulMetadata() public {
+        for (uint256 mode = 1; mode <= 3; ++mode) {
+            org.setMalicious(mode);
+            (bool ok,) = address(p).staticcall{gas: 2_000_000}(
+                abi.encodeCall(p.render, (address(org), 0, bytes32("animation_url")))
+            );
+            assertFalse(ok, "resource failure must not become successful neutral metadata");
+        }
     }
 
     function test_invalidPathsAndFailedContentLockLeaveStateMutable() public {
@@ -407,6 +457,62 @@ contract ProjectPresentationTest is Test {
         p.setTarget(address(org), 0, IProjectPresentation.Selection.Latest, 0, "", "missing");
         (status,,) = p.preview(address(org), 0);
         assertEq(uint256(status), uint256(IProjectPresentation.Status.InvalidTarget));
+    }
+
+    function test_targetOnlyRecognizesCompleteSemanticHookErrors() public {
+        bytes[3] memory semantic = [
+            abi.encodeWithSelector(IProjectHook.NoVersions.selector, address(org), uint256(0)),
+            abi.encodeWithSelector(IProjectHook.InvalidVersion.selector, uint256(3), uint256(2)),
+            abi.encodeWithSelector(IProjectHook.TagNotFound.selector, address(org), uint256(0), "missing")
+        ];
+        for (uint256 i; i < semantic.length; ++i) {
+            hook.setFailure(semantic[i]);
+            (IProjectPresentation.Status status,,) = p.preview(address(org), 0);
+            assertEq(uint256(status), uint256(i == 0 ? IProjectPresentation.Status.Unpublished : IProjectPresentation.Status.InvalidTarget));
+            (, bytes memory data) = _render();
+            assertEq(data.length, 0);
+        }
+        bytes[4] memory unexpected = [
+            abi.encodeWithSignature("DependencyFailed(uint256)", 1),
+            abi.encodePacked(IProjectHook.NoVersions.selector),
+            abi.encodePacked(IProjectHook.TagNotFound.selector, bytes32(0), bytes32(0), bytes32(uint256(96))),
+            abi.encodeWithSignature("Error(string)", "transport or dependency failure")
+        ];
+        for (uint256 i; i < unexpected.length; ++i) {
+            hook.setFailure(unexpected[i]);
+            (IProjectPresentation.Status status,,) = p.preview(address(org), 0);
+            assertEq(uint256(status), uint256(IProjectPresentation.Status.ReadFailed));
+            vm.expectRevert(abi.encodeWithSelector(IProjectPresentation.RenderFailed.selector, status));
+            _render();
+        }
+    }
+
+    function test_resolveUnexpectedAndMalformedFailuresAreNotMissingTargets() public {
+        bytes[3] memory failures = [
+            abi.encodeWithSignature("RetrieveFailed(bytes32,address)", bytes32(uint256(1)), address(reader)),
+            abi.encodeWithSignature("Panic(uint256)", uint256(0x41)),
+            abi.encodePacked(PresentationReaderMock.PathNotFound.selector)
+        ];
+        for (uint256 i; i < failures.length; ++i) {
+            reader.setResolutionFailure(failures[i]);
+            (IProjectPresentation.Status status,,) = p.preview(address(org), 0);
+            assertEq(uint256(status), uint256(IProjectPresentation.Status.ReadFailed));
+            vm.expectRevert(abi.encodeWithSelector(IProjectPresentation.RenderFailed.selector, status));
+            _render();
+        }
+        reader.setResolutionFailure(abi.encodeWithSelector(PresentationReaderMock.PathNotFound.selector, "missing"));
+        (IProjectPresentation.Status missing,,) = p.preview(address(org), 0);
+        assertEq(uint256(missing), uint256(IProjectPresentation.Status.InvalidTarget));
+        (, bytes memory data) = _render();
+        assertEq(data.length, 0);
+    }
+
+    function test_malformedResolveReturnIsIndeterminate() public {
+        reader.setMode(11);
+        (IProjectPresentation.Status status,,) = p.preview(address(org), 0);
+        assertEq(uint256(status), uint256(IProjectPresentation.Status.ReadFailed));
+        vm.expectRevert(abi.encodeWithSelector(IProjectPresentation.RenderFailed.selector, status));
+        _render();
     }
 
     function test_staleRootCannotBeFrozenAndNoLockStateChanges() public {
@@ -524,48 +630,99 @@ contract ProjectPresentationTest is Test {
         assertNotEq(reviewed, p.lockCommitment(address(org), 0, 2));
     }
 
-    function test_codecAndBudgetFailuresHaveSpecificStatuses() public {
-        _embedded();
-        reader.setMode(3);
-        (IProjectPresentation.Status status,,) = p.preview(address(org), 0);
-        assertEq(uint256(status), uint256(IProjectPresentation.Status.UnsupportedCodec));
-        reader.setMode(4);
-        (status,,) = p.preview(address(org), 0);
-        assertEq(uint256(status), uint256(IProjectPresentation.Status.OverBudget));
-        reader.setMode(6);
-        (status,,) = p.preview(address(org), 0);
-        assertEq(uint256(status), uint256(IProjectPresentation.Status.OverBudget));
+    function test_versionAndRemovedLimitGettersDescribeUncappedSemantics() public view {
+        assertEq(p.presentationVersion(), 2);
+        string[5] memory removed = ["MAX_EMBED_BYTES()", "MAX_EMBED_CHUNKS()", "RENDER_GAS()", "SERIALIZE_BASE_GAS()", "SERIALIZE_GAS_PER_BYTE()"];
+        for (uint256 i; i < removed.length; ++i) {
+            (bool ok,) = address(p).staticcall(abi.encodeWithSignature(removed[i]));
+            assertFalse(ok, "no legacy resource policy getter");
+        }
     }
 
-    function test_maximumSuccessfulPayloadRetainsParentSerializationBudget() public {
+    function test_embeddedReturnsPayloadsBeyondFormerByteAndReturnBufferLimits() public {
         _embedded();
-        reader.setMode(8);
-        (IProjectPresentation.Status status, string memory mime, bytes memory data) =
-            p.preview{gas: 8_000_000}(address(org), 0);
+        reader.setMode(7);
+        (IProjectPresentation.Status status, string memory mime, bytes memory data) = p.preview(address(org), 0);
         assertEq(uint256(status), uint256(IProjectPresentation.Status.Ready));
         assertEq(mime, "text/html");
-        assertEq(data.length, 8192);
+        assertEq(data.length, 16_385);
+        reader.setMode(8);
+        (status, mime, data) = p.preview(address(org), 0);
+        assertEq(uint256(status), uint256(IProjectPresentation.Status.Ready));
+        assertEq(mime, "text/html");
+        assertEq(data.length, 102_400);
     }
 
-    function test_expensiveSuccessfulSourceReturnsEmptyBeforeParentSerialization() public {
+    function test_successfulSourceMayUseMoreThanFormerFixedGasAllowance() public {
         _embedded();
         reader.setMode(9);
         (IProjectPresentation.Status status,, bytes memory data) = p.preview{gas: 8_000_000}(address(org), 0);
-        assertEq(uint256(status), uint256(IProjectPresentation.Status.OverBudget));
-        assertEq(data.length, 0);
-        (, data) = p.render{gas: 8_000_000}(address(org), 0, "animation_url");
-        assertEq(data.length, 0);
-        assertEq(uint256(p.config(address(org), 0).method), uint256(IProjectPresentation.Method.Embedded));
+        assertEq(uint256(status), uint256(IProjectPresentation.Status.Ready));
+        assertEq(string(data), "expensive but successful");
     }
 
-    function test_smallPresentationStillRendersUnderReducedReadBudget() public {
+    function test_smallPresentationHasNoFormerMinimumGasReserve() public {
         _embedded();
-        (IProjectPresentation.Status status,, bytes memory data) = p.preview{gas: 2_000_000}(address(org), 0);
+        (IProjectPresentation.Status status,, bytes memory data) = p.preview{gas: 900_000}(address(org), 0);
         assertEq(uint256(status), uint256(IProjectPresentation.Status.Ready));
         assertGt(data.length, 0);
-        (status,, data) = p.preview{gas: 900_000}(address(org), 0);
-        assertEq(uint256(status), uint256(IProjectPresentation.Status.OverBudget));
+    }
+
+    function test_uriListSentinelCannotBecomeEmbeddedLocator() public {
+        _embedded();
+        reader.setMime("text/uri-list");
+        (IProjectPresentation.Status status,, bytes memory data) = p.preview(address(org), 0);
+        assertEq(uint256(status), uint256(IProjectPresentation.Status.UnsupportedMime));
         assertEq(data.length, 0);
+    }
+
+    function test_changedValueEventsReconstructConfigurationAndLocks() public {
+        vm.recordLogs();
+        p.setTarget(address(org), 0, IProjectPresentation.Selection.Tag, 0, "release", "nested/index.html");
+        p.setMethod(address(org), 0, IProjectPresentation.Method.Embedded);
+        p.setEndpoints(address(org), 0, "https://chain.example", "https://ipfs.example");
+        p.lock(address(org), 0, 1, p.lockCommitment(address(org), 0, 1));
+        p.lock(address(org), 0, 6, p.lockCommitment(address(org), 0, 6));
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertEq(logs.length, 5);
+        IProjectPresentation.Config memory replayed;
+        for (uint256 i; i < logs.length; ++i) {
+            assertEq(logs[i].emitter, address(p));
+            assertEq(logs[i].topics[1], bytes32(uint256(uint160(address(org)))));
+            assertEq(logs[i].topics[2], bytes32(0));
+            bytes32 kind = logs[i].topics[0];
+            if (kind == keccak256("TargetChanged(address,uint256,uint8,uint32,string,string)")) {
+                (replayed.selection, replayed.version, replayed.tag, replayed.path) =
+                    abi.decode(logs[i].data, (IProjectPresentation.Selection, uint32, string, string));
+                replayed.configuredFlags |= 1;
+            } else if (kind == keccak256("MethodChanged(address,uint256,uint8)")) {
+                replayed.method = abi.decode(logs[i].data, (IProjectPresentation.Method));
+                replayed.configuredFlags |= 2;
+            } else if (kind == keccak256("EndpointsChanged(address,uint256,string,string)")) {
+                (replayed.chainBase, replayed.ipfsBase) = abi.decode(logs[i].data, (string, string));
+                replayed.configuredFlags |= 4;
+            } else if (kind == keccak256("PresentationLocked(address,uint256,uint8,bytes32)")) {
+                (replayed.locks, replayed.frozenRoot) = abi.decode(logs[i].data, (uint8, bytes32));
+                replayed.configuredFlags |= replayed.locks;
+            } else fail("unexpected event");
+        }
+        assertEq(abi.encode(replayed), abi.encode(p.config(address(org), 0)));
+    }
+
+    function test_configurationFlagsDistinguishExplicitDefaultsAndIndependentDimensions() public {
+        assertEq(p.config(address(org), 0).configuredFlags, 0);
+        p.setEndpoints(address(org), 0, "", "");
+        assertEq(p.config(address(org), 0).configuredFlags, 4);
+        p.setMethod(address(org), 0, IProjectPresentation.Method.ChainGateway);
+        assertEq(p.config(address(org), 0).configuredFlags, 6);
+        p.setTarget(address(org), 0, IProjectPresentation.Selection.Latest, 0, "", "");
+        assertEq(p.config(address(org), 0).configuredFlags, 7);
+        p.setMethod(address(org), 0, IProjectPresentation.Method.ChainGateway);
+        assertEq(p.config(address(org), 0).configuredFlags, 7);
+        assertEq(p.config(address(org), 1).configuredFlags, 0);
+        p.lock(address(org), 1, 2, p.lockCommitment(address(org), 1, 2));
+        assertEq(p.config(address(org), 1).configuredFlags, 2);
+        assertEq(p.config(address(org), 1).locks, 2);
     }
 
     function testFuzz_arbitraryEndpointCannotInjectScheme(string calldata endpoint) public {

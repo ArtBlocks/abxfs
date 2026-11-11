@@ -49,6 +49,12 @@ jobs:
         working-directory: packages/contracts-core
         run: forge build
 
+      # PresentationContent deploys the native reader from the companion package's own artifact.
+      - name: build contracts-companion (projects read its out/)
+        if: matrix.package == 'contracts-projects'
+        working-directory: packages/contracts-companion
+        run: forge build
+
       - name: forge build
         working-directory: packages/${{ matrix.package }}
         run: forge build --sizes

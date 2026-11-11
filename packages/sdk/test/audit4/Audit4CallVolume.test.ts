@@ -21,6 +21,7 @@ import { createPublicClient, createWalletClient, custom, encodeAbiParameters, pa
 import { foundry } from "viem/chains";
 
 import { autoRegisterNodeCodecs } from "../../src/compression.js";
+import { PublishedPartialError } from "../../src/publish.js";
 import { AbxfsClient } from "../../src/abxfs.js";
 import { estimatePublishCalls, RPC_PROXY_CALLS_PER_MINUTE } from "../../src/call-budget.js";
 import { planUpload } from "../../src/upload.js";
@@ -106,10 +107,16 @@ describe("audit4: call volume (fixed)", () => {
       try {
         await client.publishNewProject({ tokenId: 1n, name: "x", files: fs, applied, opts: { plan } });
       } catch (e) {
-        stoppedWith = String((e as Error).message).slice(0, 220);
+        if (e instanceof PublishedPartialError) {
+          expect(e.phase).toBe("readback-version");
+          expect(e.root).toBe(applied.newRootCid);
+          expect(e.published).toBe(true);
+          expect(e.retryPublish).toBe(false);
+          stoppedWith = "confirmed publication; readback-version";
+        } else stoppedWith = String((e as Error).message).slice(0, 220);
       }
       const publish = c.snap();
-      expect(stoppedWith).toMatch(/could not confirm which version|version count|publish blind/); // got all the way through the content stages
+      expect(stoppedWith).toMatch(/^confirmed publication; readback-version$|could not confirm which version|version count|publish blind/); // got all the way through the content stages
 
       const polls = publish.byMethod.eth_getTransactionReceipt ?? 0;
       const sent = publish.byMethod.eth_sendRawTransaction ?? 0;

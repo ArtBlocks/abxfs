@@ -296,30 +296,56 @@ stored method, endpoints and locks. `preview` also reports the render status, MI
 Every presentation command accepts `--json`, emitting one JSON result; write confirmations go to
 stderr. Errors use the CLI's existing credential redaction and become JSON with `ok: false`.
 
-`set-method` accepts `chain-gateway`, `embedded`, `ipfs` and `auto`. Auto is a tooling recommendation,
-resolved to a concrete method before writing. It uses the official SDK's bounded content inspection:
-small supported HTML/media (at most 8 KiB and 32 chunks, without file codecs) can use Embedded;
-larger payloads, multiple-file sites and detected dependencies use ChainGateway. Static inspection
-cannot prove arbitrary executable code self-contained; preview reports residual dependencies and
-runtime uncertainty. IPFS is selected only when explicitly requested.
+`set-method` accepts `chain-gateway`, `embedded`, `ipfs` and `auto`. Auto uses the
+shared SDK planner and defaults to a configurable tooling recommendation of
+100 KiB. Supported self-contained content can use Embedded; dependencies and
+larger payloads favor ChainGateway. Explicit Embedded in the current generation
+has no fixed byte/chunk/gas policy. Raw and FastLZ storage work natively; file-level
+codecs and the reserved `text/uri-list` MIME do not. Static inspection and native
+preview do not prove that complete metadata fits a caller/RPC budget. IPFS remains
+an explicit choice with pinning arranged separately.
 
-For a new project, `upload --name` uses auto when its org supports presentation. You can select a
-method with `--presentation <method>`. Uploads to an existing `--project-id` preserve its method
-unless that option is given; a locked method cannot be overridden. A new project's implicit org
-selection uses only the current factory: remembered orgs from older factories are skipped, and
-only current-factory administered orgs are considered before creating a personal org. Explicit
-`--org` remains available for older orgs.
+First publication, including `upload --project-id` into a minted empty project,
+uses Auto unless the method was deliberately configured. Tooling suggests
+`index.html`, then a sole file such as `pfp.webp`, then the directory root. Set
+`--presentation-path ''` to choose that root explicitly; Embedded reads its
+`index.html` when present. Missing indexes never become synthetic embedded listings.
+Source, method and endpoints are independent; endpoint-only preconfiguration does
+not disable initial Auto selection.
 
-`update` preserves the existing presentation method and previews it after publication on supported
-orgs. If it is not Ready (for example, Embedded content grew beyond its limits or now uses a file
-codec), or the preview read fails, the CLI warns and prints exact preview and method-change commands.
-The publication stays successful: do not rerun the update. Review the suggested method change
-separately; the CLI does not replace the owner's choice automatically. Legacy orgs skip this check.
+```sh
+abxfs upload ./art --name Artwork --presentation auto --presentation-path pfp.webp --org 0x… --chain base-sepolia --dry-run --json
+abxfs update ./art --project-id 0 --org 0x… --chain base-sepolia --presentation chain-gateway --dry-run --json
+abxfs update ./changed-files --overlay --project-id 0 --org 0x… --chain base-sepolia --dry-run --json
+```
 
-All presentation mutations accept `--dry-run`: they report the current configuration and proposed
-change without a signer, transaction, or `--yes`. `update <path> --dry-run` likewise scans the local
-content and reports an update plan without publishing. Upload's existing dry run continues to
-compute content CIDs without sending; the final auto method is determined after content is readable.
+Later publications preserve source, method and endpoints unless `--presentation`
+or `--presentation-path` requests a change. `update` is a **full snapshot
+replacement** by default: omitted paths disappear. `--overlay` uses SDK draft
+operations to add/replace supplied directory files while keeping omitted paths;
+it does not remove them. File-kind projects use a single replacement. Review the
+proposed root, mode and file changes before sending. For explicit remove/edit
+batches, use the SDK draft APIs.
+
+Upload and update accept `--json` for one stdout result, with progress on stderr.
+Dry runs require no signer and include proposed root/path, requested and concrete
+method, reasons, locks, readiness and read-reach diagnostics. Outcomes distinguish
+planned, published, published_warning and phase-specific pending outcomes, retaining
+project identity and completed transaction phases. A confirmed publish followed by
+readback, tag or name failure retains its publish hash and `retryPublish: false`;
+an unproven version number is not guessed. Reconcile that confirmed publication
+and finish only the remaining followup. If presentation setup fails
+after publication, follow the emitted presentation-only recovery commands; never
+rerun the successful upload or update to fix a method setting.
+
+After publication, a bounded complete `tokenURI` check can warn even when native
+preview is Ready. Publication remains successful. Presentation writes also report
+complete metadata read results; a warning never causes another write. A successful
+read does not guarantee remote gateway availability or marketplace execution.
+Legacy orgs without presentation skip these checks. Implicit selection for new
+projects uses the current factory; explicit `--org` remains available for supported
+older orgs. A retired intermediate factory is explained explicitly rather than
+silently creating or migrating a project.
 
 ### Permanent presentation locks
 

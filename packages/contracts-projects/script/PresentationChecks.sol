@@ -63,6 +63,10 @@ library PresentationChecks {
     function presentation(address at, address directoryStore, address fileStore, string memory gateway) internal view {
         code("ABXFS_PRESENTATION", at);
         stores(at, directoryStore, fileStore, "presentation");
+        (bool versionOk, bytes memory versionData) = at.staticcall(abi.encodeWithSignature("presentationVersion()"));
+        if (!versionOk || versionData.length != 32 || abi.decode(versionData, (uint256)) != 2) {
+            revert ProbeFailed("presentationVersion()", at);
+        }
         address reader = addressWord(at, "reader()");
         address resolver = addressWord(at, "ipfsResolver()");
         dependencies(reader, resolver, directoryStore, fileStore);

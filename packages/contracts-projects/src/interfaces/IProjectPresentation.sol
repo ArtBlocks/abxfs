@@ -30,6 +30,8 @@ interface IProjectPresentation is IAbxFieldRenderer {
         Selection selection;
         Method method;
         uint8 locks;
+        /// @dev Deliberately configured dimensions, including explicit default values: target=1, method=2, endpoints=4.
+        uint8 configuredFlags;
         uint32 version;
         bytes32 frozenRoot;
         string tag;
@@ -38,17 +40,23 @@ interface IProjectPresentation is IAbxFieldRenderer {
         string ipfsBase;
     }
 
+    /// @notice An indeterminate dependency/resource failure; consumers must retry the read rather than cache neutral metadata.
+    error RenderFailed(Status status);
     error NotProjectOwner();
     error InvalidOrg();
     error Locked(uint8 dimension);
     error InvalidConfiguration();
     error StaleCommitment(bytes32 expected, bytes32 actual);
 
-    event TargetChanged(address indexed org, uint256 indexed tokenId);
+    event TargetChanged(
+        address indexed org, uint256 indexed tokenId, Selection selection, uint32 version, string tag, string path
+    );
     event MethodChanged(address indexed org, uint256 indexed tokenId, Method method);
-    event EndpointsChanged(address indexed org, uint256 indexed tokenId);
+    event EndpointsChanged(address indexed org, uint256 indexed tokenId, string chainBase, string ipfsBase);
     event PresentationLocked(address indexed org, uint256 indexed tokenId, uint8 locks, bytes32 frozenRoot);
 
+    /// @notice Presentation semantics version; version 2 has no on-chain payload-size or chunk policy.
+    function presentationVersion() external pure returns (uint256);
     function setTarget(
         address org,
         uint256 tokenId,

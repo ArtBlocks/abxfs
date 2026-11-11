@@ -12,7 +12,8 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { TransactionTimeoutError } from "@artblocks/abxfs-sdk";
+import { TransactionTimeoutError, isOrg } from "@artblocks/abxfs-sdk";
+import { createTestClient, http, toFunctionSelector, type Hex } from "viem";
 
 const h = vi.hoisted(() => ({ client: {} as Record<string, unknown> }));
 vi.mock("../../src/client.js", () => ({
@@ -36,12 +37,23 @@ import { formatCliError } from "../../src/redact.js";
 
 const CLI_DIST = resolve(__dirname, "../../dist/index.js");
 const TX = ("0x" + "12".repeat(32)) as `0x${string}`;
+const ORG = "0x00000000000000000000000000000000000000a1";
+const LEGACY_FACTORY = "0x00000000000000000000000000000000000000a2";
+const LEGACY_HOOK = "0x00000000000000000000000000000000000000a3";
 const anvilInstalled = spawnSync("anvil", ["--version"], { stdio: "ignore" }).status === 0;
 
 describe.skipIf(!anvilInstalled || !existsSync(CLI_DIST))("the recovery command, end to end", () => {
   let anvil: AnvilHarness;
   beforeAll(async () => {
     anvil = await startAnvilWithAbxfs({ anvilArgs: ["--gas-limit", "60000000"] });
+    // Dry-run recovery resolves the supplied org before inspecting its generation. This test needs
+    // only a legacy registry: no presentation capability, mint, hook write or ABX renderer.
+    // Runtime: accept isOrg(address) only, return the ABI bool (argument == ORG), revert other selectors.
+    // 0x11 is the JUMPDEST after the selector check and revert branch.
+    const bytecode = `0x5f3560e01c63${toFunctionSelector("isOrg(address)").slice(2)}146011575f5ffd5b60043573${ORG.slice(2)}145f5260205ff3` as Hex;
+    await createTestClient({ mode: "anvil", transport: http(anvil.rpcUrl) }).setCode({ address: LEGACY_FACTORY, bytecode });
+    expect(await isOrg(anvil.publicClient, LEGACY_FACTORY, ORG)).toBe(true);
+    expect(await isOrg(anvil.publicClient, LEGACY_FACTORY, LEGACY_HOOK)).toBe(false);
   });
   afterAll(async () => anvil?.stop());
 
@@ -61,7 +73,7 @@ describe.skipIf(!anvilInstalled || !existsSync(CLI_DIST))("the recovery command,
   function config(file: string, defaults: { defaultCodec: string; fastLz: boolean }): void {
     writeFileSync(
       file,
-      JSON.stringify({ chains: { local: { chainId: 31337, rpcUrl: anvil.rpcUrl, addresses: anvil.addresses, ...defaults } }, defaultChain: "local" }),
+      JSON.stringify({ chains: { local: { chainId: 31337, rpcUrl: anvil.rpcUrl, addresses: { ...anvil.addresses, orgFactory: LEGACY_FACTORY, projectHook: LEGACY_HOOK, projectPresentation: undefined }, ...defaults } }, defaultChain: "local" }),
     );
   }
 

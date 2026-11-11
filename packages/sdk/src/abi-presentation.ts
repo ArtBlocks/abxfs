@@ -37,6 +37,11 @@ export const iProjectPresentationAbi = [
             "internalType": "uint8"
           },
           {
+            "name": "configuredFlags",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
             "name": "version",
             "type": "uint32",
             "internalType": "uint32"
@@ -127,6 +132,19 @@ export const iProjectPresentationAbi = [
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "presentationVersion",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "pure"
   },
   {
     "type": "function",
@@ -329,6 +347,18 @@ export const iProjectPresentationAbi = [
         "type": "uint256",
         "indexed": true,
         "internalType": "uint256"
+      },
+      {
+        "name": "chainBase",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      },
+      {
+        "name": "ipfsBase",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
       }
     ],
     "anonymous": false
@@ -404,6 +434,30 @@ export const iProjectPresentationAbi = [
         "type": "uint256",
         "indexed": true,
         "internalType": "uint256"
+      },
+      {
+        "name": "selection",
+        "type": "uint8",
+        "indexed": false,
+        "internalType": "enum IProjectPresentation.Selection"
+      },
+      {
+        "name": "version",
+        "type": "uint32",
+        "indexed": false,
+        "internalType": "uint32"
+      },
+      {
+        "name": "tag",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      },
+      {
+        "name": "path",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
       }
     ],
     "anonymous": false
@@ -433,6 +487,17 @@ export const iProjectPresentationAbi = [
     "type": "error",
     "name": "NotProjectOwner",
     "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "RenderFailed",
+    "inputs": [
+      {
+        "name": "status",
+        "type": "uint8",
+        "internalType": "enum IProjectPresentation.Status"
+      }
+    ]
   },
   {
     "type": "error",

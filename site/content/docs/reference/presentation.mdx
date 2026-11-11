@@ -3,7 +3,7 @@ title: "Project presentation and native reads"
 description: "Select a project's marketplace content, freeze presentation choices, and read stored bytes from Solidity."
 ---
 
-Project presentation controls `animation_url` for orgs created by a factory with
+Project presentation controls `animation_url`, a content field commonly used by NFT marketplaces, for orgs created by a factory with
 `projectPresentation`. It is separate from publishing: versions remain append-only,
 and presentation changes do not rewrite stored content. Check [deployment status](/docs/reference/deployments)
 for the current generation and the original factories retained for older orgs.
@@ -13,33 +13,54 @@ for the current generation and the original factories retained for older orgs.
 | Method | What the token renders | When to use it |
 | --- | --- | --- |
 | ChainGateway | A chain-specific URL for the selected root and path | The on-chain default; websites, larger files and content with dependencies |
-| Embedded | The selected file's bytes, embedded by ABX in metadata | Small supported HTML, SVG, image, audio or video payloads |
+| Embedded | The selected file's bytes, embedded by ABX in metadata | Supported HTML, SVG, image, audio or video payloads with a suitable caller budget |
 | IPFS | `ipfs://<cid>/<path>`, or an explicit subdomain gateway URL | An explicit creator choice, with pinning arranged separately |
 
-`auto` is a CLI/SDK recommendation, not a fourth on-chain mode. It writes Embedded
-only for suitable payloads of **at most 8,192 decoded bytes and 32 chunks** with no
-detected dependencies; otherwise it writes ChainGateway. File-level codecs,
-multi-entry directories, relative/external references and detected network or opaque
-dynamic code retain a gateway origin. Inline JavaScript can qualify, but static
-inspection cannot prove arbitrary code self-contained: review `runtimeUncertain`
-and `residualDependencies` in the preview.
+`auto` is a CLI/SDK recommendation, not a fourth on-chain mode. Its configurable
+tooling policy defaults to **100 KiB** of inspected content; it writes Embedded for
+suitable supported payloads with no detected dependencies, otherwise ChainGateway.
+This is a recommendation, not a contract limit or a promise that every RPC can
+render the complete metadata. The current presentation generation places no fixed
+byte, chunk or gas policy on explicit Embedded. Natural caller gas and RPC response
+limits still apply. The superseded presentation generation had an 8,192-byte/32-chunk
+limit; older original factories have no presentation capability.
 
-Auto never selects IPFS. Choosing IPFS computes a CID; it does not pin anything or
+Raw storage and FastLZ storage decode natively. File-level codecs such as gzip need
+off-chain decoding and cannot use Embedded. `text/uri-list` is reserved for locator
+output, not embedded content. Relative/external references and detected network or
+opaque dynamic code favor a gateway origin. Inline JavaScript can qualify, but
+static inspection cannot prove arbitrary code self-contained: review
+`runtimeUncertain`, `residualDependencies`, and `readReach` in the plan.
+
+Auto never selects IPFS. On-chain IPFS derivation cannot decode file-level codecs,
+including a known changed codec file elsewhere in the derived directory root. The
+planner blocks these known incompatibilities and proven absent configured targets
+before publication. A directory URL does not require `index.html`; MIME and Auto
+size preferences do not restrict an explicit IPFS choice. Planning does not scan
+all unchanged siblings or guarantee complete root derivation.
+
+Choosing IPFS computes a CID; it does not pin anything or
 promise availability. The creator must [pin the content](/docs/using-abxfs/ipfs)
 and keep it available. An empty IPFS endpoint uses `ipfs://`; a base such as
 `https://dweb.link` produces `https://<cid>.ipfs.dweb.link/...`.
 An empty chain endpoint uses the generation's default gateway; a custom chain base
 must serve `/g/cid/<chain>/<root>/<path>`. Use HTTPS bases without a trailing slash.
 
-New CLI projects use Auto when their org supports presentation. Updating an existing
-project with `upload --project-id` preserves its method unless `--presentation` is supplied.
-`update` also preserves the owner's method. After publishing, it previews supported
-presentation and warns if the result is not Ready or the read fails, with commands
-to inspect and review a gateway method change. Publication remains successful;
-rerunning the update is unnecessary. A previously Embedded project that grows beyond
-the limits or uses a file codec may need an explicit method change. See the
-[CLI commands](/docs/reference/cli#project-presentation) and
-[SDK methods](/docs/reference/sdk#native-content-and-project-presentation).
+A first publication uses Auto when its org supports presentation, including an
+already-minted empty project. Tooling suggests `index.html`, otherwise the sole
+file, otherwise the directory root. An explicit path, including `""`, takes
+precedence. Deliberately preconfigured source and method choices are preserved
+independently; setting endpoints alone does not disable initial Auto selection.
+
+Later `upload --project-id` and `update` preserve the saved source, method and
+endpoints unless `--presentation` or `--presentation-path` explicitly changes a
+choice. They never silently downgrade an owner's method. After publication the CLI
+checks complete `tokenURI` with a bounded read pinned to the final confirmed
+settings transaction, or publication transaction when no settings changed, as well
+as native preview on update.
+A failure produces a warning and exact inspection/recovery commands; publication
+remains successful and must not be repeated. See the [CLI commands](/docs/reference/cli#project-presentation)
+and [SDK planner](/docs/reference/sdk#native-content-and-project-presentation).
 
 ## Select the source
 
@@ -47,15 +68,25 @@ Choose **Latest**, a 1-based **Version**, or a named **Tag**, plus an optional p
 inside that root. Latest follows new publishes; Tag follows tag movements; Version
 selects one historical root. An empty path selects a file root or `index.html` in a
 directory when reading Embedded content. A selected directory likewise reads its
-`index.html`. Paths are relative, without a leading or trailing slash.
+`index.html`. Presentation paths are relative, without empty segments, `.`/`..`,
+backslashes or control bytes, and fit 2,048 UTF-8 bytes, 32 segments and 255 bytes
+per segment. Explicit invalid targets are blocked before publishing, regardless of
+delivery method. If a suggested entrypoint exceeds these limits, Auto keeps the
+directory root and chooses ChainGateway; this does not reject a valid deeper
+content tree.
 
 `presentation inspect` reports the exact selected root and path, method, endpoints
 and locks. `presentation preview` adds the status, MIME type, payload and dependency
-analysis without a signer. A Ready URL preview does not check that its remote
-endpoint is online. On failure, the renderer returns an empty `text/plain` payload,
-which ABX encodes as the inert `data:text/plain;base64,` animation URI; token metadata
-remains retrievable. Inspect the preview status to distinguish unpublished content,
-an invalid target, an unsupported codec or MIME type, read failures and exhausted budgets.
+analysis without a signer. Native preview and payload analysis do not prove that
+the full ABX metadata can be serialized within a caller budget. A 100 KiB payload
+can require close to 50 million gas for complete `tokenURI`, depending on content
+and metadata. A Ready URL preview does not check that its remote
+endpoint is online. Semantic missing or unpublished targets and unsupported codec/MIME states return an
+empty `text/plain` payload, encoded by ABX as the inert `data:text/plain;base64,`
+animation URI. Actual native read or IPFS derivation failure is surfaced as a typed
+render failure, and insufficient caller gas can fail the complete metadata read.
+Inspect diagnostic preview to distinguish these cases; do not treat native preview
+as a guarantee of complete metadata availability.
 
 Browser and marketplace support for HTML, data URIs and IPFS varies. Preserved bytes
 and valid token metadata do not guarantee that every viewer can display or execute
@@ -63,7 +94,8 @@ the content.
 
 ## Freeze independent choices
 
-Only the project token owner may configure or lock its presentation. Three permanent
+Only the project token owner may configure or lock its presentation. Freezing the
+displayed content is one-way, including for future owners. Three permanent
 locks can be combined:
 
 | Lock | Commitment |

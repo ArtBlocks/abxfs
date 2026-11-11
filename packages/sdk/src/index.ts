@@ -40,6 +40,8 @@ export * from "./abi-org.js";
 export * from "./abi-reader.js";
 export * from "./abi-presentation.js";
 export * from "./presentation.js";
+export * from "./presentation-plan.js";
+export * from "./retired.js";
 export * from "./content-host.js";
 export * from "./url-safety.js";
 export * from "./address-safety.js";

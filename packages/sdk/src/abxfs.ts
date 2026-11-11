@@ -136,9 +136,11 @@ import { assertWalletChain } from "./wallet-chain.js";
 import {
   readPresentation, inspectPresentation, previewPresentation, configurePresentationTarget,
   setPresentationMethod, setPresentationEndpoints, lockPresentation, readPresentationLockCommitment,
-  readNativeFile, readNativePath, readNativeFileRange,
-  type PresentationTarget, type PresentationMethod, type NativeReadLimits,
+  readNativeFile, readNativePath, readNativeFileRange, verifyPresentationTokenUri,
+  type PresentationTarget, type PresentationTokenUriOptions, type PresentationMethod, type NativeReadLimits,
 } from "./presentation.js";
+
+import { planPresentation, applyPresentationPlan, type PresentationPlanRequest, type PresentationPlan } from "./presentation-plan.js";
 
 export interface AbxfsClientOptions {
   publicClient: PublicClient;
@@ -778,6 +780,23 @@ export class AbxfsClient {
 
   previewPresentation(tokenId: bigint) {
     return previewPresentation(this.publicClient, this.addresses, this._requireOrg(), tokenId);
+  }
+
+  /** Plan before publishing; first-publication defaults come from project state, not minting flow. */
+  async planPresentation(tokenId: bigint, request: PresentationPlanRequest) {
+    const [project, current] = await Promise.all([this.readProject(tokenId), this.inspectPresentation(tokenId)]);
+    return planPresentation(this.publicClient, this.addresses, { ...request,
+      firstPublication: request.firstPublication ?? project.versionCount === 0,
+      current: request.current ?? current });
+  }
+
+  applyPresentationPlan(tokenId: bigint, plan: PresentationPlan) {
+    this._requireWallet();
+    return applyPresentationPlan({ publicClient: this.publicClient, walletClient: this.walletClient! }, this.addresses, this._requireOrg(), tokenId, plan);
+  }
+
+  verifyPresentationTokenUri(tokenId: bigint, options?: PresentationTokenUriOptions) {
+    return verifyPresentationTokenUri(this.publicClient, this._requireOrg(), tokenId, options);
   }
 
   configurePresentationTarget(tokenId: bigint, target: PresentationTarget) {

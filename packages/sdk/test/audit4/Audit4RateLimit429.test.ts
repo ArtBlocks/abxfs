@@ -16,6 +16,7 @@ import { createPublicClient, createWalletClient, encodeAbiParameters, http, pad,
 import { foundry } from "viem/chains";
 
 import { autoRegisterNodeCodecs } from "../../src/compression.js";
+import { PublishedPartialError } from "../../src/publish.js";
 import { AbxfsClient } from "../../src/abxfs.js";
 import { startAnvilWithAbxfs, type AnvilHarness } from "../helpers/anvil.js";
 
@@ -96,11 +97,17 @@ for (const n of (process.env.A4N ?? "60,120,250,500").split(",").map(Number)) {
     try {
       await c.publishNewProject({ tokenId: 1n, name: "x", files: fs, applied, opts: { plan, onPhase: (p) => phases.push(`${p}@${stats.calls}`) } });
     } catch (e) {
-      outcome = String((e as Error).message).replace(/\s+/g, " ").slice(0, 160);
+      if (e instanceof PublishedPartialError) {
+        expect(e.phase).toBe("readback-version");
+        expect(e.root).toBe(applied.newRootCid);
+        expect(e.published).toBe(true);
+        expect(e.retryPublish).toBe(false);
+        outcome = "confirmed publication; readback-version";
+      } else outcome = String((e as Error).message).replace(/\s+/g, " ").slice(0, 160);
     }
     appendFileSync("/tmp/a4/rl-after.txt", JSON.stringify({ n, outcome, seconds: (Date.now() - t0) / 1000, phases, ...stats }) + "\n");
     expect(stats.r429).toBe(0);
     expect(stats.calls).toBeLessThan(600);
-    expect(outcome).toMatch(/could not confirm which version|version count|publish blind|completed/); // got past every content stage
+    expect(outcome).toMatch(/^confirmed publication; readback-version$|could not confirm which version|version count|publish blind|completed/); // got past every content stage
   }, 900_000);
 }
