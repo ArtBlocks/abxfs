@@ -28,9 +28,15 @@ export function mockClient<T extends object>(overrides: T, opts: { balance?: big
     walletClient: { account: { address: ACCOUNT } },
     publicClient: {
       getBalance: async () => opts.balance ?? 10n ** 18n,
+      readContract: async ({ functionName }: { functionName: string }) => { if (functionName === "presentationVersion") return 2n; throw new Error(functionName); },
       // The node's createOrg estimate; a mock without one shows the per-transaction cap instead.
       estimateContractGas: async () => 3_000_000n,
     },
+    readProject: async () => ({ cid: `0x${"ab".repeat(32)}`, kind: 1, name: "project", versionCount: 1 }),
+    inspectPresentation: async () => ({ root: `0x${"ab".repeat(32)}`, selection: 0, method: 0, locks: 0, configuredFlags: 0, version: 0, frozenRoot: `0x${"00".repeat(32)}`, path: "", tag: "", chainBase: "", ipfsBase: "" }),
+    planUpload: async () => ({ rootCid: `0x${"cd".repeat(32)}`, files: [] }),
+    uploadFile: async () => ({ rootCid: `0x${"cd".repeat(32)}`, txHashes: [], rootKind:"file" }),
+    verifyPresentationTokenUri: async () => ({ ok: true, status: "ready", callerGas: 50_000_000n, reason: "complete metadata verified" }),
     readOrg: async (org: string) => ({ org, name: opts.orgName ?? "Test Org", admin: ACCOUNT, pendingAdmin: null, open: false, createdBlock: 1n }),
   };
   return { ...base, ...overrides };

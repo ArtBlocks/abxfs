@@ -41,6 +41,8 @@ import {
 } from "./types.js";
 import { assertWalletChain } from "./wallet-chain.js";
 
+import { isRetiredFactory, RETIRED_PRESENTATION_FACTORY, RetiredOrgGenerationError } from "./retired.js";
+
 const ZERO: Address = "0x0000000000000000000000000000000000000000";
 
 /** The factory enforces the same bound; checking here turns a revert into a readable error. */
@@ -150,6 +152,7 @@ export function orgGenerations(addresses: ContractAddresses): OrgGeneration[] {
   const out: OrgGeneration[] = [];
   const byFactory = new Map<string, OrgGeneration>();
   for (const g of [...current, ...(addresses.previousGenerations ?? [])]) {
+    if (isRetiredFactory(g.orgFactory)) continue;
     const key = g.orgFactory.toLowerCase();
     const seen = byFactory.get(key);
     if (seen) {
@@ -221,7 +224,11 @@ export async function addressesForOrg(
   org: Address,
 ): Promise<ContractAddresses | undefined> {
   const generation = await generationOfOrg(client, addresses, org);
-  if (!generation) return undefined;
+  if (!generation) {
+    if (isRetiredFactory(RETIRED_PRESENTATION_FACTORY) && await isOrg(client, RETIRED_PRESENTATION_FACTORY, org).catch(() => false))
+      throw new RetiredOrgGenerationError(org);
+    return undefined;
+  }
   const { previousGenerations: _drop, orgMinter: _m, projectEnumeration: _e, lens: _l, projectPresentation: _p, contentReader: _reader, ...rest } = addresses;
   void _drop; void _m; void _e; void _l; void _p;
   // The native reader is bound to the book's immutable store pair, not to arbitrary older stores.
@@ -821,6 +828,7 @@ export async function createOrg(
     onSent?: (hash: Hex) => void;
   },
 ): Promise<CreatedOrg> {
+  if (isRetiredFactory(factory)) throw new RetiredOrgGenerationError();
   assertWalletChain(clients.publicClient, clients.walletClient);
   validateOrgName(args.name);
   const description = args.description ?? "";

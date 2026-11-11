@@ -8,7 +8,7 @@ import { parseTokenId, parsePositiveInt } from "../args.js";
 import { createOrgClient } from "../client.js";
 import { loadConfig, requireOrg, resolveChain } from "../config.js";
 import { redact } from "../redact.js";
-import { safe } from "../text.js";
+import { safe, shellArg } from "../text.js";
 import { confirmWrite } from "../write-plan.js";
 
 type Options = {
@@ -82,7 +82,14 @@ async function change(opts: Options, action: string, lockMask: number, proposed:
   }, { yes: opts.yes, stderr: opts.json });
   if (!confirmed) { emit(opts, { ok: true, cancelled: true, ...plan }); return; }
   const txHash = await send(ctx.client, ctx.tokenId);
-  emit(opts, { ok: true, ...plan, txHash, after: stateOutput(await ctx.client.inspectPresentation(ctx.tokenId)) });
+  let after: unknown, afterError: string | undefined;
+  try { after = stateOutput(await ctx.client.inspectPresentation(ctx.tokenId)); }
+  catch (error) { afterError = redact(error instanceof Error ? error.message.split("\n")[0]! : String(error)); }
+  const completeMetadata = await ctx.client.verifyPresentationTokenUri(ctx.tokenId, { afterTransactionHash: txHash });
+  const chainName = opts.chain ?? process.env["ABXFS_CHAIN"]?.trim() ?? loadConfig().defaultChain;
+  const recovery = !completeMetadata.ok || afterError ? [`abxfs presentation preview --org ${ctx.org} --project-id ${ctx.tokenId}${chainName ? ` --chain ${shellArg(chainName)}` : ""}`] : [];
+  emit(opts, { ok: true, outcome: completeMetadata.ok && !afterError ? "configured" : "configured_warning", ...plan,
+    txHash, after, afterError, completeMetadata, recovery, retryWrite: false });
 }
 export function presentationCommand(): Command {
   const group = new Command("presentation").description("Inspect and configure generation-specific project presentation");
@@ -101,8 +108,9 @@ export function presentationCommand(): Command {
       const ctx = await context(opts);
       const preview = await ctx.client.previewPresentation(ctx.tokenId);
       const { bytes, recommendation, ...state } = preview;
+      const completeMetadata = await ctx.client.verifyPresentationTokenUri(ctx.tokenId);
       emit(opts, { ok: true, source: source(ctx), ...stateOutput(state), status: preview.status,
-        statusName: PresentationStatus[preview.status], contentType: preview.contentType, bytesHex: bytesToHex(bytes),
+        statusName: PresentationStatus[preview.status], contentType: preview.contentType, bytesHex: bytesToHex(bytes), completeMetadata,
         residualDependencies: preview.residualDependencies, runtimeUncertain: preview.runtimeUncertain,
         recommendation: recommendation ? { ...recommendation, reason: redact(recommendation.reason) } : null });
     }));

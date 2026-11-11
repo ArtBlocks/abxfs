@@ -48,7 +48,7 @@ import { nodeGasEstimate } from "./node-gas.js";
 import { ZERO_HASH } from "./cid.js";
 import { packFile, type PackedTree } from "./nodes.js";
 import { emptyDirectoryChanges, walkDirectoryTree } from "./read.js";
-import { publishRootAndTag } from "./publish.js";
+import { publishRootAndTag, PublishedPartialError } from "./publish.js";
 import { waitForSuccessfulReceipt } from "./receipts.js";
 import { assertValidPublishInputs } from "./validate.js";
 import { assertHookAcceptsContent, contentStores } from "./stores.js";
@@ -918,10 +918,15 @@ export async function executeNewProjectPublish(
   // with no content is an empty shell in every listing.
   let nameTxHash: Hex | undefined;
   if (name) {
-    opts.onPhase?.("setting-name");
-    nameTxHash = await setProjectName(clients.walletClient, project, tokenId, name);
-    txHashes.push(nameTxHash);
-    await waitForSuccessfulReceipt(clients.publicClient, nameTxHash, "setName");
+    try {
+      opts.onPhase?.("setting-name");
+      nameTxHash = await setProjectName(clients.walletClient, project, tokenId, name);
+      txHashes.push(nameTxHash);
+      await waitForSuccessfulReceipt(clients.publicClient, nameTxHash, "setName");
+    } catch (error) {
+      throw new PublishedPartialError("setting-name", { root: applied.newRootCid, org: project.collection, tokenId,
+        publishTxHash, versionNumber, ...(tagTxHash ? { tagTxHash } : {}), ...(nameTxHash ? { nameTxHash } : {}), txHashes }, error);
+    }
   }
 
   opts.onPhase?.("complete");

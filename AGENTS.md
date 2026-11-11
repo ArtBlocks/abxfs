@@ -73,12 +73,15 @@ fuzz case guarding this.
 renounce it can never be swapped or cleared. Weight "must NOT revert" cases as heavily as "must
 revert" ones.
 
-**`ProjectCard.render` must never revert, and neither may any field renderer.** The ABX metadata renderer
-`staticcall`s them with no try/catch, so a revert bricks the whole `tokenURI`, not just one field. The card reads the
-org's own `name()` for its header, hand-decoded like every other read there, and it is frozen per org — whatever it
-shows is what that org shows forever. Note that `try/catch` is *insufficient*: a staticcall to a no-code address
-succeeds with empty returndata, and a return-data decoding failure is not catchable. That is why every external read
-in `ProjectCard`, `ProjectTraits`, `ProjectLinks` and `OrgMeta` is hand-decoded.
+**Ordinary malformed and semantic field states must remain safe to render.** The card and legacy field
+renderers handle no-code, short and malformed dependency responses deliberately. A staticcall to a no-code address
+succeeds with empty returndata, and a return-data decoding failure is not catchable, so external reads in
+`ProjectCard`, `ProjectTraits`, `ProjectLinks` and `OrgMeta` are hand-decoded. The current presentation renderer is
+a deliberate exception to a blanket never-revert rule: actual content/IPFS read failure is surfaced as a typed
+render failure, and Embedded can naturally exhaust its caller's gas. Do not add fixed byte/chunk/gas product caps
+or silently change delivery method to hide those failures. Semantic missing/unpublished targets may return neutral
+output; use diagnostic preview to distinguish them from resource or dependency failure. Native preview eligibility
+does not prove the complete ABX `tokenURI` can be serialized within an RPC caller budget.
 
 **Param keys are packed ASCII, not hashed.** `bytes32("abxfs.cid")` must equal
 `stringToHex(key, {size: 32})`. Divergence is silent and total — every read returns "unset", every
@@ -338,7 +341,7 @@ that answers `tokenParam` with any root and have a gateway serve it under a proj
 subject a filter can derive from the path. `resolveRoot` calls `isOrg` before reading anything from the
 address in the URL; any real ABX collection that is not an org is a good test case.
 
-**Once a factory has orgs on a production chain, it stays in the registry after it is superseded.** An org is frozen
+**Supported factory generations stay in the registry after they are superseded.** An org is frozen
 against the factory that made it, so a fixed bug ships as a new factory and the old one's orgs keep their old hook. The
 registry holds the current factory's contracts in `orgFactory` / `projectHook` / … and any earlier one in
 `previousGenerations`; removing one 404s every URL under its orgs. Anything that starts from an org *address* — a URL,
@@ -346,7 +349,11 @@ a link, a list — must go through `generationOfOrg` / `addressesForOrg` / `Abxf
 current factory. `forOrg` is for an org created a moment ago in this process; used on an older org it reads the wrong
 hook's history, which for a publish is the silent kind of wrong. The gateway, `abxfs-mirror` (one cursor per factory)
 and every CLI command already do, and a site must resolve the factory before anything that can write renders.
-Content (stores, root hosts) is shared by all factories.
+Content (stores, root hosts) is shared by all factories. The explicit exception is the superseded presentation test
+factory `0x4a5D0fCed9b2162Db4517E7248dC0f3243CCB475`: its retirement activates only after verified replacement canonical
+promotion. It is not supported history and must not be indexed or watched; direct remembered-org resolution explains
+retirement without automatic minting, migration or retry. The original `0xC5aBF9fBd94659cdfc173AF30c6052700Fa62798`
+factory remains supported on its original six chains. Candidate overrides must remain usable before promotion.
 
 **Token-owner delegation is disabled in every org** (`disableTokenOwnerDelegation`, an ABX init flag): a
 delegate.xyz delegate would otherwise act as the token owner and could rewrite a project's CID. `ownerOf` is

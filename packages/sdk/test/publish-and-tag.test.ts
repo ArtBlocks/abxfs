@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import { encodeAbiParameters, encodeEventTopics, type Hex } from "viem";
 
 import { iProjectHookAbi } from "../src/abi-hook.js";
-import { publishRootAndTag, resolvePublishedVersion } from "../src/publish.js";
+import { publishRootAndTag, resolvePublishedVersion, PublishedPartialError } from "../src/publish.js";
 import type { AbxfsCid } from "../src/index.js";
 
 const HOOK = "0x00000000000000000000000000000000000000b2" as const;
@@ -161,6 +161,25 @@ describe("publishRootAndTag", () => {
     ).rejects.toThrow(/setTag reverted/);
   });
 
+  it("retains confirmed publish identity when readback fails without tagging or republishing",async()=>{
+    const w=world({chain:[OLD,NEW],neverVisible:true});
+    const error=await publishRootAndTag(w.clients,project,5n,NEW,{tag:"release",settleOpts:FAST}).catch(e=>e);
+    expect(error).toBeInstanceOf(PublishedPartialError);
+    expect(error).toMatchObject({published:true,retryPublish:false,phase:"readback-version",root:NEW,org:COLLECTION,tokenId:5n,publishTxHash:"0xpublish",receiptVersion:2n});
+    expect(error.versionNumber).toBeUndefined();expect(w.sent.map(s=>s.fn)).toEqual(["configureTokenParam"]);
+  });
+  it("retains the proven version and tag hash when the tag receipt reverts",async()=>{
+    const w=world({chain:[OLD,NEW],tagStatus:"reverted"});
+    const error=await publishRootAndTag(w.clients,project,5n,NEW,{tag:"release",settleOpts:FAST}).catch(e=>e);
+    expect(error).toBeInstanceOf(PublishedPartialError);
+    expect(error).toMatchObject({published:true,retryPublish:false,phase:"setting-tag",versionNumber:2n,publishTxHash:"0xpublish",tagTxHash:"0xtag"});
+    expect(w.sent.map(s=>s.fn)).toEqual(["configureTokenParam","setTag"]);
+  });
+  it("does not classify a reverted publish as confirmed partial success",async()=>{
+    const w=world({chain:[NEW],publishStatus:"reverted"});
+    const error=await publishRootAndTag(w.clients,project,5n,NEW,{settleOpts:FAST}).catch(e=>e);
+    expect(error).not.toBeInstanceOf(PublishedPartialError);expect(w.sent).toHaveLength(1);
+  });
   it("without a tag it publishes and proves the version, and sends nothing else", async () => {
     const w = world({ chain: [NEW] });
     const out = await publishRootAndTag(w.clients, project, 5n, NEW, { settleOpts: FAST });

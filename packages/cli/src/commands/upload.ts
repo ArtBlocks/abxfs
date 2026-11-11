@@ -3,7 +3,7 @@ import { basename } from "node:path";
 
 import { Command } from "commander";
 import kleur from "kleur";
-import type { Address } from "viem";
+import type { Address, Hex } from "viem";
 
 import {
   autoRegisterNodeCodecs,
@@ -15,7 +15,8 @@ import {
   PresentationSelection,
   PresentationLock,
   PresentationMethod,
-  recommendPresentationMethod,
+  PublishedPartialError,
+  type PresentationPlan,
   readOrgsAdministeredAcrossGenerations,
   readOrgsHeld,
   type AbxfsCid,
@@ -38,6 +39,9 @@ import { printProjectLinks, printRootLink } from "../links.js";
 import { CliRefusal, redact } from "../redact.js";
 import { safe, shellArg, txHash } from "../text.js";
 import { confirmWrite, describeOrg, estimateCreateOrgGas, WRITE_GAS, type WriteStep } from "../write-plan.js";
+
+import { jsonAction, type Report } from "../json-action.js";
+import { publicationPresentation } from "../publication-presentation.js";
 
 type Kind = "file" | "directory" | "auto";
 
@@ -64,6 +68,8 @@ export interface UploadOpts {
   maxBundleGas?: string;
   yes?: boolean;
   presentation?: string;
+  presentationPath?: string;
+  json?: boolean;
 }
 
 export function uploadCommand(): Command {
@@ -95,6 +101,8 @@ export function uploadCommand(): Command {
       "force file|directory (defaults to auto-detect from local FS)",
     )
     .option("--presentation <method>", "presentation: auto|chain-gateway|embedded|ipfs (new projects default to auto; existing projects keep their method)")
+    .option("--presentation-path <path>", "explicit file entrypoint; empty selects the root")
+    .option("--json", "one structured result; progress is printed to stderr")
     .option("--dry-run", "compute CIDs and the plan only; no transactions (needs no --yes)")
     .option("--include-hidden", "include dotfiles and dot-directories (skipped by default, except .well-known)")
     .option("--allow-public <glob>", ALLOW_PUBLIC_HELP, collectAllowPublic, [] as string[])
@@ -104,12 +112,12 @@ export function uploadCommand(): Command {
         "(all gas, or only execution gas under EIP-8037); defaults to the chain's defaultBundleGasBudget, else 12000000",
     )
     .option("--yes", "send without asking (the plan is still printed). Required when there is no terminal to confirm on")
-    .action(async (path: string, opts: UploadOpts) => {
+    .action(async (path: string, opts: UploadOpts) => jsonAction(opts.json, async (report) => {
       // Everything that can be checked offline is checked FIRST: a bad tag, name, id, kind or gas budget must not be
       // found after content was uploaded and a project minted.
       assertValidPublishInputs({ tag: opts.tag, name: opts.name });
       if (opts.presentation !== undefined) parsePresentationMethod(opts.presentation);
-      if (opts.presentation && !opts.name && opts.projectId === undefined) throw new Error("--presentation requires --name or --project-id");
+      if ((opts.presentation !== undefined || opts.presentationPath !== undefined) && !opts.name && opts.projectId === undefined) throw new Error("--presentation requires --name or --project-id");
       if (opts.tag && !opts.name && !opts.projectId) {
         throw new Error("--tag requires --name or --project-id (a tag points at a version of a project)");
       }
@@ -169,6 +177,15 @@ export function uploadCommand(): Command {
       });
 
       if (opts.dryRun) {
+        const org = projectId !== undefined ? requireOrg(chain, opts.org) : resolveOrg(chain, opts.org);
+        const bound = org ? await client.resolveOrg(org) : client;
+        const presentation = opts.name || projectId !== undefined ? await publicationPresentation(bound, projectId, {
+          root: preflight.rootCid, files, rootIsDirectory: !file, codec,
+          ...(opts.presentation !== undefined ? { method: parsePresentationMethod(opts.presentation) } : {}),
+          ...(opts.presentationPath !== undefined ? { path: opts.presentationPath } : {}),
+        }) : undefined;
+        report({ outcome: "planned", dryRun: true, chainId: chain.chainId, org, tokenId: projectId, contentMode: "snapshot",
+          root: preflight.rootCid, summary, presentation });
         console.log(kleur.yellow("dry-run:"), "root =", preflight.rootCid, kleur.gray(file ? "(file)" : "(directory)"));
         if (!file) for (const f of (preflight as { files: Array<{ cid: string; path: string }> }).files) console.log("  ", f.cid, safe(f.path));
         printSummary(summary);
@@ -182,11 +199,13 @@ export function uploadCommand(): Command {
       const target = opts.name || projectId !== undefined ? await planTarget(client, chain, opts, projectId) : undefined;
       const presentationClient = target?.org ? await client.resolveOrg(target.org) : client;
       const presentationSupported = Boolean(presentationClient.addresses.projectPresentation);
-      if (target && opts.presentation !== undefined && !presentationSupported)
-        throw new Error("this org generation does not support presentation");
-      if (target && projectId !== undefined && opts.presentation !== undefined &&
-        ((await presentationClient.readPresentation(projectId)).locks & PresentationLock.Method) !== 0)
-        throw new Error("presentation method is permanently locked; omit --presentation to preserve it");
+      const presentationPlan = target ? await publicationPresentation(presentationClient, projectId, {
+        root: preflight.rootCid, files, rootIsDirectory: !file, codec,
+        ...(opts.presentation !== undefined ? { method: parsePresentationMethod(opts.presentation) } : {}),
+        ...(opts.presentationPath !== undefined ? { path: opts.presentationPath } : {}),
+      }) : undefined;
+      report({ chainId: chain.chainId, org: target?.org, tokenId: projectId, root: preflight.rootCid,
+        contentMode: "snapshot", presentation: presentationPlan, phase: "review" });
 
       const steps: WriteStep[] = [];
       const permanent: string[] = [];
@@ -220,8 +239,9 @@ export function uploadCommand(): Command {
           `the version: the root is appended to ${projectId !== undefined ? `project #${projectId}` : "the project"}'s history for good`,
         );
         if (opts.tag) steps.push({ what: `point tag "${safe(opts.tag)}" at it (a tag can be moved later)`, txs: 1, gas: WRITE_GAS.setTag });
-        if (opts.presentation !== undefined || (projectId === undefined && presentationSupported))
-          steps.push({ what: "configure presentation target and method (auto never selects IPFS)", txs: projectId === undefined ? 2 : 1, gas: 600_000 });
+        if (presentationPlan?.configureTarget || presentationPlan?.configureMethod)
+          steps.push({ what: "configure the reviewed presentation target/method (Auto never selects IPFS)",
+            txs: Number(presentationPlan.configureTarget) + Number(presentationPlan.configureMethod), gas: 600_000 });
         if (opts.name) steps.push({ what: `set the project's name to "${safe(opts.name)}" (it can be renamed later)`, txs: 1, gas: WRITE_GAS.setName });
       }
       const ok = await confirmWrite(
@@ -237,7 +257,7 @@ export function uploadCommand(): Command {
         },
         { yes: opts.yes },
       );
-      if (!ok) return;
+      if (!ok) { report({ outcome: "cancelled" }); return; }
 
       // What a recovery command must reproduce: every choice that decides the root, resolved, and the root itself.
       const recoveryOpts = projectId === undefined && target && presentationSupported
@@ -252,9 +272,10 @@ export function uploadCommand(): Command {
         ? await client.uploadFile(file, { codec, fastLz, ...gas, onProgress, onFileUploaded })
         : await client.upload(files, { codec, fastLz, emptyDirectories, ...gas, onProgress, onFileUploaded });
       console.log(kleur.green("✓"), file ? "file root:" : "root directory:", result.rootCid);
-      await maybeCreateProject(client, result, opts, resolved, projectId, recovery, { name: chainName, chainId: chain.chainId });
+      report({ root: result.rootCid, contentTxHashes: result.txHashes, phase: "content-stored" });
+      await maybeCreateProject(client, result, opts, resolved, projectId, recovery, { name: chainName, chainId: chain.chainId }, presentationPlan, report);
       if (!resolved) await printRootLink(client, chain.chainId, result.rootCid);
-    });
+    }));
 }
 
 /** One line per content transaction: stage, progress in the stage and overall, and the gas model's estimate. */
@@ -373,6 +394,7 @@ export function recoveryCommand(path: string, opts: UploadOpts, choices: RootCho
       ...(opts.tag ? ["--tag", sh(opts.tag)] : []),
       ...(opts.name ? ["--name", sh(opts.name)] : []),
       ...(opts.presentation ? ["--presentation", sh(opts.presentation)] : []),
+      ...(opts.presentationPath !== undefined ? ["--presentation-path", sh(opts.presentationPath)] : []),
     ].join(" ");
   return { command, root: choices.root };
 }
@@ -533,6 +555,8 @@ async function maybeCreateProject(
   projectId: bigint | undefined,
   recovery: Recovery,
   network: { name: string; chainId: number },
+  presentationPlan?: PresentationPlan,
+  report: Report = () => {},
 ): Promise<void> {
   if (result.txHashes.length > 0) {
     console.log(kleur.gray(`  ${result.txHashes.length} content transaction(s) sent`));
@@ -576,7 +600,10 @@ async function maybeCreateProject(
   // (aborting if it cannot), takes the version from the receipt, proves `versionAt(v).cid` is the
   // root just published, and only then tags. Do not reintroduce a CLI-local copy: two copies is how
   // this race was fixed in one place and left in another.
+  report({ org, tokenId, phase: "publishing" });
   const published = await orgClient.publishAndTag(tokenId, result.rootCid, opts.tag ? { tag: opts.tag } : {});
+  report({ published: true, outcome: "published", org, tokenId, root: result.rootCid,
+    publishTxHash: published.publishTxHash, versionNumber: published.versionNumber, phase: "published" });
   console.log(
     kleur.green("✓"),
     `${result.rootKind === "file" ? "file " : ""}version published to project`,
@@ -594,47 +621,69 @@ async function maybeCreateProject(
     );
   }
 
+  let finalPresentationHash = published.tagTxHash ?? published.publishTxHash;
   if (opts.name) {
-    const nameTx = await orgClient.setProjectName(tokenId, opts.name);
-    console.log(kleur.green("✓"), `name set: "${safe(opts.name)}" on project #${tokenId} in org ${orgLabel}`, kleur.gray(txHash(nameTx)));
+    report({ phase: "setting-name" });
+    let nameTxHash: Hex | undefined;
+    try {
+      nameTxHash = await orgClient.setProjectName(tokenId, opts.name);
+      finalPresentationHash = nameTxHash;
+      report({ nameTxHash });
+      console.log(kleur.green("✓"), `name set: "${safe(opts.name)}" on project #${tokenId} in org ${orgLabel}`, kleur.gray(txHash(nameTxHash)));
+    } catch (error) {
+      throw new PublishedPartialError("setting-name", { root: result.rootCid, org, tokenId,
+        publishTxHash: published.publishTxHash, versionNumber: published.versionNumber,
+        ...(published.tagTxHash ? { tagTxHash: published.tagTxHash } : {}), ...(nameTxHash ? { nameTxHash } : {}),
+        txHashes: [...result.txHashes, published.publishTxHash, ...(published.tagTxHash ? [published.tagTxHash] : [])] }, error);
+    }
   }
 
-  const requestedPresentation = opts.presentation ?? (projectId === undefined && orgClient.addresses.projectPresentation ? "auto" : undefined);
-  if (requestedPresentation !== undefined) {
+  if (presentationPlan && (presentationPlan.configureTarget || presentationPlan.configureMethod)) {
     let phase = "set-target";
-    let targetConfigured = projectId !== undefined;
-    let methodConfigured = false;
-    let recoveryMethod = requestedPresentation;
+    let targetConfigured = !presentationPlan.configureTarget;
+    let methodConfigured = !presentationPlan.configureMethod;
+    const recoveryMethod = presentationPlan.method === PresentationMethod.Embedded ? "embedded"
+      : presentationPlan.method === PresentationMethod.Ipfs ? "ipfs" : "chain-gateway";
+    const phases: { phase: string; txHash: string }[] = [];
     try {
       if (!targetConfigured) {
-        await orgClient.configurePresentationTarget(tokenId, { selection: PresentationSelection.Latest, path: "" });
-        targetConfigured = true;
+        const txHash = await orgClient.configurePresentationTarget(tokenId, presentationPlan.target);
+        targetConfigured = true; finalPresentationHash = txHash; phases.push({ phase, txHash }); report({ phases });
       }
-      phase = "inspect-target";
-      const requested = parsePresentationMethod(requestedPresentation);
-      const inspected = await orgClient.inspectPresentation(tokenId);
-      if (requested === "auto" && !inspected.root) throw new Error("auto requires a resolved presentation target");
-      const recommendation = requested === "auto"
-        ? await recommendPresentationMethod(orgClient.publicClient, orgClient.addresses, inspected.root!, inspected.path) : null;
-      const method = recommendation?.method ?? requested;
-      recoveryMethod = method === PresentationMethod.ChainGateway ? "chain-gateway"
-        : method === PresentationMethod.Embedded ? "embedded" : "ipfs";
       phase = "set-method";
-      const hash = await orgClient.setPresentationMethod(tokenId, method);
-      methodConfigured = true;
+      if (!methodConfigured) {
+        const txHash = await orgClient.setPresentationMethod(tokenId, presentationPlan.method);
+        methodConfigured = true; finalPresentationHash = txHash; phases.push({ phase, txHash }); report({ phases });
+      }
       phase = "inspect-result";
       const presentation = await orgClient.inspectPresentation(tokenId);
+      report({ presentation, phases, phase: "completed" });
       console.log(kleur.green("✓"), "presentation:", safe(JSON.stringify({ ...presentation,
         targetError: presentation.targetError ? redact(presentation.targetError) : null,
-        reason: recommendation ? redact(recommendation.reason) : "explicit selection", residualDependencies: recommendation?.residualDependencies, runtimeUncertain: recommendation?.runtimeUncertain })), kleur.gray(txHash(hash)));
+        reason: presentationPlan.reason, residualDependencies: presentationPlan.residualDependencies, runtimeUncertain: presentationPlan.runtimeUncertain })));
     } catch (error) {
       const flags = `--project-id ${tokenId} --org ${org} --chain ${sh(network.name)}`;
+      const target = presentationPlan.target;
+      const selection = target.selection === PresentationSelection.Version ? `--version ${target.version}`
+        : target.selection === PresentationSelection.Tag ? `--tag ${sh(target.tag)}` : "--latest";
       const commands = [
-        ...(!targetConfigured ? [`abxfs presentation set-target --latest --path '' ${flags}`] : []),
+        ...(!targetConfigured ? [`abxfs presentation set-target ${selection} --path ${sh(presentationPlan.path)} ${flags}`] : []),
         ...(!methodConfigured ? [`abxfs presentation set-method ${sh(recoveryMethod)} ${flags}`] : []),
         `abxfs presentation inspect ${flags}`,
       ];
+      report({ phase, phases, retryPublish: false });
       throw new UploadPresentationError({ org, tokenId, root: result.rootCid, chainId: network.chainId, phase }, commands.join(" && "), error);
+    }
+  }
+  if (presentationPlan) {
+    const completeMetadata = await orgClient.verifyPresentationTokenUri(tokenId, { afterTransactionHash: finalPresentationHash });
+    report({ completeMetadata });
+    if (!completeMetadata.ok) {
+      const flags = `--project-id ${tokenId} --org ${org} --chain ${sh(network.name)}`;
+      const recovery = [`abxfs presentation preview ${flags}`, `abxfs presentation set-method chain-gateway ${flags}`];
+      report({ outcome: "published_warning", warning: redact(completeMetadata.reason), retryPublish: false, recovery });
+      console.warn(kleur.yellow("!"), `Published successfully; ${redact(completeMetadata.reason)}. Do not publish this root again.`);
+      for (const command of recovery) console.warn(command);
     }
   }
   await printProjectLinks(orgClient, tokenId);

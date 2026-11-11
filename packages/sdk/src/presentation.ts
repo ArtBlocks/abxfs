@@ -1,12 +1,13 @@
 /** Optional native reading and generation-specific project presentation. */
-import { hexToBytes, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
+import { hexToBytes, decodeFunctionResult, encodeFunctionData, keccak256, toBytes, type Abi, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
 import { contentReaderAbi } from "./abi-reader.js";
 import { iProjectPresentationAbi } from "./abi-presentation.js";
 import { asAbxfsCid, ProjectKind, type AbxfsCid, type ContractAddresses } from "./types.js";
 import { ZERO_HASH } from "./cid.js";
 import { assertWalletChain } from "./wallet-chain.js";
 import { waitForSuccessfulReceipt } from "./receipts.js";
-import { snapshotBlock } from "./snapshot.js";
+import { isRevertFailure, isTransportFailure } from "./multicall.js";
+import { snapshotBlock, pinnedReadPolicy } from "./snapshot.js";
 import { cidKind } from "./kind.js";
 import { directoryEntryCount, getFileInfo, lookupEntry, readFile, resolvePath } from "./read.js";
 
@@ -14,12 +15,41 @@ export enum PresentationMethod { ChainGateway, Embedded, Ipfs }
 export enum PresentationSelection { Latest, Version, Tag }
 export enum PresentationStatus { Ready, Unpublished, InvalidTarget, UnsupportedMime, ReadFailed, IpfsFailed, UnsupportedCodec, OverBudget }
 export const PresentationLock = { Content: 1, Method: 2, Endpoints: 4 } as const;
+/** Historical v1 renderer limits, not limits of presentationVersion 2. */
 export const MAX_EMBED_BYTES = 8_192;
 export const MAX_EMBED_CHUNKS = 32;
+/** Auto is an off-chain recommendation policy, independent of explicit Embedded. */
+export const DEFAULT_AUTO_MAX_BYTES = 100 * 1024;
+export interface PresentationAutoPolicy { maxBytes?: number; maxChunks?: number; maxCalls?: number }
+export interface PresentationDiagnostic { code: string; message: string; technical: boolean }
+export interface PresentationReadReach {
+  inspection: "local" | "onchain" | "unresolved";
+  bytes?: number;
+  chunks?: number;
+  nativeReadable: boolean | null;
+  tokenUri: "not-measured";
+}
+export const EMBED_MIMES = new Set(["text/html", "image/svg+xml", "image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "audio/mpeg", "audio/wav", "audio/ogg", "video/mp4", "video/webm"]);
+export async function presentationVersion(client: PublicClient, addresses: ContractAddresses): Promise<number> {
+  if (!addresses.projectPresentation) return 0;
+  try {
+    const version = Number(await client.readContract({ address: addresses.projectPresentation,
+      abi: [{ type: "function", name: "presentationVersion", stateMutability: "pure", inputs: [], outputs: [{ type: "uint256" }] }] as const,
+      functionName: "presentationVersion" }));
+    if (!Number.isSafeInteger(version) || version < 1) throw new Error("invalid presentationVersion response");
+    return version;
+  } catch (error) {
+    // An absent getter reverts on v1. Transport failures and malformed answers are not capabilities.
+    if (isRevertFailure(error)) return 1;
+    throw error;
+  }
+}
 export interface PresentationConfig {
   selection: PresentationSelection;
   method: PresentationMethod;
   locks: number;
+  /** v2 setter/lock intent: target=1, method=2, endpoints=4, including explicit defaults. */
+  configuredFlags?: number;
   version: number;
   frozenRoot: Hex;
   tag: string;
@@ -37,6 +67,8 @@ export interface PresentationRecommendation {
   residualDependencies: string[];
   /** Static analysis never proves the behavior of arbitrary executable code. */
   runtimeUncertain: boolean;
+  diagnostics?: PresentationDiagnostic[];
+  readReach?: PresentationReadReach;
 }
 export class PresentationCapabilityError extends Error {
   constructor(readonly capability: "projectPresentation" | "contentReader", readonly factory?: Address) {
@@ -52,7 +84,11 @@ function requireCapability(addresses: ContractAddresses, capability: "projectPre
   return address;
 }
 export async function readPresentation(client: PublicClient, addresses: ContractAddresses, org: Address, tokenId: bigint, blockNumber?: bigint): Promise<PresentationConfig> {
-  return client.readContract({ address: requireCapability(addresses, "projectPresentation"), abi: iProjectPresentationAbi, functionName: "config", args: [org, tokenId], blockNumber });
+  const version = await presentationVersion(client, addresses);
+  const abi = version === 1 ? iProjectPresentationAbi.filter(entry => entry.type === "function" && entry.name === "config").map(entry => ({
+    ...entry, outputs: [{ type: "tuple", components: (entry as { outputs: readonly { components: readonly { name: string }[] }[] }).outputs[0]!.components.filter(component => component.name !== "configuredFlags") }],
+  })) as unknown as Abi : iProjectPresentationAbi;
+  return await client.readContract({ address: requireCapability(addresses, "projectPresentation"), abi, functionName: "config", args: [org, tokenId], blockNumber }) as PresentationConfig;
 }
 /** Exact selected root and path, including frozen content. A missing target remains explicit. */
 export async function inspectPresentation(client: PublicClient, addresses: ContractAddresses, org: Address, tokenId: bigint, blockNumber?: bigint) {
@@ -130,7 +166,6 @@ export async function readNativeFileRange(client: PublicClient, addresses: Contr
   const [mimeType, data] = await client.readContract({ address: requireCapability(addresses, "contentReader"), abi: contentReaderAbi, functionName: "readFileRange", args: [cid, start, length, limits.maxBytes, limits.maxChunks] });
   return { mimeType, bytes: hexToBytes(data) };
 }
-const EMBED_MIMES = new Set(["text/html", "image/svg+xml", "image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "audio/mpeg", "audio/wav", "audio/ogg", "video/mp4", "video/webm"]);
 /** Conservative static signal. Active markup is uncertain even when no obvious network call is present. */
 export function analyzePresentationDependencies(mimeType: string, bytes: Uint8Array): { residualDependencies: string[]; runtimeUncertain: boolean } {
   if (mimeType !== "text/html" && mimeType !== "image/svg+xml") return { residualDependencies: [], runtimeUncertain: false };
@@ -152,9 +187,43 @@ export function analyzePresentationDependencies(mimeType: string, bytes: Uint8Ar
   if (/<\s*(?:iframe|object|embed|base)\b|\bsrcdoc\s*=|http-equiv\s*=|<!ENTITY|\\/i.test(text)) refs.add("opaque markup or escaped references");
   return { residualDependencies: [...refs], runtimeUncertain };
 }
-/** Auto is tooling only: this always resolves to Embedded or ChainGateway, never IPFS. */
-export async function recommendPresentationMethod(client: PublicClient, addresses: ContractAddresses, root: AbxfsCid, path = ""): Promise<PresentationRecommendation> {
-  const chain = (reason: string, residualDependencies: string[] = [], runtimeUncertain = false): PresentationRecommendation => ({ method: PresentationMethod.ChainGateway, reason, residualDependencies, runtimeUncertain });
+/** Auto policy only; explicit Embedded never inherits these recommendation thresholds. */
+export function recommendPresentationPayload(input: {
+  mimeType: string; size: number; chunkCount?: number; codec?: string; bytes?: Uint8Array;
+  presentationVersion?: number; multipleFiles?: boolean; inspection?: "local" | "onchain";
+}, policy: PresentationAutoPolicy = {}): PresentationRecommendation {
+  const maxBytes = policy.maxBytes ?? DEFAULT_AUTO_MAX_BYTES;
+  const maxChunks = policy.maxChunks ?? 256;
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || !Number.isSafeInteger(maxChunks) || maxChunks < 1)
+    throw new Error("Auto byte/chunk policy must use positive safe integers");
+  const diagnostics: PresentationDiagnostic[] = [];
+  const add = (code: string, message: string, technical = false) => diagnostics.push({ code, message, technical });
+  const codec = Boolean(input.codec && input.codec.toLowerCase() !== ZERO_HASH);
+  if (codec) add("unsupported_codec", "file-level codecs require off-chain decoding; native Embedded cannot decode them", true);
+  if (!EMBED_MIMES.has(input.mimeType)) add("unsupported_mime", input.mimeType === "text/uri-list" ? "text/uri-list is reserved for locator output, not Embedded content" : "MIME type is not supported for embedding", true);
+  if (input.presentationVersion === 1 && (input.size > MAX_EMBED_BYTES || (input.chunkCount ?? 0) > MAX_EMBED_CHUNKS))
+    add("legacy_limit", "this historical presentation generation has an 8192-byte/32-chunk technical limit", true);
+  if (input.size > maxBytes || (input.chunkCount ?? 0) > maxChunks)
+    add("auto_policy", "content exceeds the configured Auto inspection recommendation; explicit Embedded remains an owner choice");
+  if (input.multipleFiles) add("directory_origin", "the selected directory has multiple entries; preserve its origin and file paths");
+  const analysis = input.bytes && input.size <= maxBytes ? analyzePresentationDependencies(input.mimeType, input.bytes) : { residualDependencies: [], runtimeUncertain: true };
+  if (analysis.residualDependencies.length) add("dependencies", "detected references or runtime behavior require a gateway origin");
+  if (!input.bytes && !diagnostics.length) add("inspection_unavailable", "content bytes could not be inspected within the read policy");
+  return {
+    method: diagnostics.length ? PresentationMethod.ChainGateway : PresentationMethod.Embedded,
+    reason: diagnostics[0]?.message ?? (analysis.runtimeUncertain ? "supported payload within Auto policy; executable-code self-containment remains uncertain" : "supported payload within Auto policy with no detected dependencies"),
+    ...analysis, diagnostics,
+    readReach: { inspection: input.inspection ?? "local", bytes: input.size, ...(input.chunkCount !== undefined ? { chunks: input.chunkCount } : {}),
+      nativeReadable: !diagnostics.some(d => d.technical), tokenUri: "not-measured" },
+  };
+}
+
+/** Auto always resolves to Embedded or ChainGateway; it never chooses IPFS. */
+export async function recommendPresentationMethod(client: PublicClient, addresses: ContractAddresses, root: AbxfsCid, path = "", policy: PresentationAutoPolicy = {}): Promise<PresentationRecommendation> {
+  const version = await presentationVersion(client, addresses);
+  const chain = (reason: string): PresentationRecommendation => ({ method: PresentationMethod.ChainGateway, reason, residualDependencies: [], runtimeUncertain: true,
+    diagnostics: [{ code: "inspection_unavailable", message: reason, technical: false }],
+    readReach: { inspection: "unresolved", nativeReadable: null, tokenUri: "not-measured" } });
   try {
     let cid = root;
     let directory = (await cidKind(client, addresses, root)) === ProjectKind.Directory;
@@ -166,21 +235,103 @@ export async function recommendPresentationMethod(client: PublicClient, addresse
     let multipleFiles = false;
     if (directory) {
       multipleFiles = (await directoryEntryCount(client, addresses, cid)) > 1;
-      const index = await lookupEntry(client, addresses, cid, "index.html");
-      if (index.isDirectory) return chain("index.html is a directory");
+      let index;
+      try { index = await lookupEntry(client, addresses, cid, "index.html"); }
+      catch (error) {
+        if (!isRevertFailure(error)) throw error;
+        const result = chain("the selected directory has no index.html file; select an entrypoint or use ChainGateway");
+        result.diagnostics = [{ code: "missing_index", message: result.reason, technical: true }];
+        result.readReach!.nativeReadable = false;
+        return result;
+      }
+      if (index.isDirectory) {
+        const result = chain("index.html is a directory, not an Embedded file");
+        result.diagnostics = [{ code: "missing_index", message: result.reason, technical: true }];
+        result.readReach!.nativeReadable = false;
+        return result;
+      }
       cid = index.cid;
     }
     const info = await getFileInfo(client, addresses, cid);
-    const offchainCodec = info.codec.toLowerCase() !== ZERO_HASH;
-    if (info.size > MAX_EMBED_BYTES || info.chunkCount > MAX_EMBED_CHUNKS) return chain("content exceeds native embedding byte or chunk limits");
-    if (!EMBED_MIMES.has(info.mimeType)) return chain("MIME type is not supported for embedding");
-    const file = await readFile(client, addresses, cid, { maxStoredBytes: MAX_EMBED_BYTES, maxInflateBytes: MAX_EMBED_BYTES, maxChunks: MAX_EMBED_CHUNKS, maxCalls: 8 });
-    const analysis = analyzePresentationDependencies(info.mimeType, file.bytes);
-    if (offchainCodec) return chain("file-level codecs require the chain gateway; native embedding does not decode them", analysis.residualDependencies, analysis.runtimeUncertain);
-    if (multipleFiles) return chain("the selected directory has multiple entries; preserve its origin and file paths", analysis.residualDependencies, analysis.runtimeUncertain);
-    if (analysis.residualDependencies.length) return chain("detected references or runtime behavior require a gateway origin", analysis.residualDependencies, analysis.runtimeUncertain);
-    return { method: PresentationMethod.Embedded, reason: analysis.runtimeUncertain ? "small supported payload with no detected dependencies; inline JavaScript is a heuristic signal, not proof of self-containment" : "small supported payload with no detected dependencies", ...analysis };
+    const maxBytes = policy.maxBytes ?? DEFAULT_AUTO_MAX_BYTES;
+    const maxChunks = policy.maxChunks ?? 256;
+    const bytes = info.size <= maxBytes && info.chunkCount <= maxChunks
+      ? (await readFile(client, addresses, cid, { maxStoredBytes: maxBytes, maxInflateBytes: maxBytes, maxChunks, maxCalls: policy.maxCalls ?? 64 })).bytes
+      : undefined;
+    return recommendPresentationPayload({ mimeType: info.mimeType, size: info.size, chunkCount: info.chunkCount, codec: info.codec,
+      bytes, presentationVersion: version, multipleFiles, inspection: "onchain" }, policy);
   } catch (error) {
-    return chain(`content could not be inspected: ${error instanceof Error ? error.message : String(error)}`, [], true);
+    return chain(`content could not be inspected: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+
+export interface PresentationTokenUriCheck {
+  ok: boolean;
+  status: "ready" | "neutral" | "read-failed";
+  callerGas: bigint;
+  metadataBytes?: number;
+  blockNumber?: bigint;
+  afterTransactionHash?: Hex;
+  animationHash?: Hex;
+  reason: string;
+}
+export interface PresentationTokenUriOptions {
+  gas?: bigint;
+  maxMetadataBytes?: number;
+  /** Pin the call to this exact block. */
+  blockNumber?: bigint;
+  /** A confirmed final settings/publication transaction; read at its receipt block. */
+  afterTransactionHash?: Hex;
+}
+const tokenUriAbi = [{ type: "function", name: "tokenURI", stateMutability: "view", inputs: [{ name: "tokenId", type: "uint256" }], outputs: [{ type: "string" }] }] as const;
+/** One bounded complete metadata read. Native preview success never substitutes for this check. */
+export async function verifyPresentationTokenUri(client: PublicClient, org: Address, tokenId: bigint,
+  options: PresentationTokenUriOptions = {}): Promise<PresentationTokenUriCheck> {
+  const callerGas = options.gas ?? 50_000_000n;
+  const maxMetadataBytes = options.maxMetadataBytes ?? 2 * 1024 * 1024;
+  if (callerGas <= 0n || !Number.isSafeInteger(maxMetadataBytes) || maxMetadataBytes < 1) throw new Error("invalid complete metadata read budget");
+  let blockNumber = options.blockNumber;
+  const afterTransactionHash = options.afterTransactionHash;
+  try {
+    if (afterTransactionHash) {
+      const receipt = await waitForSuccessfulReceipt({ waitForTransactionReceipt: request => client.waitForTransactionReceipt({
+        ...request, timeout: Math.max(1, pinnedReadPolicy.attempts) * Math.max(1, pinnedReadPolicy.delayMs) + 1_000,
+        pollingInterval: Math.max(1, pinnedReadPolicy.delayMs),
+      }) }, afterTransactionHash, "presentation verification prerequisite");
+      if (receipt.blockNumber === undefined) throw new Error("confirmed receipt has no block number; refusing a stale latest-state check");
+      if (blockNumber !== undefined && blockNumber !== receipt.blockNumber) throw new Error("explicit block does not match the confirmed receipt block");
+      blockNumber = receipt.blockNumber;
+    }
+    let response: Awaited<ReturnType<PublicClient["call"]>>;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        response = await client.call({ to: org, data: encodeFunctionData({ abi: tokenUriAbi, functionName: "tokenURI", args: [tokenId] }),
+          gas: callerGas, ...(blockNumber !== undefined ? { blockNumber } : {}) });
+        break;
+      } catch (error) {
+        // Match readAtBlock: retry only bounded pinned-block availability, never a genuine revert or transport error.
+        if (blockNumber === undefined || isRevertFailure(error) || isTransportFailure(error) || attempt >= pinnedReadPolicy.attempts) throw error;
+        await new Promise(resolve => setTimeout(resolve, pinnedReadPolicy.delayMs));
+      }
+    }
+    const { data } = response;
+    if (!data) throw new Error("empty tokenURI response");
+    const uri = decodeFunctionResult({ abi: tokenUriAbi, functionName: "tokenURI", data });
+    if (uri.length > maxMetadataBytes) throw new Error("complete metadata exceeds configured response inspection budget");
+    const prefix = "data:application/json;base64,";
+    const json = uri.startsWith(prefix) ? new TextDecoder().decode(Uint8Array.from(atob(uri.slice(prefix.length)), char => char.charCodeAt(0)))
+      : uri.startsWith("data:application/json,") ? decodeURIComponent(uri.slice("data:application/json,".length))
+        : (() => { throw new Error("tokenURI is not inline JSON metadata"); })();
+    const metadata = JSON.parse(json) as { animation_url?: unknown };
+    if (typeof metadata.animation_url !== "string") throw new Error("metadata has no animation_url string");
+    const neutral = metadata.animation_url === "data:text/plain;base64," || metadata.animation_url === "";
+    return { ok: !neutral, status: neutral ? "neutral" : "ready", callerGas, blockNumber, afterTransactionHash, metadataBytes: uri.length,
+      animationHash: keccak256(toBytes(metadata.animation_url)),
+      reason: neutral ? "complete metadata returned a neutral animation payload; inspect presentation or choose a different delivery method"
+        : "complete tokenURI returned valid metadata and a non-neutral animation; viewer execution and endpoint availability are not guaranteed" };
+  } catch (error) {
+    return { ok: false, status: "read-failed", callerGas, blockNumber, afterTransactionHash,
+      reason: `complete tokenURI could not be verified within this caller/RPC budget: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}` };
   }
 }

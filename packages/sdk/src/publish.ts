@@ -114,6 +114,31 @@ export interface PublishAndTagResult {
   versionNumber: bigint;
 }
 
+/** A confirmed publication whose readback or optional tag still needs attention. Never publish it again. */
+export class PublishedPartialError extends Error {
+  readonly published = true;
+  readonly retryPublish = false;
+  readonly root: AbxfsCid;
+  readonly org: Address;
+  readonly tokenId: bigint;
+  readonly publishTxHash: Hex;
+  readonly versionNumber?: bigint;
+  readonly receiptVersion?: bigint;
+  readonly tagTxHash?: Hex;
+  readonly nameTxHash?: Hex;
+  readonly txHashes: readonly Hex[];
+  constructor(readonly phase: "readback-version" | "setting-tag" | "setting-name", state: {
+    root: AbxfsCid; org: Address; tokenId: bigint; publishTxHash: Hex;
+    versionNumber?: bigint; receiptVersion?: bigint; tagTxHash?: Hex; nameTxHash?: Hex; txHashes: readonly Hex[];
+  }, cause: unknown) {
+    super(`Root ${state.root} is confirmed published to project #${state.tokenId} in org ${state.org} (${state.publishTxHash}), but ${phase} did not complete. Do not publish or mint again. Inspect the confirmed transaction and project history, then complete only the remaining tag/settings. ${cause instanceof Error ? cause.message.split("\n")[0] : String(cause)}`, { cause });
+    this.name = "PublishedPartialError";
+    this.root=state.root; this.org=state.org; this.tokenId=state.tokenId; this.publishTxHash=state.publishTxHash;
+    this.versionNumber=state.versionNumber; this.receiptVersion=state.receiptVersion;
+    this.tagTxHash=state.tagTxHash; this.nameTxHash=state.nameTxHash; this.txHashes=[...state.txHashes];
+  }
+}
+
 export async function publishRootAndTag(
   clients: { publicClient: PublicClient; walletClient: WalletClient },
   project: ProjectContracts,
@@ -152,23 +177,27 @@ export async function publishRootAndTag(
   txHashes.push(publishTxHash);
   const receipt = await waitForSuccessfulReceipt(clients.publicClient, publishTxHash, "publish");
 
-  const versionNumber = await resolvePublishedVersion({
-    countBefore,
-    rootCid,
-    readCount,
-    readCid,
-    ...versionFromReceipt(receipt.logs, project.hook, project.collection, tokenId, rootCid),
-    ...(opts.settleOpts ? { settleOpts: opts.settleOpts } : {}),
-  });
-
+  const event = versionFromReceipt(receipt.logs, project.hook, project.collection, tokenId, rootCid);
+  let versionNumber: bigint | undefined;
   let tagTxHash: Hex | undefined;
-  if (opts.tag) {
-    opts.onPhase?.("setting-tag");
-    tagTxHash = await setTag(clients.walletClient, project, tokenId, opts.tag, Number(versionNumber));
-    txHashes.push(tagTxHash);
-    await waitForSuccessfulReceipt(clients.publicClient, tagTxHash, "setTag");
+  let phase: "readback-version" | "setting-tag" = "readback-version";
+  try {
+    versionNumber = await resolvePublishedVersion({ countBefore, rootCid, readCount, readCid, ...event,
+      ...(opts.settleOpts ? { settleOpts: opts.settleOpts } : {}),
+    });
+    if (opts.tag) {
+      phase = "setting-tag";
+      opts.onPhase?.("setting-tag");
+      tagTxHash = await setTag(clients.walletClient, project, tokenId, opts.tag, Number(versionNumber));
+      txHashes.push(tagTxHash);
+      await waitForSuccessfulReceipt(clients.publicClient, tagTxHash, "setTag");
+    }
+    return { publishTxHash, ...(tagTxHash ? { tagTxHash } : {}), versionNumber };
+  } catch (error) {
+    throw new PublishedPartialError(phase, { root: rootCid, org: project.collection, tokenId, publishTxHash,
+      ...(versionNumber !== undefined ? { versionNumber } : {}), ...event,
+      ...(tagTxHash ? { tagTxHash } : {}), txHashes }, error);
   }
-  return { publishTxHash, ...(tagTxHash ? { tagTxHash } : {}), versionNumber };
 }
 
 /** The version the hook's own event reported for this publish, if the receipt carries one. */

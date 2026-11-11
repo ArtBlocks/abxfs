@@ -252,7 +252,8 @@ at the next page, not a shorter list. Pull the walk through promptly, or start a
 See [Project presentation and native reads](/docs/reference/presentation) for Solidity reads, the fixed ABX adapter and delivery semantics.
 
 `ContractAddresses.contentReader` enables `readNativeFile`, `readNativePath`, and
-`readNativeFileRange`. Pass `{ maxBytes: 8192n, maxChunks: 32n }` explicitly. These
+`readNativeFileRange`. Choose caller budgets explicitly, for example
+`{ maxBytes: 8192n, maxChunks: 32n }`; these are caller limits, not protocol constants. Native
 calls decode raw and FastLZ storage on chain and reject file-level codecs such as
 gzip. Range limits count the entire decoded chunks touched, including bytes outside
 the returned slice. `readNativePath` uses `index.html` for a selected directory.
@@ -279,14 +280,59 @@ const preview = await project.previewPresentation(tokenId);
 // runtimeUncertain, recommendation, blockNumber
 ```
 
-Auto is a tooling choice that writes a concrete `Embedded` or `ChainGateway`
-method. It never chooses IPFS. It favors supported content of at most 8 KiB and
-32 chunks without detected dependencies. File-level codecs, multi-entry
-directories, external or relative references, network calls, imports, and opaque
-dynamic code retain a gateway origin. Typical inline canvas JavaScript can embed,
-but `runtimeUncertain` remains true: static scanning cannot prove arbitrary
-JavaScript self-contained. Review the returned reason and residual dependencies.
-Choose `PresentationMethod.Ipfs` explicitly when wanted.
+Auto is a configurable tooling recommendation, defaulting to 100 KiB of inspected
+content. It chooses concrete `Embedded` or `ChainGateway`, never IPFS. Explicit
+Embedded in the current generation has no fixed byte/chunk/gas policy; supported
+MIME types and raw/FastLZ storage are technical requirements, and file-level codecs
+and the reserved `text/uri-list` MIME cannot embed. Caller/RPC limits still matter.
+Review dependency findings, `runtimeUncertain`, and `readReach`; native eligibility
+does not establish complete metadata reach.
+
+Use the shared planner before paid writes with the proposed root and local files.
+`client.planPresentation` reads project state so a pre-minted empty token gets the
+same initialization as a new token. `configuredFlags` distinguishes deliberately
+saved default values from untouched choices, independently for target, method and
+endpoints. Later publications preserve those choices unless explicitly requested.
+
+```ts
+const plan = await project.planPresentation(tokenId, {
+  root: proposedRoot, files, rootIsDirectory: true,
+  // method: "auto", // omitted: Auto on first publication, preserve on later updates
+  // path: "pfp.webp", // omitted: index/sole file on first publication, otherwise preserve
+  autoPolicy: { maxBytes: 100 * 1024 },
+});
+// Review root/path, requested/concrete method, reason, locks, readiness and diagnostics.
+// Publish the reviewed content once using the ordinary content/draft APIs,
+// retaining its `published.publishTxHash` result.
+const applied = await project.applyPresentationPlan(tokenId, plan);
+const complete = await project.verifyPresentationTokenUri(tokenId, {
+  afterTransactionHash: applied.afterTransactionHash
+    ?? published.nameTxHash ?? published.tagTxHash ?? published.publishTxHash,
+});
+// One read, default caller gas 50M: ready, neutral, or read-failed.
+// On failure keep publication success and offer presentation-only recovery.
+```
+
+For an overlay, pass the complete proposed `entries` manifest alongside changed
+`files`, so entrypoint analysis also sees unchanged paths. `applyDraftToBase`
+preserves omitted directory files and empty folders; `applyNewProject` builds a
+full replacement, while `applyFileReplacement` handles file-kind roots. All return
+`AppliedDraft` for the existing publishing executor. `applyPresentationPlan` never
+uploads, mints or publishes; `PresentationApplyError` retains its completed setting
+transactions and remaining phase. `PublishedPartialError` separately identifies a
+confirmed content publication whose version readback, optional tag or name followup
+failed, retaining its publish hash and any proven version without guessing. Resume those settings without publishing again.
+
+`verifyPresentationTokenUri` checks complete inline JSON and detects neutral
+animation output with a bounded RPC call. Pass the final confirmed settings hash,
+or the publication hash when no settings changed, as `afterTransactionHash`. The
+read uses that successful receipt block, never a stale `latest` response; temporary
+block-header unavailability uses the existing bounded pinned-read policy, while
+genuine reverts and transport failures are reported immediately. `blockNumber`
+can pin an explicit read instead. Its successful result does not fetch
+remote URLs or guarantee viewer execution. A 100 KiB native payload can require
+close to 50M gas for full ABX metadata; callers can set their own gas and response
+inspection budgets. The planner reports `tokenUri: "not-measured"` until this read.
 
 `readPresentation(tokenId)` reads configuration; `inspectPresentation(tokenId)`
 adds the selected root and path. `previewPresentation` reads configuration,

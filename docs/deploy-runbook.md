@@ -59,15 +59,22 @@ keep local deployment inputs out of the repository. No candidate address becomes
 alone.
 
 Extend the throwaway rehearsal below with a raw/FastLZ native read, bounded range read, Embedded preview and
-ChainGateway preview. Confirm file-level gzip is rejected by the native reader but readable through the gateway.
+ChainGateway preview. Check complete ABX `tokenURI` separately at an explicit caller gas budget: native preview
+success does not establish full metadata reach, and a 100 KiB payload can require close to 50M gas. Explicit Embedded
+has no fixed byte/chunk/gas policy in the current generation; natural caller/resource failures must remain visible,
+without silent method fallback. Auto thresholds are configurable off-chain recommendations. Confirm file-level gzip is rejected by the native reader but readable through the gateway.
 Check Latest, Version and Tag plus a nonempty path. On a throwaway project only, review a lock dry run and submit
 its explicit commitment; confirm changed selected state rejects that commitment. Freeze the reviewed target and
 verify later publishing/tag movement cannot change it; verify method and endpoint locks independently and after
 transfer. Exercise IPFS only with creator-pinned content. Finally confirm an old org's token metadata, publishing,
 tags and gateway URLs still work through its original generation.
 
-When registering the new generation, retain the complete old bundle in `previousGenerations` permanently (see
-[Superseding a factory](#superseding-a-factory)). Set the new generation's `contentReader` and
+When registering a new generation, retain supported historical bundles in `previousGenerations` permanently. The
+original `0xC5aBF9fBd94659cdfc173AF30c6052700Fa62798` factory remains supported; the superseded `0x4a5D0fCed9b2162Db4517E7248dC0f3243CCB475` presentation
+test generation is explicitly retired on replacement promotion and must not be indexed, watched, or added to supported
+history. Its tokens are not upgraded or migrated automatically. Chains that never had an original deployment must
+not acquire invented history. See
+[Superseding a factory](#superseding-a-factory). Set the new generation's `contentReader` and
 `projectPresentation` capabilities only after they have passed the checks above. Never add presentation to an old
 factory record. A reader capability can be shared only by generations with its exact immutable store pair.
 
@@ -352,9 +359,11 @@ Stop. Do not set an override to get past a check until you can say why it failed
 
 Every fix to a hook, a renderer or the factory ships as a new factory, with new org addresses. The first time a new
 factory is deployed to a chain that already has a live one, the old one is **not** removed: it moves into
-`previousGenerations`, because its orgs and their projects keep working through it. Do all of this together:
+`previousGenerations`, because its orgs and their projects keep working through it. The explicitly retired
+presentation test factory named above is the sole exception: exclude it from supported history after replacement
+promotion, while retaining the original supported generation. Do all of this together:
 
-1. **Move the superseded factory into `previousGenerations`** in `packages/sdk/src/canonical.ts`, and put the new one
+1. **Move the supported superseded factory into `previousGenerations`** in `packages/sdk/src/canonical.ts`, and put the new one
    at the top level.
    - The old factory, minter, hook, enumeration and lens go in as ONE entry, retained permanently. Never pair a
      new factory with an old hook: `orgGenerations` refuses that as incoherent.
@@ -374,5 +383,5 @@ factory is deployed to a chain that already has a live one, the old one is **not
 - `createOrg` always creates in the CURRENT factory, even on a client that `resolveOrg` bound to an old org.
 - `abxfs org list` and a site built on the SDK list the orgs of every factory, and report one they could not read
   (`failedGenerations`) rather than omitting it.
-- Every factory's minter, hook, enumeration and lens, and the factory itself, is refused as the recipient of a
+- Every supported factory's minter, hook, enumeration and lens, and the factory itself, is refused as the recipient of a
   transfer or an admin offer.
