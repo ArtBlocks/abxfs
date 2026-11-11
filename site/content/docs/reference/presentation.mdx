@@ -32,7 +32,14 @@ opaque dynamic code favor a gateway origin. Inline JavaScript can qualify, but
 static inspection cannot prove arbitrary code self-contained: review
 `runtimeUncertain`, `residualDependencies`, and `readReach` in the plan.
 
-Auto never selects IPFS. Choosing IPFS computes a CID; it does not pin anything or
+Auto never selects IPFS. On-chain IPFS derivation cannot decode file-level codecs,
+including a known changed codec file elsewhere in the derived directory root. The
+planner blocks these known incompatibilities and proven absent configured targets
+before publication. A directory URL does not require `index.html`; MIME and Auto
+size preferences do not restrict an explicit IPFS choice. Planning does not scan
+all unchanged siblings or guarantee complete root derivation.
+
+Choosing IPFS computes a CID; it does not pin anything or
 promise availability. The creator must [pin the content](/docs/using-abxfs/ipfs)
 and keep it available. An empty IPFS endpoint uses `ipfs://`; a base such as
 `https://dweb.link` produces `https://<cid>.ipfs.dweb.link/...`.

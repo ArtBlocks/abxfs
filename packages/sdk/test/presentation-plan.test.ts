@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PublicClient, WalletClient, Address } from "viem";
+import { CODEC_GZIP } from "../src/compression.js";
 import { ZERO_HASH } from "../src/cid.js";
 import { asAbxfsCid, type ContractAddresses } from "../src/types.js";
 import { planPresentation, applyPresentationPlan, PresentationApplyError, selectPresentationEntrypoint, validatePresentationPath } from "../src/presentation-plan.js";
@@ -101,5 +102,53 @@ describe("presentation target path grammar",()=>{
   const plan=await planPresentation(client,addresses,{root,files:[file(deep,20,"text/html")],rootIsDirectory:true,firstPublication:true,current:config});
   expect(plan).toMatchObject({path:"",target:{path:""},method:PresentationMethod.ChainGateway,readiness:"warning",configureTarget:true});
   expect(plan.diagnostics[0]?.code).toBe("entrypoint_path_policy");
+ });
+});
+
+describe("method-specific URL preflight",()=>{
+ it("blocks known native IPFS codec incompatibility without replacing the explicit method",async()=>{
+  const plan=await planPresentation(client,addresses,{root,files:[file("art.html",20,"text/html")],rootIsDirectory:false,path:"",codec:CODEC_GZIP,method:PresentationMethod.Ipfs});
+  expect(plan).toMatchObject({method:PresentationMethod.Ipfs,readiness:"blocked"});
+  expect(plan.diagnostics.some(d=>d.code === "ipfs_codec" && d.technical)).toBe(true);
+ });
+ it("checks known changed codec files anywhere in the proposed IPFS directory root, even when the displayed path has no index",async()=>{
+  const plan=await planPresentation(client,addresses,{root,files:[file("elsewhere/changed.html",20,"text/html")],entries:[{path:"art.html",cid:root},{path:"elsewhere/changed.html",cid:root}],rootIsDirectory:true,path:"",codec:CODEC_GZIP,method:PresentationMethod.Ipfs});
+  expect(plan.readiness).toBe("blocked");expect(plan.diagnostics.some(d=>d.code === "ipfs_codec")).toBe(true);
+ });
+ it("blocks a changed gzip sibling even when the selected file itself is known raw, without scanning other siblings",async()=>{
+  const metadata=vi.fn(async ({functionName}:{functionName:string})=>{
+   if(functionName === "presentationVersion") return 2n;
+   if(functionName === "directoryExists") return false;
+   if(functionName === "fileExists") return true;
+   if(functionName === "getFileInfo") return {root,rootLevel:0,size:200_000n,chunkCount:10n,mimeType:"text/html",codec:ZERO_HASH,outputHash:ZERO_HASH};
+   throw new Error(`unexpected ${functionName}`);
+  });
+  const plan=await planPresentation({readContract:metadata} as unknown as PublicClient,addresses,{root,files:[file("other.html",20,"text/html")],entries:[{path:"index.html",cid:root},{path:"other.html",cid:root}],rootIsDirectory:true,path:"index.html",codec:CODEC_GZIP,method:PresentationMethod.Ipfs});
+  expect(plan.readiness).toBe("blocked");expect(plan.diagnostics.some(d=>d.code === "ipfs_codec")).toBe(true);
+  expect(plan.diagnostics.some(d=>d.code === "unsupported_codec")).toBe(false);
+  expect(metadata.mock.calls.filter(([request])=>request.functionName === "getFileInfo")).toHaveLength(1);
+  const historical=await planPresentation({readContract:metadata} as unknown as PublicClient,addresses,{root,files:[file()],rootIsDirectory:false,codec:CODEC_GZIP,method:PresentationMethod.Ipfs,current:{...config,selection:PresentationSelection.Version,version:1,root:asAbxfsCid(`0x${"cd".repeat(32)}`)}});
+  expect(historical.readiness).not.toBe("blocked");expect(historical.diagnostics.some(d=>d.code === "ipfs_codec")).toBe(false);
+ });
+ it.each([PresentationMethod.ChainGateway,PresentationMethod.Ipfs])("blocks proven absent configured targets for URL method %s, but accepts a directory without index",async method=>{
+  const missing=await planPresentation(client,addresses,{root,files:[file("art.html",20,"text/html")],rootIsDirectory:true,path:"missing.html",method});
+  expect(missing.readiness).toBe("blocked");expect(missing.diagnostics[0]?.code).toBe("missing_target");
+  const directory=await planPresentation(client,addresses,{root,files:[file("art.html",20,"text/html")],rootIsDirectory:true,path:"",method});
+  expect(directory.readiness).toBe("warning");expect(directory.diagnostics[0]?.code).toBe("missing_index");
+  const filePath=await planPresentation(client,addresses,{root,files:[file()],rootIsDirectory:false,path:"child",method});
+  expect(filePath.readiness).toBe("blocked");expect(filePath.diagnostics[0]?.code).toBe("invalid_file_path");
+ });
+ it("allows explicit IPFS MIME and size policy overrides and codec-bearing ChainGateway",async()=>{
+  const ipfs=await planPresentation(client,addresses,{root,files:[file("data.bin",DEFAULT_AUTO_MAX_BYTES+1,"application/octet-stream")],rootIsDirectory:false,method:PresentationMethod.Ipfs});
+  expect(ipfs).toMatchObject({method:PresentationMethod.Ipfs,readiness:"warning"});
+  expect(ipfs.diagnostics.map(d=>d.code)).toEqual(expect.arrayContaining(["unsupported_mime","auto_policy"]));
+  const gateway=await planPresentation(client,addresses,{root,files:[file()],rootIsDirectory:false,codec:CODEC_GZIP,method:PresentationMethod.ChainGateway});
+  expect(gateway.readiness).toBe("warning");
+ });
+ it("preserves ordinary update choices with warnings instead of rewriting or refusing them",async()=>{
+  const plan=await planPresentation(client,addresses,{root,files:[file()],rootIsDirectory:false,codec:CODEC_GZIP,current:{...config,configuredFlags:3,method:PresentationMethod.Ipfs}});
+  expect(plan).toMatchObject({method:PresentationMethod.Ipfs,requested:"preserve",readiness:"warning",configureTarget:false,configureMethod:false});
+  const missing=await planPresentation(client,addresses,{root,files:[file()],rootIsDirectory:true,current:{...config,configuredFlags:3,path:"removed.html"}});
+  expect(missing.readiness).toBe("warning");expect(missing.configureTarget).toBe(false);
  });
 });

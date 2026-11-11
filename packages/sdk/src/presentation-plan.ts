@@ -143,11 +143,21 @@ export async function planPresentation(client: PublicClient, addresses: Contract
   const configureMethod = requested !== "preserve" && (method !== current?.method || initializeMethod || request.method !== undefined);
   const diagnostics = [...(analysis.diagnostics ?? [])];
   if (entrypointFallback) diagnostics.unshift({ code: "entrypoint_path_policy", message: "suggested entrypoint exceeds the presentation path grammar; keep the directory root and use ChainGateway or choose a valid entrypoint", technical: false });
+  // IPFS derives the entire root, not only the displayed file/path. A known changed codec file
+  // anywhere in that proposed root makes native derivation impossible. Unchanged siblings are not scanned here.
+  const changedRootCodec = root === request.root && Boolean(request.files?.length)
+    && Boolean(request.codec && request.codec.toLowerCase() !== ZERO_HASH);
+  if (method === PresentationMethod.Ipfs && (changedRootCodec || diagnostics.some(d => d.code === "unsupported_codec")))
+    diagnostics.push({ code: "ipfs_codec", message: "on-chain IPFS derivation cannot decode file-level codecs in this root; use raw/FastLZ storage or ChainGateway", technical: true });
   const locks = current?.locks ?? 0;
   if (!version && (configureTarget || configureMethod)) diagnostics.push({ code: "unsupported_generation", message: "this factory generation has no presentation capability", technical: true });
   if (configureTarget && (locks & PresentationLock.Content)) diagnostics.push({ code: "content_locked", message: "the displayed content and entrypoint are permanently frozen", technical: true });
   if (configureMethod && (locks & PresentationLock.Method)) diagnostics.push({ code: "method_locked", message: "the presentation method is permanently locked", technical: true });
-  const blocked = diagnostics.some(d => d.code.endsWith("_locked") || d.code === "unsupported_generation" || d.code === "invalid_path" || (method === PresentationMethod.Embedded && (configureTarget || configureMethod) && d.technical));
+  const configuring = configureTarget || configureMethod;
+  const blocked = diagnostics.some(d => d.code.endsWith("_locked") || d.code === "unsupported_generation" || d.code === "invalid_path"
+    || (configuring && (d.code === "missing_target" || d.code === "invalid_file_path"))
+    || (configuring && method === PresentationMethod.Ipfs && d.code === "ipfs_codec")
+    || (configuring && method === PresentationMethod.Embedded && d.technical));
   return { root, path, requested, method, target, configureTarget, configureMethod, reason: requested === "preserve" ? "preserve the saved presentation method" : requested === "auto" ? entrypointFallback ? diagnostics[0]!.message : analysis.reason : "explicit owner choice",
     locks, readiness: blocked ? "blocked" : analysis.readReach?.inspection === "unresolved" ? "unresolved" : diagnostics.length ? "warning" : "ready",
     diagnostics, residualDependencies: analysis.residualDependencies, runtimeUncertain: analysis.runtimeUncertain,

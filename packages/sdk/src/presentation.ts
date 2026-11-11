@@ -255,9 +255,14 @@ export async function recommendPresentationMethod(client: PublicClient, addresse
     const info = await getFileInfo(client, addresses, cid);
     const maxBytes = policy.maxBytes ?? DEFAULT_AUTO_MAX_BYTES;
     const maxChunks = policy.maxChunks ?? 256;
-    const bytes = info.size <= maxBytes && info.chunkCount <= maxChunks
-      ? (await readFile(client, addresses, cid, { maxStoredBytes: maxBytes, maxInflateBytes: maxBytes, maxChunks, maxCalls: policy.maxCalls ?? 64 })).bytes
-      : undefined;
+    let bytes: Uint8Array | undefined;
+    if (info.size <= maxBytes && info.chunkCount <= maxChunks) {
+      try { bytes = (await readFile(client, addresses, cid, { maxStoredBytes: maxBytes, maxInflateBytes: maxBytes, maxChunks, maxCalls: policy.maxCalls ?? 64 })).bytes; }
+      catch (error) {
+        // Metadata already proves the native codec constraint even if optional off-chain decoding fails.
+        if (info.codec.toLowerCase() === ZERO_HASH) throw error;
+      }
+    }
     return recommendPresentationPayload({ mimeType: info.mimeType, size: info.size, chunkCount: info.chunkCount, codec: info.codec,
       bytes, presentationVersion: version, multipleFiles, inspection: "onchain" }, policy);
   } catch (error) {

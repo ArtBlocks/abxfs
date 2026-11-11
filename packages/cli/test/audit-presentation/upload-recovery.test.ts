@@ -156,3 +156,13 @@ it("blocks invalid explicit ChainGateway presentation paths before any upload, m
  expect(JSON.parse(output.at(-1)!)).toMatchObject({ok:false,published:false,outcome:"failed"});
  expect(h.calls).toEqual([]);
 });
+
+it.each([
+ ["--presentation","ipfs","--codec","gzip"],
+ ["--presentation","ipfs","--presentation-path","absent.html"],
+ ["--presentation","chain-gateway","--presentation-path","absent.html"],
+])("refuses a proven incompatible URL presentation before any paid command write: %j",async(...flags)=>{
+ await uploadCommand().parseAsync([dir,"--name","art","--org",ORG,"--yes","--json",...flags],{from:"user"});
+ expect(JSON.parse(output.at(-1)!)).toMatchObject({ok:false,published:false,outcome:"failed"});
+ expect(h.calls).toEqual([]);
+});

@@ -171,6 +171,13 @@ describe("Auto is conservative tooling only", () => {
     mockContent({ codec: stringToHex("gzip", { size: 32 }), body: '<img src="https://cdn.example/art.png">' });
     expect(await recommendPresentationMethod({ readContract: async () => 2n } as unknown as PublicClient, addresses, ROOT)).toMatchObject({ method: PresentationMethod.ChainGateway, residualDependencies: ["https://cdn.example/art.png"] });
   });
+  it("retains a proven native codec incompatibility when optional off-chain inspection fails",async()=>{
+    mockContent({codec:stringToHex("gzip",{size:32})});
+    vi.mocked(reads.readFile).mockRejectedValue(new Error("decoder unavailable"));
+    const result=await recommendPresentationMethod({readContract:async()=>2n} as unknown as PublicClient,addresses,ROOT);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({code:"unsupported_codec",technical:true}));
+    expect(result.readReach).toMatchObject({nativeReadable:false,inspection:"onchain"});
+  });
   it("supports typical inline canvas JavaScript while exposing runtime uncertainty", async () => {
     mockContent({ body: '<canvas id="art"></canvas><script>const c=document.getElementById("art").getContext("2d");c.fillRect(0,0,100,100)</script>' });
     expect(await recommendPresentationMethod({ readContract: async () => 2n } as unknown as PublicClient, addresses, ROOT)).toMatchObject({ method: PresentationMethod.Embedded, runtimeUncertain: true, residualDependencies: [] });
