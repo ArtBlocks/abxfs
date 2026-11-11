@@ -12,8 +12,9 @@ other.
 Use the canonical addresses. The SDK ships them, so the CLI and the gateway need
 no configuration to read.
 
-The current generation adds `ContentReader`, `ProjectPresentation` and a
-seven-argument `OrgFactory` on all eight networks below. The original generation
+The current presentation generation uses `ContentReader`, `ProjectPresentation` and a
+seven-argument `OrgFactory` on all eight networks below. Embedded has no product byte, chunk
+or rendering-gas ceiling; Auto recommendations belong to off-chain tooling. The original generation
 remains registered on the six networks where it was deployed. Robinhood and
 Robinhood Testnet began with the current generation and have no earlier factory
 history.
@@ -85,13 +86,13 @@ new factories do not change stored CIDs.
 | `DirectoryStore` | `0x4273E4E078F47303Ca15b11959eeb61F3FC94c11` |
 | `IpfsCidResolver` | `0x7CE58c2945CbE3C2bDb0D3d276Ba3b9bD294008d` |
 | `OrgMeta` | `0xB21e65DE1c241B9BaE8b7077b6f2E8f2c3Bc0F5D` |
-| `OrgFactory` | `0x4a5D0fCed9b2162Db4517E7248dC0f3243CCB475` |
-| `OrgMinter` | `0xf03ef75B8bbf683dd293E2A6c22eC99c421e4eCf` |
-| `ProjectHook` | `0x402b7aC4a578DFB77d498937379EEf0744c17Ba1` |
-| `ProjectEnumeration` | `0x4c1f7476a13e87C66C212a6BBa588511554c2412` |
-| `Lens` | `0x90A2476db90F658B8E989fa5128C0A75E864A282` |
+| `OrgFactory` | `0xb057b5b6641717EB85E9D8b3Ba23988E0A6d147A` |
+| `OrgMinter` | `0x53383C2a4c36Ab9fbc5fe3D2BEEA7D23D72cc69f` |
+| `ProjectHook` | `0x73E2E4945b54D0D98F0A81932b831B32Ed7edecb` |
+| `ProjectEnumeration` | `0x6928e670C7e92e8d3824209447cC7Bd10d77db7A` |
+| `Lens` | `0x28f30bB97Fb2a29Bf19b3AB04323B186ba461DE5` |
 | `ContentReader` | `0xe6d62620A284565B7F0B3581A6972BA3Be5C8B13` |
-| `ProjectPresentation` | `0x8FD707e572d53581a9fA4d79E9D8202AD3acC208` |
+| `ProjectPresentation` | `0x5F7801b644596d68c3bbcf2f08ac56641745775F` |
 
 ### Original generation: six networks only
 
@@ -131,16 +132,20 @@ Current-generation contracts, including all renderers, are source-verified on
 The original generation remains verified on its original six networks. The exact
 match commits to the compiled source text through Solidity metadata, comments
 included. For example, the current factory on Base:
-[repo.sourcify.dev/8453/0x4a5D…B475](https://repo.sourcify.dev/8453/0x4a5D0fCed9b2162Db4517E7248dC0f3243CCB475).
+[repo.sourcify.dev/8453/0xb057…147A](https://repo.sourcify.dev/8453/0xb057b5b6641717EB85E9D8b3Ba23988E0A6d147A).
 
-The new contract sources were frozen at
-[2ca3b912](https://github.com/ArtBlocks/abxfs/tree/2ca3b912/packages/contracts-projects),
-with the companion reader in the same commit's
-[contracts-companion package](https://github.com/ArtBlocks/abxfs/tree/2ca3b912/packages/contracts-companion).
-SDK/RPC qualification continued through
-[87a472e](https://github.com/ArtBlocks/abxfs/tree/87a472e/packages/sdk) without changing
-those contract sources or bytecode. These are internally reviewed releases;
-source verification is not an independent security audit.
+The presentation and deployment contract sources were frozen at
+[b20cf0b](https://github.com/ArtBlocks/abxfs/tree/b20cf0be42b12d68b5810ab065cd80535cf4098f/packages/contracts-projects).
+The content stores, native reader, IPFS resolver and `OrgMeta` are unchanged. SDK/CLI
+qualification continued after that freeze without changing these deployed sources.
+These are internally reviewed releases; source verification is not an independent security audit.
+
+The superseded [presentation test factory](/docs/reference/presentation#factory-generations-stay-available)
+(`0x4a5D…B475`) is explicitly retired and is absent from
+supported history. Current tools do not index or watch it, and its project URLs are unsupported.
+Its tokens are not upgraded or migrated; content stored in the shared stores remains addressable
+by root. The original `0xC5aBF9fBd94659cdfc173AF30c6052700Fa62798` factory remains supported
+on its original six networks.
 
 ## Gas schedules and local chains
 
@@ -185,8 +190,9 @@ assume. Measure it before assuming either way.
 ## Keeping older factory generations
 
 A new factory does not upgrade existing orgs. Once a replacement is verified and
-rehearsed, its deployment record becomes current and the complete superseded
+rehearsed, its deployment record becomes current and the complete supported historical
 factory bundle stays in `previousGenerations` indefinitely. The SDK resolves orgs
 against their own generation, preserving old project reads and writes. A generation
-without presentation remains without it; a reader tied to different stores must
+without presentation remains without it. The explicitly retired test factory above is the exception
+to history retention. A reader tied to different stores must
 not be silently reused. See [presentation capabilities](/docs/reference/presentation#factory-generations-stay-available).

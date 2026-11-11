@@ -117,8 +117,9 @@ export interface AbxfsProject {
   preferredGateway: string | null;
   /**
    * `abxfs.view` — the owner's own URL for the live project, or `null` when unset (or when the stored
-   * value is one the token would not emit). Marketplaces show it as the token's `animation_url` and
-   * `external_url`; when it is `null` they show the default path on the ABX FS site instead. It is the
+   * value is one the token would not emit). Legacy orgs use it for `animation_url` and `external_url`;
+   * presentation-capable orgs use it only for `external_url` and configure animation separately.
+   * When unset, these links use the default path on the ABX FS site. It is the
    * whole URL, so it assumes nothing about the gateway behind it.
    */
   viewUrl: string | null;
