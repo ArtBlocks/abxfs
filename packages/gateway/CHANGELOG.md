@@ -1,5 +1,13 @@
 # @artblocks/abxfs-gateway
 
+## 0.1.5
+
+### Patch Changes
+
+- Updated dependencies [df91e7e]
+  - @artblocks/abxfs-sdk@0.4.0
+  - @artblocks/abxfs-pinning@0.1.5
+
 ## 0.1.4
 
 ### Patch Changes
