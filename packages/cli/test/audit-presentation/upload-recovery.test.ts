@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -165,4 +165,11 @@ it.each([
  await uploadCommand().parseAsync([dir,"--name","art","--org",ORG,"--yes","--json",...flags],{from:"user"});
  expect(JSON.parse(output.at(-1)!)).toMatchObject({ok:false,published:false,outcome:"failed"});
  expect(h.calls).toEqual([]);
+});
+
+it.each([false,true])("passes scanned empty-directory evidence through upload preflight (dryRun=%s)",async dryRun=>{
+ mkdirSync(join(dir,"empty"));
+ await uploadCommand().parseAsync([dir,"--name","art","--org",ORG,"--yes","--json","--presentation","ipfs","--presentation-path","empty",...(dryRun ? ["--dry-run"] : [])],{from:"user"});
+ expect(JSON.parse(output.at(-1)!)).toMatchObject({ok:true,published:!dryRun,outcome:dryRun ? "planned" : "published"});
+ expect(dryRun ? h.calls : h.calls.filter(c=>c === "publish")).toEqual(dryRun ? [] : ["publish"]);
 });

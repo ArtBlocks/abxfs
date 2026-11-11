@@ -32,7 +32,7 @@ describe("shared presentation planning",()=>{
  it("resolves nested directory indexes and rejects nonexistent local targets before writes",async()=>{
   const nested=await planPresentation(client,addresses,{root,files:[file("art/index.html",20,"text/html")],rootIsDirectory:true,path:"art",method:PresentationMethod.Embedded});
   expect(nested).toMatchObject({path:"art",readiness:"ready"});
-  const missing=await planPresentation(client,addresses,{root,files:[file()],rootIsDirectory:true,path:"missing.webp",method:PresentationMethod.Embedded});
+  const missing=await planPresentation(client,addresses,{root,files:[file()],rootIsDirectory:true,emptyDirectories:[],path:"missing.webp",method:PresentationMethod.Embedded});
   expect(missing.readiness).toBe("blocked");expect(missing.diagnostics[0]?.code).toBe("missing_target");
   const filePath=await planPresentation(client,addresses,{root,files:[file()],rootIsDirectory:false,path:"invalid",method:PresentationMethod.Embedded});
   expect(filePath.readiness).toBe("blocked");expect(filePath.diagnostics[0]?.code).toBe("invalid_file_path");
@@ -131,7 +131,7 @@ describe("method-specific URL preflight",()=>{
   expect(historical.readiness).not.toBe("blocked");expect(historical.diagnostics.some(d=>d.code === "ipfs_codec")).toBe(false);
  });
  it.each([PresentationMethod.ChainGateway,PresentationMethod.Ipfs])("blocks proven absent configured targets for URL method %s, but accepts a directory without index",async method=>{
-  const missing=await planPresentation(client,addresses,{root,files:[file("art.html",20,"text/html")],rootIsDirectory:true,path:"missing.html",method});
+  const missing=await planPresentation(client,addresses,{root,files:[file("art.html",20,"text/html")],rootIsDirectory:true,emptyDirectories:[],path:"missing.html",method});
   expect(missing.readiness).toBe("blocked");expect(missing.diagnostics[0]?.code).toBe("missing_target");
   const directory=await planPresentation(client,addresses,{root,files:[file("art.html",20,"text/html")],rootIsDirectory:true,path:"",method});
   expect(directory.readiness).toBe("warning");expect(directory.diagnostics[0]?.code).toBe("missing_index");
@@ -148,7 +148,29 @@ describe("method-specific URL preflight",()=>{
  it("preserves ordinary update choices with warnings instead of rewriting or refusing them",async()=>{
   const plan=await planPresentation(client,addresses,{root,files:[file()],rootIsDirectory:false,codec:CODEC_GZIP,current:{...config,configuredFlags:3,method:PresentationMethod.Ipfs}});
   expect(plan).toMatchObject({method:PresentationMethod.Ipfs,requested:"preserve",readiness:"warning",configureTarget:false,configureMethod:false});
-  const missing=await planPresentation(client,addresses,{root,files:[file()],rootIsDirectory:true,current:{...config,configuredFlags:3,path:"removed.html"}});
+  const missing=await planPresentation(client,addresses,{root,files:[file()],rootIsDirectory:true,emptyDirectories:[],current:{...config,configuredFlags:3,path:"removed.html"}});
   expect(missing.readiness).toBe("warning");expect(missing.configureTarget).toBe(false);
  });
+});
+
+describe("complete empty-directory target evidence",()=>{
+ it.each([PresentationMethod.ChainGateway,PresentationMethod.Ipfs])("accepts known empty directory and its ancestor for URL method %s while blocking a genuinely absent target",async method=>{
+  for(const path of ["empty","parent","parent/empty"]){
+   const plan=await planPresentation(client,addresses,{root,files:[file("art.html",20,"text/html")],emptyDirectories:["empty","parent/empty"],rootIsDirectory:true,path,method});
+   expect(plan).toMatchObject({method,readiness:"warning",path});
+   expect(plan.diagnostics[0]?.code).toBe("missing_index");
+  }
+  const missing=await planPresentation(client,addresses,{root,files:[file("art.html",20,"text/html")],emptyDirectories:["empty","parent/empty"],rootIsDirectory:true,path:"absent",method});
+  expect(missing.readiness).toBe("blocked");expect(missing.diagnostics[0]?.code).toBe("missing_target");
+ });
+});
+
+it.each([PresentationMethod.ChainGateway,PresentationMethod.Ipfs])("does not mistake omitted empty-directory evidence for proven absence with URL method %s",async method=>{
+ const request={root,files:[file("art.html",20,"text/html")],rootIsDirectory:true,path:"maybe-empty",method};
+ const unknown=await planPresentation(client,addresses,request);
+ expect(unknown.readiness).toBe("unresolved");expect(unknown.diagnostics[0]?.code).toBe("target_unproven");
+ const absent=await planPresentation(client,addresses,{...request,emptyDirectories:[]});
+ expect(absent.readiness).toBe("blocked");expect(absent.diagnostics[0]?.code).toBe("missing_target");
+ const embedded=await planPresentation(client,addresses,{...request,method:PresentationMethod.Embedded});
+ expect(embedded.readiness).toBe("blocked");
 });

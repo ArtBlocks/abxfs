@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -43,7 +43,7 @@ beforeEach(() => {
   });
   h.method.mockReset().mockResolvedValue("0x03"); h.target.mockReset().mockResolvedValue("0x04");
   h.full.mockReset().mockResolvedValue({ok:true,status:"ready",callerGas:50_000_000n,reason:"complete metadata verified"});
-  h.planUpdate.mockReset().mockResolvedValue({applied:{newRootCid:`0x${"cd".repeat(32)}`,files:[{path:"index.html",kind:"changed",newCid:`0x${"cd".repeat(32)}`},{path:"keep.webp",kind:"unchanged",newCid:`0x${"ef".repeat(32)}`}]}});
+  h.planUpdate.mockReset().mockResolvedValue({applied:{newRootCid:`0x${"cd".repeat(32)}`,emptyDirectories:["kept/empty"],files:[{path:"index.html",kind:"changed",newCid:`0x${"cd".repeat(32)}`},{path:"keep.webp",kind:"unchanged",newCid:`0x${"ef".repeat(32)}`}]}});
   h.publishUpdate.mockReset().mockResolvedValue({newRootCid:`0x${"cd".repeat(32)}`,publishTxHash:"0x05",versionNumber:2n});
   process.exitCode=0;
   vi.spyOn(console,"error").mockImplementation(()=>{});
@@ -118,4 +118,13 @@ describe("update preserves presentation and diagnoses it after success", () => {
     expect(h.update).toHaveBeenCalledTimes(1); expect(h.preview).not.toHaveBeenCalled();
     expect(h.method).not.toHaveBeenCalled(); expect(warnings).toEqual([]);
   });
+});
+
+it.each([false,true])("passes complete empty-directory evidence for snapshot/overlay update preflight (overlay=%s)",async overlay=>{
+ if(!overlay) mkdirSync(join(dir,"local","empty"),{recursive:true});
+ const target=overlay ? "kept" : "local";
+ await updateCommand().parseAsync([dir,"--project-id","3","--org",ORG,"--yes","--json","--presentation","ipfs","--presentation-path",target,...(overlay ? ["--overlay"] : [])],{from:"user"});
+ expect(JSON.parse(lines.at(-1)!)).toMatchObject({ok:true,published:true,outcome:"published",contentMode:overlay ? "overlay" : "snapshot"});
+ expect(overlay ? h.publishUpdate : h.update).toHaveBeenCalledTimes(1);
+ expect(h.target).toHaveBeenCalledExactlyOnceWith(3n,expect.objectContaining({path:target}));
 });

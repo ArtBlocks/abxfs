@@ -180,7 +180,7 @@ export function uploadCommand(): Command {
         const org = projectId !== undefined ? requireOrg(chain, opts.org) : resolveOrg(chain, opts.org);
         const bound = org ? await client.resolveOrg(org) : client;
         const presentation = opts.name || projectId !== undefined ? await publicationPresentation(bound, projectId, {
-          root: preflight.rootCid, files, rootIsDirectory: !file, codec,
+          root: preflight.rootCid, files, rootIsDirectory: !file, codec, emptyDirectories,
           ...(opts.presentation !== undefined ? { method: parsePresentationMethod(opts.presentation) } : {}),
           ...(opts.presentationPath !== undefined ? { path: opts.presentationPath } : {}),
         }) : undefined;
@@ -200,7 +200,7 @@ export function uploadCommand(): Command {
       const presentationClient = target?.org ? await client.resolveOrg(target.org) : client;
       const presentationSupported = Boolean(presentationClient.addresses.projectPresentation);
       const presentationPlan = target ? await publicationPresentation(presentationClient, projectId, {
-        root: preflight.rootCid, files, rootIsDirectory: !file, codec,
+        root: preflight.rootCid, files, rootIsDirectory: !file, codec, emptyDirectories,
         ...(opts.presentation !== undefined ? { method: parsePresentationMethod(opts.presentation) } : {}),
         ...(opts.presentationPath !== undefined ? { path: opts.presentationPath } : {}),
       }) : undefined;

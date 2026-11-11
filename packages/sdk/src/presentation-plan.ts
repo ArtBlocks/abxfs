@@ -19,8 +19,10 @@ export type PresentationIntent = PresentationMethod | "auto" | "preserve";
 export interface PresentationPlanRequest {
   root: AbxfsCid;
   files?: readonly FileDescriptor[];
-  /** Complete proposed directory manifest, including unchanged files in an overlay. */
+  /** Complete proposed file manifest, including unchanged files in an overlay. */
   entries?: readonly { path: string; cid?: AbxfsCid }[];
+  /** Complete proposed empty-directory set, including unchanged ones. [] proves none; omission cannot prove absence. */
+  emptyDirectories?: readonly string[];
   rootIsDirectory?: boolean;
   codec?: FileCodec;
   method?: PresentationIntent;
@@ -112,7 +114,8 @@ export async function planPresentation(client: PublicClient, addresses: Contract
       : { selection: PresentationSelection.Latest, path };
   const manifest = request.entries ?? request.files;
   const paths = manifest?.map(file => file.path);
-  const directoryPath = request.rootIsDirectory !== false && (!path || Boolean(paths?.some(name => name.startsWith(`${path}/`))));
+  const directoryPath = request.rootIsDirectory !== false && (!path || Boolean(paths?.some(name => name.startsWith(`${path}/`)))
+    || Boolean(request.emptyDirectories?.some(directory => directory === path || directory.startsWith(`${path}/`))));
   const readPath = directoryPath ? (path ? `${path}/index.html` : "index.html") : path;
   const directoryPrefix = path ? `${path}/` : "";
   const multipleFiles = directoryPath && new Set(paths?.filter(name => name.startsWith(directoryPrefix))
@@ -132,9 +135,14 @@ export async function planPresentation(client: PublicClient, addresses: Contract
     analysis = recommendPresentationPayload({ mimeType: selected.mimeType, size: selected.bytes.length, codec: request.codec ?? ZERO_HASH,
       bytes: selected.bytes, presentationVersion: version, multipleFiles, inspection: "local" }, request.autoPolicy);
   } else if (root === request.root && manifest && !selectedEntry && request.rootIsDirectory !== false) {
-    analysis = { method: PresentationMethod.ChainGateway, reason: "the selected directory has no index.html file; choose an entrypoint or use ChainGateway", residualDependencies: [], runtimeUncertain: false,
-      diagnostics: [{ code: directoryPath ? "missing_index" : "missing_target", message: directoryPath ? "the selected directory has no index.html file; no synthetic listing is embedded" : "the selected path is absent from the proposed complete manifest", technical: true }],
-      readReach: { inspection: "local", nativeReadable: false, tokenUri: "not-measured" } };
+    const targetUnproven = !directoryPath && request.emptyDirectories === undefined;
+    const reason = targetUnproven
+      ? "the selected path has no file in the manifest; complete emptyDirectories evidence is needed to distinguish an empty directory from an absent target"
+      : directoryPath ? "the selected directory has no index.html file; no synthetic listing is embedded"
+        : "the selected path is absent from the proposed complete manifest";
+    analysis = { method: PresentationMethod.ChainGateway, reason, residualDependencies: [], runtimeUncertain: false,
+      diagnostics: [{ code: targetUnproven ? "target_unproven" : directoryPath ? "missing_index" : "missing_target", message: reason, technical: true }],
+      readReach: { inspection: targetUnproven ? "unresolved" : "local", nativeReadable: false, tokenUri: "not-measured" } };
   } else {
     analysis = await recommendPresentationMethod(client, addresses, selectedEntry?.cid ?? root, selectedEntry?.cid ? "" : path, request.autoPolicy);
   }

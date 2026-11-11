@@ -154,6 +154,7 @@ export function updateCommand(): Command {
             : await client.uploadFile(newContent, { codec, fastLz, dryRun: true });
         const presentation = await publicationPresentation(client, tokenId, { root: preflight.rootCid,
           files: Array.isArray(newContent) ? newContent : [newContent], rootIsDirectory: Array.isArray(newContent), codec,
+          emptyDirectories: overlay ? overlay.applied.emptyDirectories ?? [] : emptyDirectories,
           ...(overlay ? { entries: overlay.applied.files.filter(file => file.kind !== "removed").map(file => ({ path: file.path, cid: file.newCid })) } : {}),
           ...(opts.presentation !== undefined ? { method: parsePresentationMethod(opts.presentation) } : {}),
           ...(opts.presentationPath !== undefined ? { path: opts.presentationPath } : {}),
