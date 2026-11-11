@@ -61,7 +61,12 @@ Choose **Latest**, a 1-based **Version**, or a named **Tag**, plus an optional p
 inside that root. Latest follows new publishes; Tag follows tag movements; Version
 selects one historical root. An empty path selects a file root or `index.html` in a
 directory when reading Embedded content. A selected directory likewise reads its
-`index.html`. Paths are relative, without a leading or trailing slash.
+`index.html`. Presentation paths are relative, without empty segments, `.`/`..`,
+backslashes or control bytes, and fit 2,048 UTF-8 bytes, 32 segments and 255 bytes
+per segment. Explicit invalid targets are blocked before publishing, regardless of
+delivery method. If a suggested entrypoint exceeds these limits, Auto keeps the
+directory root and chooses ChainGateway; this does not reject a valid deeper
+content tree.
 
 `presentation inspect` reports the exact selected root and path, method, endpoints
 and locks. `presentation preview` adds the status, MIME type, payload and dependency

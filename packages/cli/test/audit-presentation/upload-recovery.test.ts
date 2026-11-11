@@ -42,7 +42,7 @@ vi.mock("../../src/client.js", async () => {
       return "0x12";
     },
     planUpload: async () => ({ rootCid: `0x${"ab".repeat(32)}`, files: [] }),
-    upload: async () => ({ rootCid: `0x${"ab".repeat(32)}`, txHashes: [] }),
+    upload: async () => { h.calls.push("upload"); return { rootCid: `0x${"ab".repeat(32)}`, txHashes: [] }; },
   });
   return { createClient: () => ({ ...client, resolveOrg: async () => client }), createOrgClient: async () => client };
 });
@@ -131,16 +131,16 @@ it.each([0,4])("initializes Auto for a pre-minted empty project with flags %s wi
  await uploadCommand().parseAsync([dir,"--project-id","7","--org",ORG,"--yes","--json"],{from:"user"});
  const result=JSON.parse(output.at(-1)!);
  expect(result).toMatchObject({ok:true,published:true,tokenId:"7"});
- expect(h.calls).toEqual(["publish","set-target","set-method"]);
+ expect(h.calls).toEqual(["upload","publish","set-target","set-method"]);
 });
 it("preserves a deliberately saved zero-valued method before first publication",async()=>{
  h.versionCount=0;h.configuredFlags=2;
  await uploadCommand().parseAsync([dir,"--project-id","7","--org",ORG,"--yes"],{from:"user"});
- expect(h.calls).toEqual(["publish","set-target"]);
+ expect(h.calls).toEqual(["upload","publish","set-target"]);
 });
 it("preserves existing publication choices when upload targets a published project",async()=>{
  await uploadCommand().parseAsync([dir,"--project-id","7","--org",ORG,"--yes"],{from:"user"});
- expect(h.calls).toEqual(["publish"]);
+ expect(h.calls).toEqual(["upload","publish"]);
 });
 
 it("emits one signer-free JSON dry run with the concrete first-publication plan and no writes",async()=>{
@@ -148,5 +148,11 @@ it("emits one signer-free JSON dry run with the concrete first-publication plan 
  await uploadCommand().parseAsync([dir,"--project-id","7","--org",ORG,"--dry-run","--json"],{from:"user"});
  expect(output).toHaveLength(1);
  expect(JSON.parse(output[0]!)).toMatchObject({ok:true,published:false,outcome:"planned",dryRun:true,contentMode:"snapshot",root:ROOT,presentation:{path:"index.html",requested:"auto",method:1,readiness:"ready",readReach:{tokenUri:"not-measured"}}});
+ expect(h.calls).toEqual([]);
+});
+
+it("blocks invalid explicit ChainGateway presentation paths before any upload, mint or publish",async()=>{
+ await uploadCommand().parseAsync([dir,"--name","art","--org",ORG,"--yes","--json","--presentation","chain-gateway","--presentation-path","../index.html"],{from:"user"});
+ expect(JSON.parse(output.at(-1)!)).toMatchObject({ok:false,published:false,outcome:"failed"});
  expect(h.calls).toEqual([]);
 });

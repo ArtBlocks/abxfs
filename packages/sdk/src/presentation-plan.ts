@@ -4,6 +4,8 @@ import type { AbxfsCid, ContractAddresses, FileCodec, FileDescriptor } from "./t
 import { ProjectKind } from "./types.js";
 import { ZERO_HASH } from "./cid.js";
 import { isRevertFailure } from "./multicall.js";
+import { assertLiteralPath } from "./names.js";
+import { validateRelativePath } from "./util.js";
 import { cidKind } from "./kind.js";
 import { directoryEntryCount, getDirectoryEntriesPage, lookupEntry } from "./read.js";
 import {
@@ -45,6 +47,18 @@ export interface PresentationPlan {
   readReach: PresentationReadReach;
   presentationVersion: number;
 }
+/** Match the presentation contract's path grammar before planning a target mutation. */
+export function validatePresentationPath(path: string): void {
+  if (!path) return;
+  try { assertLiteralPath(path); validateRelativePath(path); }
+  catch { throw new Error("presentation path must be a well-formed relative path without backslashes, empty segments, '.' or '..'"); }
+  const utf8 = new TextEncoder();
+  if (utf8.encode(path).length > 2048) throw new Error("presentation path exceeds 2048 UTF-8 bytes");
+  const parts = path.split("/");
+  if (parts.length > 32) throw new Error("presentation path exceeds 32 segments");
+  if (parts.some(part => utf8.encode(part).length > 255)) throw new Error("presentation path segment exceeds 255 UTF-8 bytes");
+  if (/[\x00-\x1f\x7f]/.test(path)) throw new Error("presentation path contains a control byte");
+}
 /** A root remains a valid directory target; only tooling suggests a file for Embedded. */
 export function selectPresentationEntrypoint(paths: readonly string[], explicitPath?: string): { path: string; reason: string } {
   if (explicitPath !== undefined) return { path: explicitPath, reason: "explicit entrypoint" };
@@ -85,6 +99,13 @@ export async function planPresentation(client: PublicClient, addresses: Contract
     else if (request.files || request.entries) path = selectPresentationEntrypoint((request.entries ?? request.files ?? []).map(file => file.path)).path;
     else path = await storedEntrypoint(client, addresses, root);
   }
+  let invalidPath: string | undefined;
+  let entrypointFallback = false;
+  try { validatePresentationPath(path); }
+  catch (error) {
+    if (request.path === undefined && choosePath) { path = ""; entrypointFallback = true; }
+    else invalidPath = error instanceof Error ? error.message : "invalid presentation path";
+  }
   const target: PresentationTarget = current?.selection === PresentationSelection.Version
     ? { selection: current.selection, version: current.version, path }
     : current?.selection === PresentationSelection.Tag ? { selection: current.selection, tag: current.tag, path }
@@ -99,7 +120,11 @@ export async function planPresentation(client: PublicClient, addresses: Contract
   const selected = root === request.root ? request.files?.find(file => file.path === readPath || request.rootIsDirectory === false) : undefined;
   const selectedEntry = root === request.root ? request.entries?.find(file => file.path === readPath) : undefined;
   let analysis: PresentationRecommendation;
-  if (request.rootIsDirectory === false && path) {
+  if (invalidPath) {
+    analysis = { method: PresentationMethod.ChainGateway, reason: invalidPath, residualDependencies: [], runtimeUncertain: false,
+      diagnostics: [{ code: "invalid_path", message: invalidPath, technical: true }],
+      readReach: { inspection: "local", nativeReadable: false, tokenUri: "not-measured" } };
+  } else if (request.rootIsDirectory === false && path) {
     analysis = { method: PresentationMethod.ChainGateway, reason: "a file root cannot have a nonempty path", residualDependencies: [], runtimeUncertain: false,
       diagnostics: [{ code: "invalid_file_path", message: "a file root cannot have a nonempty path", technical: true }],
       readReach: { inspection: "local", nativeReadable: false, tokenUri: "not-measured" } };
@@ -117,12 +142,13 @@ export async function planPresentation(client: PublicClient, addresses: Contract
   const configureTarget = choosePath && (path !== current?.path || initializeTarget || request.path !== undefined);
   const configureMethod = requested !== "preserve" && (method !== current?.method || initializeMethod || request.method !== undefined);
   const diagnostics = [...(analysis.diagnostics ?? [])];
+  if (entrypointFallback) diagnostics.unshift({ code: "entrypoint_path_policy", message: "suggested entrypoint exceeds the presentation path grammar; keep the directory root and use ChainGateway or choose a valid entrypoint", technical: false });
   const locks = current?.locks ?? 0;
   if (!version && (configureTarget || configureMethod)) diagnostics.push({ code: "unsupported_generation", message: "this factory generation has no presentation capability", technical: true });
   if (configureTarget && (locks & PresentationLock.Content)) diagnostics.push({ code: "content_locked", message: "the displayed content and entrypoint are permanently frozen", technical: true });
   if (configureMethod && (locks & PresentationLock.Method)) diagnostics.push({ code: "method_locked", message: "the presentation method is permanently locked", technical: true });
-  const blocked = diagnostics.some(d => d.code.endsWith("_locked") || d.code === "unsupported_generation" || (method === PresentationMethod.Embedded && (configureTarget || configureMethod) && d.technical));
-  return { root, path, requested, method, target, configureTarget, configureMethod, reason: requested === "preserve" ? "preserve the saved presentation method" : requested === "auto" ? analysis.reason : "explicit owner choice",
+  const blocked = diagnostics.some(d => d.code.endsWith("_locked") || d.code === "unsupported_generation" || d.code === "invalid_path" || (method === PresentationMethod.Embedded && (configureTarget || configureMethod) && d.technical));
+  return { root, path, requested, method, target, configureTarget, configureMethod, reason: requested === "preserve" ? "preserve the saved presentation method" : requested === "auto" ? entrypointFallback ? diagnostics[0]!.message : analysis.reason : "explicit owner choice",
     locks, readiness: blocked ? "blocked" : analysis.readReach?.inspection === "unresolved" ? "unresolved" : diagnostics.length ? "warning" : "ready",
     diagnostics, residualDependencies: analysis.residualDependencies, runtimeUncertain: analysis.runtimeUncertain,
     readReach: analysis.readReach ?? { inspection: "unresolved", nativeReadable: null, tokenUri: "not-measured" }, presentationVersion: version };

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { PublicClient, WalletClient, Address } from "viem";
 import { ZERO_HASH } from "../src/cid.js";
 import { asAbxfsCid, type ContractAddresses } from "../src/types.js";
-import { planPresentation, applyPresentationPlan, PresentationApplyError, selectPresentationEntrypoint } from "../src/presentation-plan.js";
+import { planPresentation, applyPresentationPlan, PresentationApplyError, selectPresentationEntrypoint, validatePresentationPath } from "../src/presentation-plan.js";
 import { PresentationMethod, PresentationSelection, presentationVersion, DEFAULT_AUTO_MAX_BYTES } from "../src/presentation.js";
 const a = (n: number) => `0x${n.toString(16).padStart(40,"0")}` as Address;
 const addresses: ContractAddresses = { chunkStore:a(1),fileStore:a(2),directoryStore:a(3),sstore2Backend:a(4),fastLzBackend:a(5),projectPresentation:a(6) };
@@ -79,5 +79,27 @@ describe("shared presentation planning",()=>{
   const error=await applyPresentationPlan(c,addresses,a(90),3n,plan).catch(e=>e);
   expect(error).toBeInstanceOf(PresentationApplyError);expect(error.phase).toBe("set-method");expect(error.completed).toHaveLength(1);
   expect(write.mock.calls.map(call=>call[0].functionName)).toEqual(["setTarget","setMethod"]);
+ });
+});
+
+describe("presentation target path grammar",()=>{
+ const maxPath=[...Array<string>(7).fill("a".repeat(255)),"b".repeat(254),"c"].join("/");
+ it("accepts empty root and exact UTF-8 segment/depth/total-byte boundaries",()=>{
+  expect(new TextEncoder().encode(maxPath)).toHaveLength(2048);
+  for(const path of ["","a".repeat(255),"é".repeat(127)+"a",Array<string>(32).fill("a").join("/"),maxPath])
+   expect(()=>validatePresentationPath(path)).not.toThrow();
+ });
+ it.each(["../index.html","./index.html","/index.html","a/","a//b","a\\b","a\x1fb","a\x7fb","é".repeat(128),Array<string>(33).fill("a").join("/"),maxPath+"d"])("blocks explicit invalid target %j for every delivery method",async path=>{
+  for(const method of [PresentationMethod.ChainGateway,PresentationMethod.Embedded,PresentationMethod.Ipfs]){
+   const plan=await planPresentation(client,addresses,{root,files:[file("index.html",20,"text/html")],rootIsDirectory:true,path,method});
+   expect(plan.readiness).toBe("blocked");expect(plan.diagnostics[0]?.code).toBe("invalid_path");
+   expect(plan.configureTarget).toBe(true);expect(plan.method).toBe(method);
+  }
+ });
+ it("keeps a valid deep-directory upload on its root and recommends ChainGateway instead of setting an invalid suggested entrypoint",async()=>{
+  const deep=Array<string>(33).fill("folder").join("/")+"/art.html";
+  const plan=await planPresentation(client,addresses,{root,files:[file(deep,20,"text/html")],rootIsDirectory:true,firstPublication:true,current:config});
+  expect(plan).toMatchObject({path:"",target:{path:""},method:PresentationMethod.ChainGateway,readiness:"warning",configureTarget:true});
+  expect(plan.diagnostics[0]?.code).toBe("entrypoint_path_policy");
  });
 });
