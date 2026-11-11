@@ -64,6 +64,7 @@ contract DWPresentation {
         _base = base;
     }
     function defaultChainBase() external view returns (string memory) { return bytes(_base).length == 0 ? "https://fs.abx.io" : _base; }
+    function presentationVersion() external pure returns (uint256) { return 2; }
     function setBase(string calldata base) external { _base = base; }
     function setDependencies(address r, address resolver) external { reader = r; ipfsResolver = resolver; }
 }

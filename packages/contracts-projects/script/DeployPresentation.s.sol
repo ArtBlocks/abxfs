@@ -59,7 +59,7 @@ contract DeployPresentation is LocalChain {
     }
 
     function pinned() public pure returns (address) {
-        return 0x8FD707e572d53581a9fA4d79E9D8202AD3acC208;
+        return 0x1C136Aa2E8cD9d46d8242FE69cEDC70835f5fe86;
     }
 
     function preflight(address reader, address resolver, string memory gateway) public view {

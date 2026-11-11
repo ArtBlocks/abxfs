@@ -18,7 +18,7 @@ import {
 } from "./DeployWrong.t.sol";
 
 contract DeployPresentationTest is Test {
-    bytes32 constant CREATION_CODE_HASH = 0xf6399f3412b1146290212a72f2c43e142496a5ace0567e15ddb4244ceacd5d31;
+    bytes32 constant CREATION_CODE_HASH = 0xe3672596f7e7e0a2eeac704e9da6ececd2cf49d75747197c6dac6ee14667d3b3;
     address constant READER = 0xe6d62620A284565B7F0B3581A6972BA3Be5C8B13;
     address constant RESOLVER = 0x7CE58c2945CbE3C2bDb0D3d276Ba3b9bD294008d;
     string constant GATEWAY = "https://fs.abx.io";
@@ -108,8 +108,16 @@ contract DeployPresentationTest is Test {
         fake.ret(bytes4(keccak256("reader()")), abi.encode(presentation.reader()));
         fake.ret(bytes4(keccak256("ipfsResolver()")), abi.encode(presentation.ipfsResolver()));
         fake.ret(bytes4(keccak256("defaultChainBase()")), abi.encode(GATEWAY));
+        fake.ret(bytes4(keccak256("presentationVersion()")), abi.encode(uint256(2)));
         input.presentation = address(fake);
         projects.preflight(input, true, true);
+        fake.ret(bytes4(keccak256("presentationVersion()")), abi.encode(uint256(1)));
+        vm.expectRevert(abi.encodeWithSelector(DeployProjects.ProbeFailed.selector, "presentationVersion()", address(fake)));
+        projects.preflight(input, true, true);
+        fake.ret(bytes4(keccak256("presentationVersion()")), new bytes(31));
+        vm.expectRevert(abi.encodeWithSelector(DeployProjects.ProbeFailed.selector, "presentationVersion()", address(fake)));
+        projects.preflight(input, true, true);
+        fake.ret(bytes4(keccak256("presentationVersion()")), abi.encode(uint256(2)));
         fake.ret(bytes4(keccak256("reader()")), abi.encode(uint256(1) << 160));
         vm.expectRevert(abi.encodeWithSelector(DeployProjects.ProbeFailed.selector, "reader()", address(fake)));
         projects.preflight(input, true, true);

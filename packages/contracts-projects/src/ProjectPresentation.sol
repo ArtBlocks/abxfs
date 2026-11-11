@@ -38,8 +38,8 @@ interface IPresentationIpfs {
 }
 
 /// @notice Immutable animation renderer with independent, owner-controlled content, method and endpoint locks.
-/// @dev All state is namespaced by org and token. Rendering runs in a bounded self-call: a hostile org,
-///      storage backend or resolver can fail that frame without exhausting the fallback frame.
+/// @dev All state is namespaced by org and token. Embedded reads have no payload-size, chunk or fixed gas policy.
+///      Catchable failures are reported by preview; EVM/RPC resource exhaustion may fail the complete metadata call.
 contract ProjectPresentation is IProjectPresentation {
     using LibString for uint256;
 
@@ -47,17 +47,8 @@ contract ProjectPresentation is IProjectPresentation {
     uint8 public constant CONTENT_LOCK = 1;
     uint8 public constant METHOD_LOCK = 2;
     uint8 public constant ENDPOINT_LOCK = 4;
-    uint256 public constant MAX_EMBED_BYTES = 8192;
-    uint256 public constant MAX_EMBED_CHUNKS = 32;
     uint256 public constant MAX_PATH_BYTES = 2048;
     uint256 public constant MAX_ENDPOINT_BYTES = 512;
-    uint256 public constant RENDER_GAS = 5_000_000;
-    uint256 internal constant _MAX_RETURN = MAX_EMBED_BYTES + 512;
-    uint256 internal constant _RESERVE_GAS = 1_000_000;
-    // Qualified against the full ABX tokenURI, including its outer JSON/base64 serialization.
-    // Recheck these margins when changing supported ABX renderers or the output ceiling.
-    uint256 public constant SERIALIZE_BASE_GAS = 500_000;
-    uint256 public constant SERIALIZE_GAS_PER_BYTE = 600;
 
     IPresentationReader public immutable reader;
     IPresentationIpfs public immutable ipfsResolver;
@@ -84,6 +75,10 @@ contract ProjectPresentation is IProjectPresentation {
         return _configs[org][tokenId];
     }
 
+    function presentationVersion() external pure returns (uint256) {
+        return 2;
+    }
+
     function setTarget(
         address org,
         uint256 tokenId,
@@ -103,7 +98,8 @@ contract ProjectPresentation is IProjectPresentation {
         c.version = version;
         c.tag = tag;
         c.path = path;
-        emit TargetChanged(org, tokenId);
+        c.configuredFlags |= CONTENT_LOCK;
+        emit TargetChanged(org, tokenId, selection, version, tag, path);
     }
 
     function setMethod(address org, uint256 tokenId, Method method) external {
@@ -111,6 +107,7 @@ contract ProjectPresentation is IProjectPresentation {
         Config storage c = _configs[org][tokenId];
         if (c.locks & METHOD_LOCK != 0) revert Locked(METHOD_LOCK);
         c.method = method;
+        c.configuredFlags |= METHOD_LOCK;
         emit MethodChanged(org, tokenId, method);
     }
 
@@ -121,7 +118,8 @@ contract ProjectPresentation is IProjectPresentation {
         if (!_endpoint(bytes(chainBase), true) || !_ipfsEndpoint(bytes(ipfsBase))) revert InvalidConfiguration();
         c.chainBase = chainBase;
         c.ipfsBase = ipfsBase;
-        emit EndpointsChanged(org, tokenId);
+        c.configuredFlags |= ENDPOINT_LOCK;
+        emit EndpointsChanged(org, tokenId, chainBase, ipfsBase);
     }
 
     /// @notice Hash the exact current values being frozen, without coupling unrelated dimensions.
@@ -148,6 +146,7 @@ contract ProjectPresentation is IProjectPresentation {
             c.frozenRoot = root;
         }
         c.locks |= mask;
+        c.configuredFlags |= mask;
         emit PresentationLocked(org, tokenId, c.locks, c.frozenRoot);
     }
 
@@ -191,47 +190,20 @@ contract ProjectPresentation is IProjectPresentation {
         ) revert InvalidOrg();
     }
 
-    /// @notice Always returns a bounded result; direct callers can inspect why a presentation is empty.
+    /// @notice Inspect configured output. Catchable failures have a status; natural resource exhaustion may revert.
     function preview(address org, uint256 tokenId)
         public
         view
         returns (Status status, string memory contentType, bytes memory data)
     {
         if (tokenId == type(uint256).max) return (Status.Unpublished, "text/plain", "");
-        if (gasleft() <= _RESERVE_GAS) return (Status.OverBudget, "text/plain", "");
-        bytes memory input = abi.encodeCall(this.evaluate, (org, tokenId));
-        bytes memory ret;
-        bool ok;
-        uint256 cap = gasleft() - _RESERVE_GAS;
-        if (cap > RENDER_GAS) cap = RENDER_GAS;
-        uint256 maxReturn = _MAX_RETURN;
-        address self = address(this);
-        assembly ("memory-safe") {
-            ok := staticcall(cap, self, add(input, 32), mload(input), 0, 0)
-            let n := returndatasize()
-            if gt(n, maxReturn) {
-                ok := 0
-                n := 0
-            }
-            ret := mload(0x40)
-            mstore(ret, n)
-            returndatacopy(add(ret, 32), 0, n)
-            mstore(0x40, add(add(ret, 64), and(add(n, 31), not(31))))
-        }
-        if (!ok || ret.length < 96) return (Status.ReadFailed, "text/plain", "");
-        uint256 s = uint256(_word(ret, 0));
-        (bytes memory mime, bool validMime) = _slice(ret, 1, 64);
-        (bytes memory payload, bool validPayload) = _slice(ret, 2, MAX_EMBED_BYTES);
-        if (s > uint256(Status.OverBudget) || !validMime || !validPayload) {
+        // An ordinary self-call catches failures such as invalid dependency return data. It forwards the caller's
+        // available gas under the EVM's normal rules: no fixed allowance, reserve, or maximum return-data policy.
+        try this.evaluate(org, tokenId) returns (Status s, string memory mime, bytes memory payload) {
+            return (s, mime, payload);
+        } catch {
             return (Status.ReadFailed, "text/plain", "");
         }
-        // A successful source may spend almost the entire evaluation budget. Returning its large
-        // payload then would leave ABX too little gas to serialize tokenURI, despite this frame
-        // surviving. Refuse the payload while the fallback still has ample gas to finish.
-        if (s == uint256(Status.Ready) && gasleft() < SERIALIZE_BASE_GAS + SERIALIZE_GAS_PER_BYTE * payload.length) {
-            return (Status.OverBudget, "text/plain", "");
-        }
-        return (Status(s), string(mime), payload);
     }
 
     function render(address org, uint256 tokenId, bytes32 field)
@@ -245,7 +217,7 @@ contract ProjectPresentation is IProjectPresentation {
         return (mime, payload);
     }
 
-    /// @dev External only to isolate all untrusted calls behind preview's gas and return-data budget.
+    /// @dev External only so preview can catch dependency decoding failures. No manual resource limit is imposed.
     function evaluate(address org, uint256 tokenId) external view returns (Status, string memory, bytes memory) {
         if (msg.sender != address(this)) revert InvalidConfiguration();
         bytes32 root;
@@ -264,10 +236,9 @@ contract ProjectPresentation is IProjectPresentation {
         }
         Config storage c = _configs[org][tokenId];
         if (c.method == Method.Embedded) {
-            try reader.readPath(root, path, MAX_EMBED_BYTES, MAX_EMBED_CHUNKS) returns (
+            try reader.readPath(root, path, type(uint256).max, type(uint256).max) returns (
                 string memory mime, bytes memory data
             ) {
-                if (data.length > MAX_EMBED_BYTES) return (Status.ReadFailed, "text/plain", "");
                 if (!_mime(mime)) return (Status.UnsupportedMime, "text/plain", "");
                 return (Status.Ready, mime, data);
             } catch (bytes memory reason) {
@@ -276,10 +247,6 @@ contract ProjectPresentation is IProjectPresentation {
                 if (selector == bytes4(keccak256("CodecNotSupported(bytes32)"))) {
                     return (Status.UnsupportedCodec, "text/plain", "");
                 }
-                if (
-                    selector == bytes4(keccak256("ByteLimitExceeded(uint256,uint256)"))
-                        || selector == bytes4(keccak256("ChunkLimitExceeded(uint256,uint256)"))
-                ) return (Status.OverBudget, "text/plain", "");
                 return (Status.ReadFailed, "text/plain", "");
             }
         }
@@ -445,19 +412,4 @@ contract ProjectPresentation is IProjectPresentation {
         return true;
     }
 
-    function _word(bytes memory ret, uint256 i) internal pure returns (bytes32 w) {
-        if (ret.length < (i + 1) * 32) return 0;
-        assembly { w := mload(add(add(ret, 32), mul(i, 32))) }
-    }
-
-    function _slice(bytes memory ret, uint256 i, uint256 cap) internal pure returns (bytes memory out, bool valid) {
-        uint256 offset = uint256(_word(ret, i));
-        if (offset < 96 || offset > ret.length || ret.length - offset < 32) return ("", false);
-        uint256 len;
-        assembly { len := mload(add(add(ret, 32), offset)) }
-        if (len > cap || len > ret.length - offset - 32) return ("", false);
-        out = new bytes(len);
-        assembly ("memory-safe") { mcopy(add(out, 32), add(add(ret, 64), offset), len) }
-        valid = true;
-    }
 }
