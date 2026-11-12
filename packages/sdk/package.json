@@ -64,11 +64,11 @@
     "gen:battery": "node scripts/abx-battery.mjs"
   },
   "dependencies": {
-    "@artblocks/abx-sdk": "0.7.0",
+    "@artblocks/abx-sdk": "0.10.1",
     "@ipld/dag-pb": "^4.2.0",
     "ipfs-unixfs": "^11.2.0",
     "multiformats": "^13.3.1",
-    "viem": "^2.57.14"
+    "viem": "^2.57.17"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
