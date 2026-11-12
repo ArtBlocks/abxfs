@@ -71,7 +71,7 @@
     "viem": "^2.57.14"
   },
   "devDependencies": {
-    "@types/node": "^22.9.0",
+    "@types/node": "^26.6.6",
     "blockstore-core": "^7.0.1",
     "ipfs-unixfs-importer": "^17.1.1",
     "typescript": "^6.0.3",
