@@ -45,7 +45,7 @@
     "@artblocks/abxfs-pinning": "workspace:*",
     "commander": "^12.1.0",
     "kleur": "^4.1.5",
-    "viem": "^2.57.14"
+    "viem": "^2.57.17"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
