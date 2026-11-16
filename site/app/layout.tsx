@@ -27,10 +27,10 @@ export default function Layout({ children }: LayoutProps<"/">) {
         {/* Light (paper) or dark (ink) as the visitor's system prefers, with the toggle to override it; the app is
             dark only, in the same dark palette. */}
         <RootProvider theme={{ defaultTheme: "system" }}>
-          {/* No `id`, so it cannot be dismissed: prerelease and unaudited is the standing state of the protocol. */}
+          {/* No `id`, so it cannot be dismissed: unaudited is the standing state of the protocol. */}
           <Banner>
             <span>
-              <strong>Prerelease.</strong> ABX FS is early, unaudited software. It may have bugs, and we do not
+              <strong>Unaudited.</strong> ABX FS is unaudited software. It may have bugs, and we do not
               guarantee it is bug-free. What you publish is public and permanent, and on production chains real funds
               are at risk.{" "}
               <a href="/docs/reference/deployments" className="underline underline-offset-2">
