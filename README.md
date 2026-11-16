@@ -1,6 +1,6 @@
 # ABX FS
 
-> **Prerelease, and unaudited.** ABX FS is early software and may have bugs; we do not guarantee it is bug-free. Its
+> **Unaudited.** ABX FS may have bugs; we do not guarantee it is bug-free. Its
 > contracts have had no independent security audit yet, and neither has ABX, which every org is built on. Everything
 > published is public and permanent, and on a production network real funds are at risk.
 
