@@ -45,6 +45,9 @@ and keep it available. An empty IPFS endpoint uses `ipfs://`; a base such as
 `https://dweb.link` produces `https://<cid>.ipfs.dweb.link/...`.
 An empty chain endpoint uses the generation's default gateway; a custom chain base
 must serve `/g/cid/<chain>/<root>/<path>`. Use HTTPS bases without a trailing slash.
+The SDK and CLI also refuse a chain base containing `& ( ) [ ] ^ { | }`. The contract
+accepts these, but they can end a Markdown link or a CSS `url()` where a viewer embeds
+`animation_url`, so tooling applies the same rule as `abxfs.view`.
 
 A first publication uses Auto when its org supports presentation, including an
 already-minted empty project. Tooling suggests `index.html`, otherwise the sole
@@ -142,6 +145,10 @@ render. Run `presentation preview` and see a `Ready` status before you lock. Con
 and method locked on a target that always fails, such as IPFS over a root with a
 file-level codec, leave that token's `tokenURI` failing for good, for every later
 holder too.
+The CLI refuses a lock that would leave content and method both locked while the
+reviewed preview is `ReadFailed` or `IpfsFailed`, or while the preview itself reverts.
+There is no override. The SDK's `lockPresentation` refuses the same locks when it is
+given the reviewed preview.
 
 Settings and locks take effect only in orgs whose `animation_url` renderer is this
 presentation contract, which means orgs from the current factory. The contract also
