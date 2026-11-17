@@ -224,7 +224,7 @@ should be added: npm trusts this repository's `release.yml` by name, so renaming
 package is told the new name. Do not edit a package's version by hand.
 
 `OrgFactory` is the same kind of thing — deployed with a fixed salt, so its address is a function
-of its creation code and of its constructor arguments (the ABX addresses, both stores and `OrgMeta`).
+of its creation code and of its constructor arguments (the ABX addresses, both stores, `OrgMeta` and `ProjectPresentation`).
 It is **pinned**: `packages/contracts-projects/test/DeployFactoryPin.t.sol` pins its creation-code hash,
 `OrgMeta`'s, the lens's, and (through `script/Deploy.s.sol`'s `pinned()`) their predicted addresses and the five
 components'. Treat a code change in the factory, the hook,
@@ -232,7 +232,9 @@ the enumeration hook, the minter, the card or the traits renderer as an address 
 five components' CREATE2 addresses in its constructor from their creation code, so their code is part of its initcode.
 The factory does not deploy them: anyone deploys each through the keyless deployer (`COMPONENT_SALT`; the deploy script
 does it with `script/OrgComponents.sol`), only that exact code can land at each address, and `createOrg` reverts
-`ComponentsNotDeployed` until all five exist. That split is what keeps every deploy transaction under about 21M gas
+`ComponentsNotDeployed` until all five exist and `ProjectPresentation` has code: six checks. The presentation contract
+is a constructor argument, not a computed address, so the factory checks only that it has code; the deploy script pins
+it (`expected()`). That split is what keeps every deploy transaction under about 21M gas
 under EIP-8037; deploying them in the factory's constructor measured 67.7M, over Ethereum's 60M block. Tests make a
 factory with `OrgComponents.create`, not `new OrgFactory`. `OrgMeta` (the org's
 `contractURI` document and every token's `name`) is deployed separately by `Deploy.s.sol` with its own
@@ -388,10 +390,13 @@ chain-less form or a default chain back. The
 content domain should be a SEPARATE registrable domain from the app (sibling subdomains are same-site, so SameSite
 cookies do not isolate them), and on the Public Suffix List once it qualifies (the list wants thousands of publishers
 first). `/g/p/…` and `/g/cid/…` on the app origin are strict redirects to the content origin, which is how the
-`gatewayBase` frozen into every token's `animation_url` keeps working: the on-chain default stays a path on a site we
-own, and WHERE content is served is off-chain configuration (`ABXFS_CONTENT_DOMAIN`). The one exception is a project's
-ROOT, which is what `animation_url` is: it answers with a page framing the project's origin, because a marketplace may
-show a COPY of that page from its own storage (OpenSea does), where a redirect target's relative links would break; it
+gateway base frozen into every token's links keeps working (`OrgMeta`'s `gatewayBase`, and `ProjectPresentation`'s
+`defaultChainBase` for a ChainGateway `animation_url`): the on-chain default stays a path on a site we own, and WHERE
+content is served is off-chain configuration (`ABXFS_CONTENT_DOMAIN`). The one exception is a project's ROOT under
+`/g/p`, which is the default `animation_url` of an org from the original factory (in an org from the current factory,
+`ProjectPresentation` renders `animation_url` and `abxfs.view` sets only `external_url`): it answers with a page
+framing the project's origin, because a marketplace may show a COPY of that page from its own storage (OpenSea does),
+where a redirect target's relative links would break; it
 names nothing but the project URL, and replaces itself with it when nobody frames it. Never let a content host reach an
 app route or carry app cookies. Nor may the APP origin hold chain content as an active document: a `blob:` URL belongs
 to the origin that made it, so an SVG blob opened in a tab runs there; only passive raster types may become `blob:`

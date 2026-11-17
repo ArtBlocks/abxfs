@@ -31,7 +31,7 @@ if any, points at them, and anyone can build a different project abstraction on 
 | Royalty | **0%, with a cap of 0%**, so it can never rise. |
 | Transfer validator | None. Tokens are not burnable. Symbol `ABXFS`. |
 | Org address | A plain deploy, or a deterministic salt: first 20 bytes zero = anyone may use it, otherwise they must equal `msg.sender` (`SaltSenderMismatch`). A zero-prefix salt can be taken by whoever sees it first, so pre-announce an address only with a salt bound to your own address. |
-| Token links | Per project: `abxfs.view` is the whole URL for `animation_url` and `external_url`; otherwise a default path on `https://fs.abx.io` (below). |
+| Token links | Per project: `abxfs.view` is the whole URL for `external_url`, and for `animation_url` too in orgs from the original factory; otherwise a default path on `https://fs.abx.io` (below). In orgs from the current factory, `animation_url` is the owner's presentation setting (`ProjectPresentation`). |
 | Extensibility | The reserved `abxfs.meta` String key, token-owner writable, 4,096 bytes. |
 | Versioning | The factory is immutable. A fix is a new factory at a new address, and new orgs; the SDK registry lists every factory. |
 | Multi-party | Not in the protocol. Admins and token owners may be Safes. For a team, the admin Safe mints the org's projects to itself, so the org holds them; minting to anyone else gives the project away, and the site and CLI warn before it. Uploading is permissionless, so only the publish (`configureTokenParam`) and any `setTag` need the Safe's signature. |
@@ -44,10 +44,10 @@ addresses (it does on every network ABX FS is deployed on).
 
 - **`OrgMeta`** (salt `keccak256("abx-fs/org-meta")`, argument: the gateway base `https://fs.abx.io`). Renders each
   org's ERC-7572 collection document (`contractURI`: name, description, a monogram logo, a banner and an
-  `external_link` to the gateway base) and every token's `name`. It deploys **`ProjectLinks`**, the `animation_url` /
-  `external_url` renderer, with the same base.
+  `external_link` to the gateway base) and every token's `name`. It deploys **`ProjectLinks`**, the `external_url`
+  renderer (and the `animation_url` renderer of orgs from the original factory), with the same base.
 - **`OrgFactory`** (salt `keccak256("abx-fs/org-factory")`; arguments: ABX's series-code factory, metadata renderer and
-  seed source, the `DirectoryStore` and `FileStore`, and `OrgMeta`). `createOrg(name, description, salt)`, an
+  seed source, the `DirectoryStore` and `FileStore`, `OrgMeta`, and `ProjectPresentation`). `createOrg(name, description, salt)`, an
   append-only org list (`orgCount`, `orgAt`, `orgsSlice`), `isOrg`, `adminOf`, `orgsAdministered` (and
   `orgsAdministeredSlice`), `createdBlockOf`,
   `predictOrg` (reverts for a zero salt: a plain deploy has no predictable address), `isOpen`, `mayMint`, `setOpen`, and
@@ -59,8 +59,10 @@ addresses (it does on every network ABX FS is deployed on).
   (`COMPONENT_SALT`, the component's creation code, and constructor arguments naming this factory or its hook) and
   keeps the addresses as immutables. Anyone then deploys each component through that deployer, in its own
   transaction; only that exact code can land at each address, and `createOrg` reverts `ComponentsNotDeployed` until
-  all five exist (`componentsDeployed()`). Their creation code is part of the factory's initcode, so a change to any of
-  them moves the factory's address. Deploying them in the constructor instead would put about 43 KB of code in one
+  all five exist and `ProjectPresentation` has code (`componentsDeployed()`, six checks). The presentation contract is
+  a constructor argument, not a computed address, so the factory checks only that it has code; the deploy script pins
+  its address on every listed chain. Their creation code is part of the factory's initcode, so a change to any of
+  the five moves the factory's address. Deploying them in the constructor instead would put about 43 KB of code in one
   transaction: 67.7M gas under EIP-8037, over Ethereum's 60M block. `OrgMeta` and `ProjectLinks` need neither address
   and are deployed first, which keeps the factory's initcode under EIP-3860's limit.
 - **`OrgMinter`.** ABX's reference minter authorizes configuration through the collection's `owner()`, which is zero
@@ -79,6 +81,10 @@ addresses (it does on every network ABX FS is deployed on).
 - **`ProjectTraits`** (`attributes`): Status (Published / Unpublished), Root Kind, Versions, Named (the token-name rule
   above), Preferred IPFS Gateway (Set / None; `-` is None). Facts a collector can check against chain state, read from
   the same places a gateway reads.
+- **`ProjectPresentation`** (`animation_url` in orgs from the current factory; salt
+  `keccak256("abx-fs/project-presentation")`, deployed before the factory and passed to it). Renders the token owner's
+  settings: a target (latest, a version or a tag, plus a path), a method (ChainGateway, Embedded or IPFS) and endpoints,
+  each of which the owner can lock for good. See [Presentation](#presentation) below.
 - **`Lens`** (salt `keccak256("abx-fs/lens")`; arguments: the factory and its hook). Stateless and replaceable:
   `resolve(org, tokenId)` returns registered, kind, cid, owner and gateway in one `eth_call` and never calls an
   unregistered address; `publishRange(start, count)` returns the cross-org ledger with full records.
@@ -87,7 +93,9 @@ addresses (it does on every network ABX FS is deployed on).
 revert bricks the whole `tokenURI`. `try/catch` is not enough: a staticcall to a no-code address succeeds with empty
 returndata, and a return-data decoding failure is not catchable. So every external read in `ProjectCard`,
 `ProjectTraits`, `ProjectLinks` and `OrgMeta` is a raw `staticcall` with a hand-decoded result, and anything short,
-malformed or oversized reads as unset with a defined fallback.
+malformed or oversized reads as unset with a defined fallback. `ProjectPresentation` is the deliberate exception: a
+failed content read or IPFS derivation fails the `tokenURI` rather than leave a marketplace an empty animation for
+published content ([Presentation](#presentation)).
 
 ## `createOrg`
 
@@ -241,7 +249,8 @@ contract.** `test/OrgHeld.t.sol` drives each of those failure modes.
 | `description` | inline contract field | the org's description, if it has one |
 | `image` | `ProjectCard` | the on-chain SVG card |
 | `attributes` | `ProjectTraits` | the five traits above |
-| `animation_url` | `ProjectLinks` | `abxfs.view`, else `https://fs.abx.io/g/p/<chain>/<org>/<id>/latest/` |
+| `animation_url` (current factory) | `ProjectPresentation` | the owner's presentation settings ([Presentation](#presentation)) |
+| `animation_url` (original factory) | `ProjectLinks` | `abxfs.view`, else `https://fs.abx.io/g/p/<chain>/<org>/<id>/latest/` |
 | `external_url` | `ProjectLinks` | `abxfs.view`, else `https://fs.abx.io/projects/<chain>/<org>/<id>` |
 
 The collection surface links to the site itself, `https://fs.abx.io`, and so does the collection document's
@@ -253,8 +262,29 @@ long as tokens exist; redirects are fine, and what is served there is off-chain 
 allowed in a URI at all) or `( ) [ ]` (they end a Markdown link or an unquoted CSS `url()`). It is attacker-controlled
 input flowing into a URL a marketplace will open or embed, in contexts the frozen renderer cannot see, so only `https`
 (never `javascript:` or `data:`). Each refused character can be written percent-encoded; `%` and `@` mean nothing to
-JSON, HTML, CSS or Markdown and stay. When usable, BOTH link fields are exactly that URL, with nothing appended.
-Anything else reads as unset, and the default applies.
+JSON, HTML, CSS or Markdown and stay. When usable, `external_url` is exactly that URL, with nothing appended, and so
+is `animation_url` in an org from the original factory. Anything else reads as unset, and the default applies.
+
+### Presentation
+
+In an org from the current factory, `animation_url` is what `ProjectPresentation` renders from the token owner's
+settings. User-facing detail is in the docs site's
+[presentation reference](../site/content/docs/reference/presentation.mdx). Facts that are easy to miss:
+
+- **It can fail the `tokenURI`.** A missing or unpublished target renders neutral output (an empty `text/plain`
+  payload), and so does an unsupported MIME type or file codec under Embedded. A failed content read reverts
+  `RenderFailed(ReadFailed)`. Under IPFS, a root the resolver refuses (a file codec anywhere in the root, or a
+  directory that needs sharding) reverts `RenderFailed(IpfsFailed)` on every call. Embedded reads the whole file before
+  it checks the MIME type, so a large file with an unsupported type can exhaust the caller's gas.
+- **`lock` checks that the target resolves, not that it renders.** Content and method locked on a target that always
+  fails leave that token's `tokenURI` failing for good, for every later holder.
+- **It accepts more orgs than it renders for.** Settings and locks are accepted for any org whose configure hook uses
+  the same stores and whose hook's factory says `isOrg`, which includes orgs from earlier factories. Those orgs render
+  `animation_url` with their own renderer (`ProjectLinks` for the original factory), so a setting there changes nothing
+  and a lock freezes nothing.
+- **No refresh event.** A change of target, method or endpoints, and a tag move or removal, emits no ERC-4906
+  `MetadataUpdate` on the org, so a marketplace may show the previous animation until the token is refreshed there. A
+  publish does emit one, because ABX emits it on every token param write.
 
 **`abxfs.gateway`** is the owner's preferred IPFS gateway: an availability hint shown as a trait. Gateways use it only
 by their own policy. Ours does not fetch through it: bytes from an IPFS gateway are only trustworthy once checked
