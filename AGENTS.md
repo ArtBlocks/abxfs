@@ -91,8 +91,9 @@ If you touch key encoding, both must move together.
 
 **A contract's address is a function of its exact source, and a code change forks the content-address space.**
 Every contract is deployed with CREATE2 through the keyless deployer (`0x4e59…956C`) with fixed salts
-(`keccak256("abx-fs/content")` for the five content contracts; `abx-fs/ipfs-cid-resolver`, `abx-fs/org-meta`,
-`abx-fs/org-factory`, `abx-fs/org-components` and `abx-fs/lens` for the rest), and every chunk id commits to its storage backend's ADDRESS. So
+(`keccak256("abx-fs/content")` for the five content contracts; `abx-fs/ipfs-cid-resolver`, `abx-fs/content-reader`,
+`abx-fs/project-presentation`, `abx-fs/org-meta`, `abx-fs/org-factory`, `abx-fs/org-components` and `abx-fs/lens` for
+the rest), and every chunk id commits to its storage backend's ADDRESS. So
 changed code means a changed address, and for a backend or a store that silently forks the content-address space
 rather than failing.
 

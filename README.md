@@ -156,16 +156,21 @@ build to a listed chain. In outline:
 cd packages/contracts-core
 forge script script/Deploy.s.sol --rpc-url "$RPC" --broadcast
 
-# 2) The org factory, its five components (hook, enumeration hook, minter, card, traits renderer: each its own
-#    transaction, at an address the factory computed) and the lens. Nothing is wired by hand.
-cd ../contracts-projects
-ABXFS_DIRECTORY_STORE=0x… ABXFS_FILE_STORE=0x… ABXFS_GATEWAY_BASE=https://fs.abx.io \
-  ABX_SERIES_CODE_FACTORY=0x… ABX_METADATA_RENDERER=0x… ABX_SEED_SOURCE=0x… \
-  forge script script/Deploy.s.sol:DeployProjects --rpc-url "$RPC" --broadcast
-
-# 3) Optional: the IPFS CID resolver, over the stores from step 1
+# 2) The IPFS CID resolver and the content reader, over the stores from step 1
 cd ../contracts-companion
 forge script script/Deploy.s.sol --rpc-url "$RPC" --broadcast
+forge script script/DeployReader.s.sol --rpc-url "$RPC" --broadcast
+
+# 3) The presentation companion, over the reader and resolver from step 2
+cd ../contracts-projects
+ABXFS_CONTENT_READER=0x… ABXFS_IPFS_CID_RESOLVER=0x… ABXFS_GATEWAY_BASE=https://fs.abx.io \
+  forge script script/DeployPresentation.s.sol --rpc-url "$RPC" --broadcast
+
+# 4) The org factory, its five components (hook, enumeration hook, minter, card, traits renderer: each its own
+#    transaction, at an address the factory computed) and the lens. Nothing is wired by hand.
+ABXFS_DIRECTORY_STORE=0x… ABXFS_FILE_STORE=0x… ABXFS_GATEWAY_BASE=https://fs.abx.io ABXFS_PRESENTATION=0x… \
+  ABX_SERIES_CODE_FACTORY=0x… ABX_METADATA_RENDERER=0x… ABX_SEED_SOURCE=0x… \
+  forge script script/Deploy.s.sol:DeployProjects --rpc-url "$RPC" --broadcast
 ```
 
 The ABX addresses come from the ABX SDK's deployment registry for that chain. Every org is then one

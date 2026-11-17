@@ -61,6 +61,8 @@ CREATE2 salts:
 | --- | --- |
 | `keccak256("abx-fs/content")` | `ChunkStore`, `Sstore2Backend`, `FastLzSstore2Backend`, `FileStore`, `DirectoryStore` |
 | `keccak256("abx-fs/ipfs-cid-resolver")` | `IpfsCidResolver` |
+| `keccak256("abx-fs/content-reader")` | `ContentReader` |
+| `keccak256("abx-fs/project-presentation")` | `ProjectPresentation` |
 | `keccak256("abx-fs/org-meta")` | `OrgMeta` |
 | `keccak256("abx-fs/org-factory")` | `OrgFactory` |
 | `keccak256("abx-fs/org-components")` | the factory's five components (`ProjectHook`, `ProjectEnumeration`, `OrgMinter`, `ProjectCard`, `ProjectTraits`), at addresses the factory computes (`COMPONENT_SALT`) |
