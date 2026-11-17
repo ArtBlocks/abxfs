@@ -147,8 +147,8 @@ file-level codec, leave that token's `tokenURI` failing for good, for every late
 holder too.
 The CLI refuses a lock that would leave content and method both locked while the
 reviewed preview is `ReadFailed` or `IpfsFailed`, or while the preview itself reverts.
-There is no override. The SDK's `lockPresentation` refuses the same locks when it is
-given the reviewed preview.
+There is no override. The SDK's `lockPresentation` requires the reviewed preview and
+refuses the same locks.
 
 Settings and locks take effect only in orgs whose `animation_url` renderer is this
 presentation contract, which means orgs from the current factory. The contract also
