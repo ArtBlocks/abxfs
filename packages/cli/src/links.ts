@@ -12,18 +12,24 @@ import { safe } from "./text.js";
 const reason = (e: unknown) => redact(e instanceof Error ? e.message.split("\n")[0]! : String(e));
 
 /**
- * The token's `animation_url` (the live project) and `external_url` (its page), as a marketplace shows them. After a
- * write they lead with a check mark like the lines before them; `info` prints them as two more fields.
+ * The live project and the token's `external_url` (its page), as the org's links renderer renders them. The first is the
+ * token's `animation_url` only in orgs from the original factory: an org with `projectPresentation` renders its
+ * animation from the presentation settings, so the line says so instead. After a write they lead with a check mark
+ * like the lines before them; `info` prints them as two more fields.
  */
 export async function printProjectLinks(
-  client: Pick<AbxfsClient, "readTokenLinks">,
+  client: Pick<AbxfsClient, "readTokenLinks" | "addresses">,
   tokenId: bigint,
   opts: { afterWrite?: boolean } = { afterWrite: true },
 ): Promise<void> {
   try {
     const { animationUrl, externalUrl } = await client.readTokenLinks(tokenId);
     const lead = opts.afterWrite ? [kleur.green("✓"), "live at:"] : ["  live at: "];
-    console.log(...lead, safe(animationUrl), kleur.gray("(the token's animation_url)"));
+    const animation = client.addresses.projectPresentation
+      ? "(the links renderer's animation_url, used by orgs from the original factory; this token's animation follows " +
+        "its presentation: abxfs presentation inspect)"
+      : "(the token's animation_url)";
+    console.log(...lead, safe(animationUrl), kleur.gray(animation));
     console.log(opts.afterWrite ? "  page:   " : "  page:    ", safe(externalUrl), kleur.gray("(the token's external_url)"));
   } catch (e) {
     console.log(kleur.gray(`  (could not read the project's links: ${reason(e)})`));

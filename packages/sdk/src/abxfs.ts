@@ -627,8 +627,9 @@ export class AbxfsClient {
   }
 
   /**
-   * The links this project's token shows on marketplaces (`animation_url`, `external_url`), as its metadata renders
-   * them: read from the renderer of this client's `orgMeta`, so bind the client with {@link resolveOrg} first.
+   * The links `ProjectLinks` renders for this project's token, read from the renderer of this client's `orgMeta`, so
+   * bind the client with {@link resolveOrg} first. `animationUrl` is the token's own `animation_url` only when
+   * `addresses.projectPresentation` is unset (orgs from the original factory); see {@link TokenLinks}.
    */
   readTokenLinks(tokenId: bigint): Promise<TokenLinks> {
     const orgMeta = this.addresses.orgMeta;
