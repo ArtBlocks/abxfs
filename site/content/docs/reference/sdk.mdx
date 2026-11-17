@@ -355,7 +355,7 @@ const commitment = await project.readPresentationLockCommitment(tokenId, mask, r
 await project.lockPresentation(tokenId, mask, commitment, reviewed);
 ```
 
-Passing the reviewed preview refuses, before sending, a lock that would leave content
+`lockPresentation` requires that reviewed preview and refuses, before sending, a lock that would leave content
 and method both locked over a `ReadFailed` or `IpfsFailed` status
 (`presentationLockProblem`): rendering would then revert the token's whole `tokenURI`
 for every later owner. It is judged from that preview, never a fresh read.

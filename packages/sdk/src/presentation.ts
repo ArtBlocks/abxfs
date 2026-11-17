@@ -202,15 +202,16 @@ export function presentationLockProblem(reviewed: PresentationLockReview, mask: 
     "and with content and method both locked no owner could ever change that; choose a target or method that previews Ready first";
 }
 /**
- * The caller must supply the commitment from the reviewed snapshot, for every lock mask. Pass that snapshot's preview as
- * `reviewed` to refuse, before sending, a lock that would freeze a failing render ({@link presentationLockProblem}).
+ * The caller must supply the commitment from the reviewed snapshot, for every lock mask, and that snapshot's preview as
+ * `reviewed`, which refuses before sending a lock that would freeze a failing render ({@link presentationLockProblem}).
  */
-export async function lockPresentation(clients: PresentationClients, addresses: ContractAddresses, org: Address, tokenId: bigint, mask: number, expectedCommitment: Hex, reviewed?: PresentationLockReview): Promise<Hex> {
+export async function lockPresentation(clients: PresentationClients, addresses: ContractAddresses, org: Address, tokenId: bigint, mask: number, expectedCommitment: Hex, reviewed: PresentationLockReview): Promise<Hex> {
   assertWalletChain(clients.publicClient, clients.walletClient);
   assertLockMask(mask);
   if (!expectedCommitment || !/^0x[0-9a-fA-F]{64}$/.test(expectedCommitment) || expectedCommitment === ZERO_HASH)
     throw new Error("presentation lock requires a nonzero expectedCommitment from the reviewed snapshot");
-  const problem = reviewed ? presentationLockProblem(reviewed, mask) : null;
+  if (!reviewed) throw new Error("presentation lock requires the reviewed preview (previewPresentation at the commitment's block)");
+  const problem = presentationLockProblem(reviewed, mask);
   if (problem) throw new Error(`refusing to lock presentation: ${problem}`);
   return write(clients, addresses, "lock", [org, tokenId, mask, expectedCommitment]);
 }

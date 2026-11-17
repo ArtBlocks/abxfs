@@ -16,6 +16,7 @@ import {
 
 const a = (n: number) => `0x${n.toString(16).padStart(40, "0")}` as Address;
 const ROOT = asAbxfsCid(`0x${"aa".repeat(32)}`), ORG = a(900), HASH = `0x${"11".repeat(32)}` as const;
+const READY = { locks: 0, status: PresentationStatus.Ready };
 const addresses: ContractAddresses = {
   chunkStore: a(1), fileStore: a(2), directoryStore: a(3), sstore2Backend: a(4), fastLzBackend: a(5),
   orgFactory: a(6), projectHook: a(7), projectPresentation: a(8), contentReader: a(9),
@@ -71,7 +72,7 @@ describe("presentation generations and writes", () => {
       () => configurePresentationTarget(c, addresses, ORG, 0n, { selection: PresentationSelection.Latest }),
       () => setPresentationMethod(c, addresses, ORG, 0n, "auto"),
       () => setPresentationEndpoints(c, addresses, ORG, 0n, { chainBase: "", ipfsBase: "" }),
-      () => lockPresentation(c, addresses, ORG, 0n, 1, ROOT),
+      () => lockPresentation(c, addresses, ORG, 0n, 1, ROOT, READY),
     ];
     for (const operation of operations) await expect(operation()).rejects.toThrow(/chain 2.*chain 1/);
     expect(c.readContract).not.toHaveBeenCalled(); expect(c.writeContract).not.toHaveBeenCalled();
@@ -79,8 +80,8 @@ describe("presentation generations and writes", () => {
 
   it("requires the reviewed commitment for every mask without silently rereading it", async () => {
     const c = clients();
-    await expect(lockPresentation(c, addresses, ORG, 0n, 1, ZERO_HASH)).rejects.toThrow(/reviewed snapshot/);
-    for (const mask of [1, 2, 3, 4, 7]) await lockPresentation(c, addresses, ORG, 0n, mask, HASH);
+    await expect(lockPresentation(c, addresses, ORG, 0n, 1, ZERO_HASH, READY)).rejects.toThrow(/reviewed snapshot/);
+    for (const mask of [1, 2, 3, 4, 7]) await lockPresentation(c, addresses, ORG, 0n, mask, HASH, READY);
     expect(c.readContract).not.toHaveBeenCalled();
     expect(c.writeContract.mock.calls.map(call => call[0])).toEqual([1, 2, 3, 4, 7].map(mask => expect.objectContaining({ functionName: "lock", args: [ORG, 0n, mask, HASH] })));
     expect(c.waitForTransactionReceipt).toHaveBeenCalledWith({ hash: HASH });
@@ -217,7 +218,10 @@ describe("a lock never freezes a failing render", () => {
     // A lock that leaves the method changeable can still be repaired, and a neutral status renders an empty animation.
     await lockPresentation(c, addresses, ORG, 0n, Content, HASH, reviewed);
     await lockPresentation(c, addresses, ORG, 0n, Content | Method, HASH, { locks: 0, status: PresentationStatus.UnsupportedCodec });
-    await lockPresentation(c, addresses, ORG, 0n, Content | Method, HASH);
+    await lockPresentation(c, addresses, ORG, 0n, Content | Method, HASH, READY);
+    expect(c.writeContract).toHaveBeenCalledTimes(3);
+    // The reviewed preview is required: a caller that omits it (plain JavaScript) is refused before sending.
+    await expect(lockPresentation(c, addresses, ORG, 0n, Content | Method, HASH, undefined as never)).rejects.toThrow(/requires the reviewed preview/);
     expect(c.writeContract).toHaveBeenCalledTimes(3);
     expect(c.readContract).not.toHaveBeenCalled();
   });
