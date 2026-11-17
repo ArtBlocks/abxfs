@@ -672,12 +672,19 @@ const VIEW_URL_REFUSED = "\"&'()<>[\\]^`{|}";
 export function isUsableViewUrl(url: string): boolean {
   if (url.length < 9 || url.length > MAX_VIEW_URL_BYTES) return false;
   if (!url.startsWith("https://")) return false;
-  for (let i = 0; i < url.length; i++) {
-    const c = url.charCodeAt(i);
-    if (c < 0x21 || c > 0x7e) return false;
-    if (VIEW_URL_REFUSED.includes(url[i]!)) return false;
+  return viewUrlRefusedCharacter(url) === null;
+}
+
+/**
+ * The first character of `url` that `ProjectLinks` refuses, or `null`: a control character, a space, DEL, anything
+ * outside ASCII, or one of `" & ' ( ) < > [ \\ ] ^` and the backtick, `{ | }` (see {@link isUsableViewUrl}).
+ */
+export function viewUrlRefusedCharacter(url: string): string | null {
+  for (const c of url) {
+    const code = c.codePointAt(0)!;
+    if (code < 0x21 || code > 0x7e || VIEW_URL_REFUSED.includes(c)) return c;
   }
-  return true;
+  return null;
 }
 
 /**

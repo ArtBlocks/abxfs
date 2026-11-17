@@ -137,7 +137,7 @@ import {
   readPresentation, inspectPresentation, previewPresentation, configurePresentationTarget,
   setPresentationMethod, setPresentationEndpoints, lockPresentation, readPresentationLockCommitment,
   readNativeFile, readNativePath, readNativeFileRange, verifyPresentationTokenUri,
-  type PresentationTarget, type PresentationTokenUriOptions, type PresentationMethod, type NativeReadLimits,
+  type PresentationTarget, type PresentationTokenUriOptions, type PresentationMethod, type NativeReadLimits, type PresentationLockReview,
 } from "./presentation.js";
 
 import { planPresentation, applyPresentationPlan, type PresentationPlanRequest, type PresentationPlan } from "./presentation-plan.js";
@@ -818,9 +818,10 @@ export class AbxfsClient {
     return readPresentationLockCommitment(this.publicClient, this.addresses, this._requireOrg(), tokenId, mask, blockNumber);
   }
 
-  lockPresentation(tokenId: bigint, mask: number, expectedCommitment: Hex) {
+  /** Pass the reviewed preview as `reviewed` to refuse a lock that would freeze a failing render. */
+  lockPresentation(tokenId: bigint, mask: number, expectedCommitment: Hex, reviewed?: PresentationLockReview) {
     this._requireWallet();
-    return lockPresentation({ publicClient: this.publicClient, walletClient: this.walletClient! }, this.addresses, this._requireOrg(), tokenId, mask, expectedCommitment);
+    return lockPresentation({ publicClient: this.publicClient, walletClient: this.walletClient! }, this.addresses, this._requireOrg(), tokenId, mask, expectedCommitment, reviewed);
   }
 
   readNativeFile(cid: AbxfsCid, limits: NativeReadLimits) {

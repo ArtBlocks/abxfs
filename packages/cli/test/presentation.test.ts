@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-const h = vi.hoisted(() => ({ calls: [] as { name: string; args: unknown[] }[], locks: 0, writes: [] as boolean[] }));
+const h = vi.hoisted(() => ({ calls: [] as { name: string; args: unknown[] }[], locks: 0, status: 0, previewError: null as Error | null, writes: [] as boolean[] }));
 const ORG = "0x00000000000000000000000000000000000000a1";
 const ROOT = `0x${"ab".repeat(32)}`;
 const COMMITMENT = `0x${"cd".repeat(32)}`;
@@ -15,7 +15,10 @@ vi.mock("../src/client.js", async () => {
     return mockClient({
       inspectPresentation: async () => state(), readPresentation: async () => state(),
       readPresentationLockCommitment: async () => `0x${"cd".repeat(32)}`,
-      previewPresentation: async () => ({ ...state(), blockNumber: 123n, status: 0, contentType: "text/html", bytes: new Uint8Array([65]), residualDependencies: [], runtimeUncertain: false, recommendation: null }),
+      previewPresentation: async () => {
+        if (h.previewError) throw h.previewError;
+        return { ...state(), blockNumber: 123n, status: h.status, contentType: "text/html", bytes: new Uint8Array([65]), residualDependencies: [], runtimeUncertain: false, recommendation: null };
+      },
       configurePresentationTarget: rec("target"), setPresentationMethod: rec("method"),
       setPresentationEndpoints: rec("endpoints"), lockPresentation: rec("lock"),
       planUpload: async () => ({ rootCid: `0x${"cd".repeat(32)}` }),
@@ -33,7 +36,7 @@ const base = ["--project-id", "3", "--org", ORG, "--chain", "base-sepolia", "--j
 let lines: string[];
 const saved = { ...process.env };
 beforeEach(() => {
-  h.calls.length = 0; h.writes.length = 0; h.locks = 0; lines = [];
+  h.calls.length = 0; h.writes.length = 0; h.locks = 0; h.status = 0; h.previewError = null; lines = [];
   process.env["ABXFS_CONFIG"] = "/nonexistent.json";
   delete process.env["ABXFS_PRIVATE_KEY"];
   vi.spyOn(console, "log").mockImplementation((...args) => { lines.push(args.join(" ")); });
@@ -56,7 +59,7 @@ describe("presentation CLI", () => {
     expect(h.writes).toEqual([false]);
   });
   it("dry-runs every mutation without requesting a signer or calling a write", async () => {
-    for (const args of [["set-target", "--latest", "--path", "index.html"], ["set-method", "auto"], ["set-endpoints", "--chain-base", "https://chain.example/", "--ipfs-base", "https://ipfs.example/"], ["lock", "content,method"]]) {
+    for (const args of [["set-target", "--latest", "--path", "index.html"], ["set-method", "auto"], ["set-endpoints", "--chain-base", "https://chain.example", "--ipfs-base", "https://ipfs.example"], ["lock", "content,method"]]) {
       await run([...args, ...base, "--dry-run"]);
       expect(JSON.parse(lines.at(-1)!)).toMatchObject({ ok: true, dryRun: true });
     }
@@ -71,8 +74,8 @@ describe("presentation CLI", () => {
   });
   it("passes target and endpoint changes to the SDK", async () => {
     await run(["set-target", "--version", "2", "--path", "a.html", ...base, "--yes"]);
-    await run(["set-endpoints", "--chain-base", "https://chain.example/", "--ipfs-base", "https://ipfs.example/", ...base, "--yes"]);
-    expect(h.calls).toEqual([{ name: "target", args: [3n, { selection: 1, version: 2, path: "a.html" }] }, { name: "endpoints", args: [3n, { chainBase: "https://chain.example/", ipfsBase: "https://ipfs.example/" }] }]);
+    await run(["set-endpoints", "--chain-base", "https://chain.example", "--ipfs-base", "https://ipfs.example", ...base, "--yes"]);
+    expect(h.calls).toEqual([{ name: "target", args: [3n, { selection: 1, version: 2, path: "a.html" }] }, { name: "endpoints", args: [3n, { chainBase: "https://chain.example", ipfsBase: "https://ipfs.example" }] }]);
   });
   it("requires the reviewed settings commitment for real locks and preserves it in the SDK call", async () => {
     await expect(run(["lock", "content", ...base, "--yes"])).rejects.toThrow(/reviewed lock --dry-run/);
@@ -80,8 +83,37 @@ describe("presentation CLI", () => {
     await run(["lock", "content,method", ...base, "--dry-run"]);
     expect(JSON.parse(lines[0]!).proposed).toMatchObject({ expectedCommitment: COMMITMENT, review: { blockNumber: "123", root: ROOT, statusName: "Ready", payloadBytes: 1 } });
     await run(["lock", "content,method", "--expected-commitment", COMMITMENT, ...base, "--yes"]);
-    expect(h.calls).toEqual([{ name: "lock", args: [3n, 3, COMMITMENT] }]);
+    expect(h.calls).toEqual([{ name: "lock", args: [3n, 3, COMMITMENT, expect.objectContaining({ blockNumber: 123n, status: 0, locks: 0 })] }]);
     expect(JSON.parse(lines.at(-1)!).permanent.join(" ")).toMatch(/permanent.*no force bypass/);
+  });
+  it("refuses an endpoint the contract or the token links renderer would refuse, before any signer or write", async () => {
+    await expect(run(["set-endpoints", "--chain-base", "https://a.example/x)[y](javascript:alert(1));", "--ipfs-base", "", ...base, "--dry-run"]))
+      .rejects.toThrow("--chain-base must not contain ')' (U+0029)");
+    await expect(run(["set-endpoints", "--chain-base", "https://chain.example/", "--ipfs-base", "", ...base, "--yes"])).rejects.toThrow(/--chain-base must not end with '\/'/);
+    await expect(run(["set-endpoints", "--chain-base", "", "--ipfs-base", "https://ipfs.example/ipfs", ...base, "--yes"])).rejects.toThrow(/--ipfs-base must be a bare host name/);
+    expect(h.writes).toEqual([]);
+    expect(h.calls).toEqual([]);
+  });
+  it("refuses to lock content and method over a render that fails, even in a dry run", async () => {
+    h.status = 5; // IpfsFailed
+    await expect(run(["lock", "content,method", ...base, "--dry-run"])).rejects.toThrow(/refusing to lock content,method: .*IpfsFailed.*no force override/);
+    h.locks = 2; h.status = 4; // the method is already locked; ReadFailed
+    await expect(run(["lock", "content", "--expected-commitment", COMMITMENT, ...base, "--yes"])).rejects.toThrow(/ReadFailed/);
+    expect(h.calls).toEqual([]);
+    // Content alone leaves the method changeable, so the display can still be repaired.
+    h.locks = 0;
+    await run(["lock", "content", ...base, "--dry-run"]);
+    expect(JSON.parse(lines.at(-1)!)).toMatchObject({ ok: true, dryRun: true });
+  });
+  it("refuses to lock when the preview itself reverts", async () => {
+    h.previewError = Object.assign(new Error("execution reverted"), { code: 3 });
+    await expect(run(["lock", "method", ...base, "--dry-run"])).rejects.toThrow(/preview reverts/);
+    expect(h.calls).toEqual([]);
+  });
+  it("asks for confirmation, not refusal, when the frozen display would be neutral", async () => {
+    h.status = 1; // Unpublished
+    await run(["lock", "content,method", ...base, "--dry-run"]);
+    expect(JSON.parse(lines.at(-1)!).permanent.join(" ")).toMatch(/not Ready/);
   });
   it("refuses a locked method even in a dry run, with no force bypass", async () => {
     h.locks = 2;
