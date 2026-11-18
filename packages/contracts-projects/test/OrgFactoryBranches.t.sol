@@ -134,6 +134,32 @@ contract OrgFactoryBranchesTest is Test {
         }
     }
 
+    /// @dev The presentation is the last leg of `componentsDeployed`. It is not one of the five components the factory
+    ///      places, and every factory above is given one with code: here the five exist and only it has none.
+    function test_createOrgNeedsThePresentationToHaveCode() public {
+        address presentation = makeAddr("presentation");
+        OrgFactory f = OrgComponents.create(
+            address(abxFactory), RENDERER, SEED, address(dirStore), address(fileStore), address(meta), presentation
+        );
+        assertEq(f.presentation(), presentation);
+        for (uint256 k; k < 5; ++k) {
+            (, address expected) = _component(f, k);
+            assertTrue(expected.code.length != 0, "every component is deployed");
+        }
+        assertEq(presentation.code.length, 0);
+        assertFalse(f.componentsDeployed(), "a presentation with no code is not enough");
+        vm.prank(alice);
+        vm.expectRevert(IOrgFactory.ComponentsNotDeployed.selector);
+        f.createOrg("Acme", "", bytes32(0));
+        assertEq(f.orgCount(), 0, "nothing was registered");
+
+        vm.etch(presentation, address(meta.links()).code);
+        assertTrue(f.componentsDeployed());
+        vm.prank(alice);
+        address org = f.createOrg("Acme", "", bytes32(0));
+        assertTrue(f.isOrg(org), "and code at the presentation makes it work");
+    }
+
     function test_noComponentsAtAll() public {
         OrgFactory f = new OrgFactory(address(abxFactory), RENDERER, SEED, address(dirStore), address(fileStore), address(meta), address(meta.links()));
         assertFalse(f.componentsDeployed());

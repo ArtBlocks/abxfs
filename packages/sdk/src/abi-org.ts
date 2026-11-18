@@ -1,6 +1,7 @@
 /**
  * The ABX FS org factory, its minter, its lens, `OrgMeta` and the links renderer it deploys (`ProjectLinks`, which
- * renders every token's `animation_url` and `external_url`). Generated from the Solidity sources;
+ * renders every token's `external_url`, and its `animation_url` in orgs from the original factory). Generated from the
+ * Solidity sources;
  * `test/abi-drift.test.ts` fails if any of these drifts from `packages/contracts-projects/src`.
  *
  * An org is its own ABX collection, deployed by `OrgFactory`, which renounces ABX ownership at

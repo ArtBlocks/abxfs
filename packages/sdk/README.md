@@ -127,8 +127,9 @@ pnpm --filter @artblocks/abxfs-sdk test
 
 ## Token links
 
-`await project.setViewUrl(tokenId, "https://my-site.example/")` sets `abxfs.view`: both of the token's
-marketplace links become exactly that URL. `""` clears it and the default (a path on `https://fs.abx.io`) applies
-again. `readProject(...).viewUrl` reads it. `isUsableViewUrl(url)` is the check the token itself applies, but
+`await project.setViewUrl(tokenId, "https://my-site.example/")` sets `abxfs.view`: the token's `external_url`
+becomes exactly that URL, and so does its `animation_url` in orgs from the original factory. Orgs from the current
+factory render `animation_url` from the presentation settings instead (`inspectPresentation`). `""` clears it and the
+default (a path on `https://fs.abx.io`) applies again. `readProject(...).viewUrl` reads it. `isUsableViewUrl(url)` is the check the token itself applies, but
 `setViewUrl` also applies `externalUrlProblem` (https, no credentials, no localhost or private IP), so validate with
 `viewUrlProblem(url)` (null means OK) before sending. See [Token links and your own gateway](https://docs.fs.abx.io/docs/using-abxfs/token-links).

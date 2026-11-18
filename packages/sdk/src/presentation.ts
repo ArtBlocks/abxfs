@@ -10,6 +10,7 @@ import { isRevertFailure, isTransportFailure } from "./multicall.js";
 import { snapshotBlock, pinnedReadPolicy } from "./snapshot.js";
 import { cidKind } from "./kind.js";
 import { directoryEntryCount, getFileInfo, lookupEntry, readFile, resolvePath } from "./read.js";
+import { viewUrlRefusedCharacter } from "./project.js";
 
 export enum PresentationMethod { ChainGateway, Embedded, Ipfs }
 export enum PresentationSelection { Latest, Version, Tag }
@@ -133,7 +134,47 @@ export async function setPresentationMethod(clients: PresentationClients, addres
   }
   return write(clients, addresses, "setMethod", [org, tokenId, concrete]);
 }
-export function setPresentationEndpoints(clients: PresentationClients, addresses: ContractAddresses, org: Address, tokenId: bigint, endpoints: { chainBase: string; ipfsBase: string }): Promise<Hex> {
+/** Beside every character `ProjectLinks` refuses, `setEndpoints` refuses these after `https://`. */
+const ENDPOINT_REFUSED = "?#";
+function describeCharacter(c: string): string {
+  const code = `U+${c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}`;
+  return c > " " && c < "\x7f" ? `'${c}' (${code})` : code;
+}
+/**
+ * Why `endpoint` must not be saved as a presentation `chainBase` or `ipfsBase`, or `null` when it may. Empty selects
+ * the default. This is everything `setEndpoints` checks: `https://` and a host, at most 512 bytes, no trailing slash,
+ * visible ASCII without `" ' < > \ ? #` or the backtick, and for an IPFS base a bare host name (dot-separated labels of
+ * letters, digits and inner hyphens) of at most 196 bytes. A chain base reaches `animation_url` verbatim, and the
+ * contract accepts `& ( ) [ ] ^ { | }` in it; they end a Markdown link or a CSS `url()`, or are not URI characters at
+ * all, so they are refused here as `ProjectLinks` refuses them (see {@link viewUrlRefusedCharacter}). So is an empty
+ * host (`https:///…`), as the deployment check refuses one in the default gateway base.
+ */
+export function presentationEndpointProblem(endpoint: string, kind: "chainBase" | "ipfsBase"): string | null {
+  if (endpoint === "") return null;
+  if (!endpoint.startsWith("https://")) return "must start with https://";
+  for (const c of endpoint) {
+    if (ENDPOINT_REFUSED.includes(c) || viewUrlRefusedCharacter(c) !== null) return `must not contain ${describeCharacter(c)}`;
+  }
+  // Every character is ASCII from here, so the length is the byte length the contract measures.
+  const max = kind === "ipfsBase" ? 196 : 512;
+  if (endpoint.length > max) return `must be at most ${max} bytes`;
+  const host = endpoint.slice("https://".length);
+  if (host === "" || host.startsWith("/")) return "must name a host after https://";
+  if (endpoint.endsWith("/")) return "must not end with '/'";
+  if (kind === "ipfsBase") {
+    const bad = [...host].find(c => !/[A-Za-z0-9.-]/.test(c));
+    if (bad) return `must be a bare host name (letters, digits, '-' and '.', no port, path or user), not ${describeCharacter(bad)}`;
+    if (host.split(".").some(label => label === "" || label.startsWith("-") || label.endsWith("-")))
+      return "must be a host name whose dot-separated labels are not empty and do not start or end with '-'";
+  }
+  return null;
+}
+/** Throws, before sending anything, for an endpoint {@link presentationEndpointProblem} refuses. */
+export async function setPresentationEndpoints(clients: PresentationClients, addresses: ContractAddresses, org: Address, tokenId: bigint, endpoints: { chainBase: string; ipfsBase: string }): Promise<Hex> {
+  for (const kind of ["chainBase", "ipfsBase"] as const) {
+    const problem = presentationEndpointProblem(endpoints[kind], kind);
+    if (problem) throw new Error(`refusing to set presentation endpoints: ${kind} ${problem}`);
+  }
   return write(clients, addresses, "setEndpoints", [org, tokenId, endpoints.chainBase, endpoints.ipfsBase]);
 }
 /** Read at the same block as the preview the owner reviewed; never refresh inside a write. */
@@ -144,12 +185,34 @@ export async function readPresentationLockCommitment(client: PublicClient, addre
 function assertLockMask(mask: number): void {
   if (!Number.isInteger(mask) || mask < 1 || mask > 7) throw new Error("presentation lock mask must be 1..7");
 }
-/** The caller must supply the commitment from the reviewed snapshot, for every lock mask. */
-export async function lockPresentation(clients: PresentationClients, addresses: ContractAddresses, org: Address, tokenId: bigint, mask: number, expectedCommitment: Hex): Promise<Hex> {
+/** The part of a reviewed {@link previewPresentation} result a lock is judged by. */
+export interface PresentationLockReview { locks: number; status: PresentationStatus }
+/**
+ * Why locking `mask` over the reviewed preview must be refused, or `null`. Judged from that preview alone, never a
+ * fresh read. Once content and method are both locked nothing an owner can change alters what `render` reads, so a
+ * reviewed ReadFailed or IpfsFailed status (for which `render` reverts `RenderFailed`, failing the token's whole
+ * `tokenURI`) would fail for every later owner. A neutral status, such as Unpublished or UnsupportedMime, renders an
+ * empty animation instead, and is the caller's to confirm.
+ */
+export function presentationLockProblem(reviewed: PresentationLockReview, mask: number): string | null {
+  const frozen = PresentationLock.Content | PresentationLock.Method;
+  if (((reviewed.locks | mask) & frozen) !== frozen) return null;
+  if (reviewed.status !== PresentationStatus.ReadFailed && reviewed.status !== PresentationStatus.IpfsFailed) return null;
+  return `the reviewed presentation is ${PresentationStatus[reviewed.status]}, so render reverts and the token's tokenURI fails, ` +
+    "and with content and method both locked no owner could ever change that; choose a target or method that previews Ready first";
+}
+/**
+ * The caller must supply the commitment from the reviewed snapshot, for every lock mask, and that snapshot's preview as
+ * `reviewed`, which refuses before sending a lock that would freeze a failing render ({@link presentationLockProblem}).
+ */
+export async function lockPresentation(clients: PresentationClients, addresses: ContractAddresses, org: Address, tokenId: bigint, mask: number, expectedCommitment: Hex, reviewed: PresentationLockReview): Promise<Hex> {
   assertWalletChain(clients.publicClient, clients.walletClient);
   assertLockMask(mask);
   if (!expectedCommitment || !/^0x[0-9a-fA-F]{64}$/.test(expectedCommitment) || expectedCommitment === ZERO_HASH)
     throw new Error("presentation lock requires a nonzero expectedCommitment from the reviewed snapshot");
+  if (!reviewed) throw new Error("presentation lock requires the reviewed preview (previewPresentation at the commitment's block)");
+  const problem = presentationLockProblem(reviewed, mask);
+  if (problem) throw new Error(`refusing to lock presentation: ${problem}`);
   return write(clients, addresses, "lock", [org, tokenId, mask, expectedCommitment]);
 }
 export interface NativeReadLimits { maxBytes: bigint; maxChunks: bigint }

@@ -180,8 +180,10 @@ Everything else: `abxfs --help`, and <https://docs.fs.abx.io>.
 
 ## Token links
 
-Marketplaces show two links from a project's token. By default they go to a path on `https://fs.abx.io`. Point
-them at your own URL, used exactly as given (your own gateway, your own domain):
+Marketplaces show two links from a project's token: `external_url` (its page) and `animation_url` (the live
+project). By default they go to a path on `https://fs.abx.io`. `abxfs view` points `external_url` at your own URL,
+used exactly as given (your own gateway, your own domain), and `animation_url` too in orgs from the original factory.
+In orgs from the current factory, `animation_url` follows the presentation settings (`abxfs presentation inspect`):
 
 ```bash
 abxfs view https://my-site.example/ --project-id 3 --org 0x…
