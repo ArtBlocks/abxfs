@@ -1,43 +1,42 @@
 # Aderyn settings for the content contracts. Run `aderyn .` from this directory.
 #
-# Every detector below was reviewed against this source and found not to apply; the reason is next to it.
-# Aderyn can only skip a detector for the whole package, not one finding. That is safe only because the deployed
-# source is never edited: any change, even to a comment, changes the bytecode and so every CREATE2 address.
-# Before adding a contract to src/, empty the exclude list, run Aderyn and review what it reports for the new file.
-# Slither skips findings one by one instead, from slither.db.json, so a new finding there always shows.
+# Aderyn can only skip a detector for the whole package, not one finding, so only style detectors and detectors
+# about the pinned build settings are skipped. Everything else reports, including findings already reviewed;
+# their reasons are listed at the end of this file. Slither skips reviewed findings one by one instead, from
+# slither.db.json.
 version = 1
 root = "."
 src = "src"
 
 [detectors]
 exclude = [
-  # ChunkStore, FileStore and DirectoryStore inherit Solady Multicallable. Its multicall is payable but reverts on
-  # a non-zero msg.value, and no other function, receive or fallback accepts ETH. Pinned by ChunkStore.t.sol test_noEth.
-  "contract-locks-ether",
-  # NameOps.hasSeparator: Yul shl(shift, value) takes the shift amount first, so the mask keeps the first `rem`
-  # bytes as intended. Covered by NameOps.t.sol, NameOpsTail.t.sol and the golden vectors.
-  "incorrect-shift-order",
-  # ChunkStore.write calls the backend the writer chose. The id commits to that backend's address, so a re-entering
-  # backend can only create records under its own address; a record set during the call stands, and a readable
-  # backend's result is checked before the record is written. Covered by the re-entrant backend mock.
-  "reentrancy-state-change",
-  # NodeTree casts uint32(running) and uint48(runningBytes) only after each total has been matched against its
-  # 4-byte count and 6-byte byte field.
-  "unsafe-casting",
-  # NodeTree._checkBoundary is a virtual hook: DirectoryStore overrides it to enforce entry order, FileStore needs none.
-  "empty-block",
-  # Style only.
-  "internal-function-used-once",
+  # Style.
   "literal-instead-of-constant",
-  # The build is pinned to solc 0.8.24 with EVM Cancun in foundry.toml, and every supported network supports PUSH0.
-  "push-zero-opcode",
-  "unspecific-solidity-pragma",
+  "internal-function-used-once",
   # Node validation reverts on the first bad entry on purpose.
   "require-revert-in-loop",
-  # DirectoryStore.resolvePath calls _root(rootCid) only for its revert when the root does not exist.
-  "unchecked-return",
-  # A counter that starts at zero on purpose (resolvePath's depth).
-  "uninitialized-local-variable",
-  # IStorageBackend.NotEvmReadable is for backends to revert with from retrieve(); ChunkStore never raises it.
-  "unused-error",
+  # foundry.toml pins solc 0.8.24 and EVM Cancun for every contract, and every supported network supports PUSH0.
+  "push-zero-opcode",
+  "unspecific-solidity-pragma",
 ]
+
+# Reviewed findings that still report, and why none applies:
+#
+# - contract-locks-ether (ChunkStore, FileStore, DirectoryStore): Solady Multicallable's multicall is payable but
+#   reverts on a non-zero msg.value, and no other function, receive or fallback accepts ETH. ChunkStore.t.sol
+#   test_noEth.
+# - incorrect-shift-order (NameOps.hasSeparator): Yul shl(shift, value) takes the shift amount first, so the mask
+#   keeps the first `rem` bytes as intended. NameOps.t.sol, NameOpsTail.t.sol and the golden vectors.
+# - reentrancy-state-change (ChunkStore.write): write calls the backend the writer chose. The id commits to that
+#   backend's address, so a re-entering backend can only create records under its own address; a record set
+#   during the call stands, and a readable backend's result is checked before the record is written. Covered by
+#   the re-entrant backend mock.
+# - unsafe-casting (NodeTree): uint32(running) and uint48(runningBytes) are cast only after each total has been
+#   matched against its 4-byte count and 6-byte byte field.
+# - empty-block (NodeTree._checkBoundary): a virtual hook; DirectoryStore overrides it to enforce entry order and
+#   FileStore needs none.
+# - unchecked-return (DirectoryStore.resolvePath): _root(rootCid) is called only for its revert when the root does
+#   not exist.
+# - uninitialized-local-variable (DirectoryStore.resolvePath): the depth counter starts at zero on purpose.
+# - unused-error (IStorageBackend.NotEvmReadable): for backends to revert with from retrieve(); ChunkStore never
+#   raises it.
