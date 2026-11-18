@@ -103,7 +103,7 @@ Project state rides on ABX PostParams:
 | `abxfs.cid` | The current root CID. |
 | `abxfs.name` | A display name. Metadata only. |
 | `abxfs.gateway` | An optional preferred IPFS gateway: an availability hint the owner publishes. |
-| `abxfs.view` | An optional URL for the live project. Marketplaces show it as the token's `animation_url` and `external_url`. See [Token links](/docs/using-abxfs/token-links). |
+| `abxfs.view` | An optional URL for the live project, shown as the token's `external_url`. In orgs from the original factory it is the `animation_url` too; orgs from the current factory set `animation_url` through [presentation](/docs/reference/presentation). See [Token links](/docs/using-abxfs/token-links). |
 | `abxfs.meta` | Reserved for per-client data. The protocol attaches no meaning to it. |
 
 `ProjectHook` is a **configure hook** — a veto that runs before any param

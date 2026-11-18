@@ -61,6 +61,8 @@ CREATE2 salts:
 | --- | --- |
 | `keccak256("abx-fs/content")` | `ChunkStore`, `Sstore2Backend`, `FastLzSstore2Backend`, `FileStore`, `DirectoryStore` |
 | `keccak256("abx-fs/ipfs-cid-resolver")` | `IpfsCidResolver` |
+| `keccak256("abx-fs/content-reader")` | `ContentReader` |
+| `keccak256("abx-fs/project-presentation")` | `ProjectPresentation` |
 | `keccak256("abx-fs/org-meta")` | `OrgMeta` |
 | `keccak256("abx-fs/org-factory")` | `OrgFactory` |
 | `keccak256("abx-fs/org-components")` | the factory's five components (`ProjectHook`, `ProjectEnumeration`, `OrgMinter`, `ProjectCard`, `ProjectTraits`), at addresses the factory computes (`COMPONENT_SALT`) |
@@ -99,6 +101,27 @@ interface IStorageBackend {
 - Backend schemes and their read procedures are documented per backend and implemented as SDK readers. A reader is
   safe to apply to any backend that declares a scheme it knows, because the result is checked against the chunk's
   claims.
+
+### Requirements for a new backend
+
+`ChunkStore` cannot check these two rules. A backend that breaks one can leave chunks stored through it unreadable for
+good, because the first write of an id fixes its record and a later write of the same id returns that record without
+calling the backend (§4).
+
+1. **A readable backend's `retrieve` returns exactly one ABI-encoded `bytes`:** an offset word of `0x20`, a length
+   word, then the data, padded to the next 32-byte boundary and nothing after it. That is what a Solidity function
+   returning `bytes memory` produces. `write` checks the result with Solidity's ordinary decoder, which also accepts
+   other layouts (an offset of `0x40`, or extra words at the end), but `read` decodes by hand and accepts only this
+   one. A backend that returns another layout has its chunk recorded by `write` and then refused by every `read` with
+   `RetrieveFailed`.
+2. **The pointer `store` returns depends on the input alone,** or the backend binds everything else it depends on
+   (such as `caller`) into the input. A chunk id commits to the backend, the input hash, the data hash and the size,
+   not to the pointer. If the pointer depends on who writes or on state the writer controls, as it could for a backend
+   that keeps bytes in calldata or rents storage for a time, whoever writes an id first can bind it to a pointer that
+   later stops serving.
+
+Both launch backends meet them: `retrieve` is a Solidity function returning `bytes memory`, and the pointer is a
+CREATE2 address of the input that holds exactly that input for good (below).
 
 ### Launch backends
 
@@ -169,9 +192,11 @@ puts it in its own pointer).
 
 Reads:
 
-- `read(id) → bytes`: a raw `staticcall` to `retrieve(pointer)` with the result hand-decoded. Any failure or malformed
-  result reverts `RetrieveFailed(id, backend)`, so a caller can ask that backend's `retrieval()` what to do instead.
-  The result must match the record's `dataHash` and `size` (`DataMismatch`).
+- `read(id) → bytes`: a raw `staticcall` to `retrieve(pointer)` with the result hand-decoded. It reverts
+  `RetrieveFailed(id, backend)` when the call reverts or the result is not shaped like one ABI-encoded `bytes` of the
+  recorded size (§3, requirements): an offset other than `0x20`, fewer than `0x40 + size` bytes, or more than
+  `0x40 + size` rounded up to a whole word. A caller can then ask that backend's `retrieval()` what to do instead. A
+  well-shaped result whose length word or hash differs from the record reverts `DataMismatch(id)`.
 - `exists(id)`, `sizeOf(id)` (reverts `ChunkNotFound`), `recordOf(id) → (backend, size, pointer, dataHash)`.
 
 Why the claims cannot be abused: for a readable backend the chain checks them. For any other backend a false claim only
