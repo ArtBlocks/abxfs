@@ -41,6 +41,7 @@ store, so the same bytes resolve whatever org points at them.
 | Work on project reads/writes | `packages/sdk/src/project.ts` (a project) and `packages/sdk/src/org.ts` (orgs, minting, the cross-org feed) |
 | Get started locally | [`site/content/docs/using-abxfs/quickstart.mdx`](./site/content/docs/using-abxfs/quickstart.mdx) |
 | Change anything a user reads | `site/content/docs/` — the docs site, published at docs.fs.abx.io. There is no second copy; `docs/` holds operator runbooks and the audit record only |
+| Run static analysis on the content contracts | `slither .` and `aderyn .` in `packages/contracts-core`. Reviewed findings are skipped with their reasons: one by one in `slither.db.json`, by detector in `aderyn.toml` (read its header before adding a contract) |
 | Deploy to a network | [`docs/deploy-runbook.md`](./docs/deploy-runbook.md) — every step in order, the irreversible ones marked; add one when you invent it |
 | Use the CLI | `packages/cli/src/commands/` — config in `~/.config/abxfs/config.json` (a project's `.abxfs.json` is untrusted), key in `ABXFS_PRIVATE_KEY` (never on disk); project commands take `--org` |
 | Index everything that is published | `Lens.publishRange` + `hook.globalPublishCount` — one address, one cursor ([`specs/abx-fs-orgs.md`](./specs/abx-fs-orgs.md#indexing-everything)) |
