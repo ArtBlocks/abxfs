@@ -137,7 +137,7 @@ import {
   readPresentation, inspectPresentation, previewPresentation, configurePresentationTarget,
   setPresentationMethod, setPresentationEndpoints, lockPresentation, readPresentationLockCommitment,
   readNativeFile, readNativePath, readNativeFileRange, verifyPresentationTokenUri,
-  type PresentationTarget, type PresentationTokenUriOptions, type PresentationMethod, type NativeReadLimits,
+  type PresentationTarget, type PresentationTokenUriOptions, type PresentationMethod, type NativeReadLimits, type PresentationLockReview,
 } from "./presentation.js";
 
 import { planPresentation, applyPresentationPlan, type PresentationPlanRequest, type PresentationPlan } from "./presentation-plan.js";
@@ -627,8 +627,9 @@ export class AbxfsClient {
   }
 
   /**
-   * The links this project's token shows on marketplaces (`animation_url`, `external_url`), as its metadata renders
-   * them: read from the renderer of this client's `orgMeta`, so bind the client with {@link resolveOrg} first.
+   * The links `ProjectLinks` renders for this project's token, read from the renderer of this client's `orgMeta`, so
+   * bind the client with {@link resolveOrg} first. `animationUrl` is the token's own `animation_url` only when
+   * `addresses.projectPresentation` is unset (orgs from the original factory); see {@link TokenLinks}.
    */
   readTokenLinks(tokenId: bigint): Promise<TokenLinks> {
     const orgMeta = this.addresses.orgMeta;
@@ -818,9 +819,10 @@ export class AbxfsClient {
     return readPresentationLockCommitment(this.publicClient, this.addresses, this._requireOrg(), tokenId, mask, blockNumber);
   }
 
-  lockPresentation(tokenId: bigint, mask: number, expectedCommitment: Hex) {
+  /** `reviewed` is the preview the commitment was read at; a lock that would freeze a failing render is refused. */
+  lockPresentation(tokenId: bigint, mask: number, expectedCommitment: Hex, reviewed: PresentationLockReview) {
     this._requireWallet();
-    return lockPresentation({ publicClient: this.publicClient, walletClient: this.walletClient! }, this.addresses, this._requireOrg(), tokenId, mask, expectedCommitment);
+    return lockPresentation({ publicClient: this.publicClient, walletClient: this.walletClient! }, this.addresses, this._requireOrg(), tokenId, mask, expectedCommitment, reviewed);
   }
 
   readNativeFile(cid: AbxfsCid, limits: NativeReadLimits) {

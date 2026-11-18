@@ -1,6 +1,7 @@
 /**
- * `readTokenLinks`: a token's `animation_url` and `external_url` are read from the renderer its metadata uses
- * (`OrgMeta.links()`), never composed here, so they are exactly what a marketplace shows.
+ * `readTokenLinks`: the `animation_url` and `external_url` the org's links renderer (`OrgMeta.links()`) renders, never
+ * composed here. Both are what a marketplace shows in an org from the original factory; an org with presentation
+ * renders its `animation_url` elsewhere, and the CLI labels it accordingly (`test/links.test.ts` there).
  */
 import { describe, expect, it } from "vitest";
 import { stringToHex, type Address, type PublicClient } from "viem";

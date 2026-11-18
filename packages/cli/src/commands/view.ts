@@ -2,9 +2,11 @@
  * `abxfs view` — choose where a project's token links point on marketplaces.
  *
  * Marketplaces show two links from a token's metadata: `animation_url` (the live project, embedded)
- * and `external_url`. By default they point at a path on the ABX FS site. Set `abxfs.view` and both
- * point at exactly the URL you give, with nothing appended — your own gateway, your own domain, a
- * single-project host (`abxfs-gateway --project …`). It assumes nothing about what serves it.
+ * and `external_url`. By default they point at a path on the ABX FS site. Set `abxfs.view` and
+ * `external_url` points at exactly the URL you give, with nothing appended — your own gateway, your
+ * own domain, a single-project host (`abxfs-gateway --project …`). It assumes nothing about what serves
+ * it. In orgs from the original factory `animation_url` follows it too; an org with `projectPresentation`
+ * renders `animation_url` from its presentation settings (`abxfs presentation`).
  */
 import { Command } from "commander";
 import kleur from "kleur";
@@ -18,7 +20,7 @@ import { confirmWrite, describeOrg, WRITE_GAS } from "../write-plan.js";
 
 export function viewCommand(): Command {
   return new Command("view")
-    .description("Set where a project's token links point on marketplaces (default: the ABX FS site)")
+    .description("Set where a project's token page link (external_url; animation_url too in orgs from the original factory) points on marketplaces (default: the ABX FS site)")
     .argument("[url]", "the whole URL, https only; used as is")
     .requiredOption("--project-id <id>", "project (token) id")
     .option("--clear", "remove it and use the default again")
@@ -50,10 +52,12 @@ export function viewCommand(): Command {
         const org = requireOrg(chain, opts.org);
         const client = await createOrgClient(chain, { write: true, org });
         const orgLabel = await describeOrg(client, org);
+        // An org with presentation renders animation_url from its presentation settings: abxfs.view sets external_url only.
+        const links = client.addresses.projectPresentation ? "page link (external_url)" : "token links";
         const ok = await confirmWrite(
           client,
           {
-            action: url ? `point project #${id}'s token links at ${safe(url)}` : `clear project #${id}'s token links (back to the default)`,
+            action: url ? `point project #${id}'s ${links} at ${safe(url)}` : `clear project #${id}'s ${links} (back to the default)`,
             chainId: chain.chainId,
             org: orgLabel,
             steps: [{ what: url ? "set abxfs.view" : "clear abxfs.view", txs: 1, gas: WRITE_GAS.setView }],
@@ -67,8 +71,8 @@ export function viewCommand(): Command {
         console.log(
           kleur.green("✓"),
           url
-            ? `token links for project #${id} in org ${orgLabel} now point at ${safe(url)}`
-            : `project #${id} in org ${orgLabel} uses the default links again`,
+            ? `set project #${id}'s ${links} in org ${orgLabel} to ${safe(url)}`
+            : `project #${id} in org ${orgLabel} uses the default ${links} again`,
           kleur.gray(txHash(tx)),
         );
       },

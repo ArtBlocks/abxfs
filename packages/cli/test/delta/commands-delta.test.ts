@@ -432,6 +432,18 @@ describe("declined, empty and error paths", () => {
     expect(printed()).toMatch(/set abxfs\.view\s+~435,000 gas/);
   });
 
+  it("view: names both token links in an org from the original factory, only the page link in an org with presentation", async () => {
+    h.orgClient = orgClient();
+    await run(viewCommand(), ["https://example.com/", "--project-id", "5", "--org", ORG, "--yes"]);
+    expect(printed()).toMatch(/set project #5's token links in org .* to https:\/\/example\.com\//);
+    out = [];
+    h.orgClient = orgClient({ addresses: { ...CONTENT_ADDRESSES, projectPresentation: "0x00000000000000000000000000000000000000e8" } });
+    await run(viewCommand(), ["https://example.com/", "--project-id", "5", "--org", ORG, "--yes"]);
+    expect(printed()).toMatch(/point project #5's page link \(external_url\) at https:\/\/example\.com\//);
+    expect(printed()).toMatch(/set project #5's page link \(external_url\) in org .* to https:\/\/example\.com\//);
+    expect(printed()).not.toMatch(/token links/);
+  });
+
   it("update: each content transaction is reported as it is sent", async () => {
     h.orgClient = orgClient();
     await run(updateCommand(), [site(), "--project-id", "5", "--org", ORG, "--yes"]);

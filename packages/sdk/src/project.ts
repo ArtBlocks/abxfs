@@ -52,8 +52,8 @@ export const PROJECT_PARAM_KEYS = {
   gateway: "abxfs.gateway",
   name: "abxfs.name",
   /**
-   * The owner's own URL for the live project, shown by marketplaces as the token's `animation_url`
-   * and `external_url`. See {@link isUsableViewUrl}.
+   * The owner's own URL for the live project, shown by marketplaces as the token's `external_url`, and
+   * in orgs from the original factory as its `animation_url` too. See {@link isUsableViewUrl}.
    */
   view: "abxfs.view",
   /**
@@ -659,9 +659,9 @@ export const MAX_VIEW_URL_BYTES = 512;
 const VIEW_URL_REFUSED = "\"&'()<>[\\]^`{|}";
 
 /**
- * Whether a token would emit `url` as its `animation_url` / `external_url`. This mirrors
- * `ProjectLinks` exactly, because a value it refuses is silently replaced by the default and
- * the owner would otherwise save something that does nothing.
+ * Whether `ProjectLinks` would emit `url` as a token's `external_url` (and, in orgs from the original factory, its
+ * `animation_url`). This mirrors `ProjectLinks` exactly, because a value it refuses is silently replaced by the default
+ * and the owner would otherwise save something that does nothing.
  *
  * `https://` followed by visible ASCII, at most 512 bytes, with none of `" ' & < > \\` and the backtick
  * (JSON and markup breakers), `{ } | ^` (not allowed in a URI at all) or `( ) [ ]` (they end a Markdown
@@ -672,12 +672,19 @@ const VIEW_URL_REFUSED = "\"&'()<>[\\]^`{|}";
 export function isUsableViewUrl(url: string): boolean {
   if (url.length < 9 || url.length > MAX_VIEW_URL_BYTES) return false;
   if (!url.startsWith("https://")) return false;
-  for (let i = 0; i < url.length; i++) {
-    const c = url.charCodeAt(i);
-    if (c < 0x21 || c > 0x7e) return false;
-    if (VIEW_URL_REFUSED.includes(url[i]!)) return false;
+  return viewUrlRefusedCharacter(url) === null;
+}
+
+/**
+ * The first character of `url` that `ProjectLinks` refuses, or `null`: a control character, a space, DEL, anything
+ * outside ASCII, or one of `" & ' ( ) < > [ \\ ] ^` and the backtick, `{ | }` (see {@link isUsableViewUrl}).
+ */
+export function viewUrlRefusedCharacter(url: string): string | null {
+  for (const c of url) {
+    const code = c.codePointAt(0)!;
+    if (code < 0x21 || code > 0x7e || VIEW_URL_REFUSED.includes(c)) return c;
   }
-  return true;
+  return null;
 }
 
 /**
@@ -695,11 +702,15 @@ export function viewUrlProblem(url: string): string | null {
   return externalUrlProblem(url);
 }
 
-/** The two links a project's token shows on marketplaces, exactly as its metadata renders them. */
+/** The two links `ProjectLinks` renders for a project's token. */
 export interface TokenLinks {
-  /** The live project: the owner's `abxfs.view` when it is set and usable, else the gateway's project path. */
+  /**
+   * The live project: the owner's `abxfs.view` when it is set and usable, else the gateway's project path. This is the
+   * token's own `animation_url` only in orgs from the original factory; an org with `projectPresentation` renders its
+   * `animation_url` from the presentation settings instead (see `inspectPresentation` and `previewPresentation`).
+   */
   animationUrl: string;
-  /** The "view on website" link: the same `abxfs.view` when set, else the project's page on the gateway. */
+  /** The token's `external_url`, the "view on website" link: the same `abxfs.view` when set, else the project's page. */
   externalUrl: string;
 }
 
@@ -707,8 +718,9 @@ const FIELD_ANIMATION_URL = stringToHex("animation_url", { size: 32 });
 const FIELD_EXTERNAL_URL = stringToHex("external_url", { size: 32 });
 
 /**
- * A project's {@link TokenLinks}, read from the renderer its token's metadata uses (`OrgMeta.links()`), so they are
- * what a marketplace shows and nothing here assumes a domain: the gateway base is frozen into the org's `OrgMeta`.
+ * A project's {@link TokenLinks}, read from the links renderer of its org (`OrgMeta.links()`), so nothing here assumes a
+ * domain: the gateway base is frozen into the org's `OrgMeta`. `externalUrl` is what a marketplace shows; so is
+ * `animationUrl` in orgs from the original factory, but not in an org with `projectPresentation`.
  * Pass the `orgMeta` of the factory generation that made `collection` (`addressesForOrg`, or a resolved client).
  */
 export async function readTokenLinks(
@@ -729,7 +741,8 @@ export async function readTokenLinks(
 }
 
 /**
- * Set `abxfs.view` — where this project's token links point, on marketplaces.
+ * Set `abxfs.view` — where this project's token links point, on marketplaces: its `external_url`, and in orgs from the
+ * original factory its `animation_url` too.
  *
  * Pass the WHOLE URL, which is used as is: your own gateway, a domain, a single-project host. Pass an
  * empty string to clear it (written as `-`, see {@link CLEARED_PARAM_VALUE}) and fall back to the default on the ABX FS site. Throws, before sending
