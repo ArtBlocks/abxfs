@@ -296,6 +296,13 @@ stored method, endpoints and locks. `preview` also reports the render status, MI
 Every presentation command accepts `--json`, emitting one JSON result; write confirmations go to
 stderr. Errors use the CLI's existing credential redaction and become JSON with `ok: false`.
 
+`set-endpoints` takes `https://` and a host, with no trailing slash and at most 512 bytes; an IPFS
+base is a bare host name of at most 196 bytes, with no port, path or user part. An empty value keeps
+the default. A chain base lands in each token's `animation_url` as written, so the CLI refuses what
+the presentation contract refuses (spaces, control and non-ASCII bytes, `" ' < > \ ? #` and the
+backtick) and also `& ( ) [ ] ^ { | }`, which the token links renderer refuses. The error names the
+character; percent-encode it instead.
+
 `set-method` accepts `chain-gateway`, `embedded`, `ipfs` and `auto`. Auto uses the
 shared SDK planner and defaults to a configurable tooling recommendation of
 100 KiB. Supported self-contained content can use Embedded; dependencies and
@@ -366,3 +373,9 @@ Every lock mask requires it. The contract binds that commitment to the selected 
 project, chain, presentation contract and mask, then checks it again when the transaction executes.
 If the selected state changes, review a new dry run before retrying. `--yes` confirms the write;
 it does not bypass the commitment or permanent locks.
+
+A lock that would leave both `content` and `method` locked is refused, in a dry run too and with no
+override, when the reviewed preview is `ReadFailed` or `IpfsFailed`, or the preview itself reverts:
+rendering would then revert the token's whole `tokenURI` for every later owner. Choose a target or
+method that previews `Ready` first. A neutral status, such as `Unpublished`, `UnsupportedMime` or
+`UnsupportedCodec`, leaves an empty animation; the plan lists it among the permanent effects to confirm.

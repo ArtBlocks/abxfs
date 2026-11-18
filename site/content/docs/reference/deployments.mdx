@@ -63,7 +63,9 @@ the exact source through solc's metadata hash):
   `ProjectEnumeration`, `OrgMinter`, `ProjectCard`, `ProjectTraits`) are not
   deployed by the factory: it computes where the keyless deployer will place each
   under one shared salt, anyone may deploy each to that address, and `createOrg`
-  reverts with `ComponentsNotDeployed` until all five exist. The factory's address
+  reverts with `ComponentsNotDeployed` until all five exist and the presentation
+  companion has code. The factory checks nothing else about the companion; the
+  deploy script pins its address. The factory's address
   also depends on its constructor arguments (the chain's ABX contracts, the two
   stores, `OrgMeta` and the presentation companion), which are identical on all
   eight networks listed here, so it too lands at one address. The companion is

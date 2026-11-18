@@ -45,6 +45,9 @@ and keep it available. An empty IPFS endpoint uses `ipfs://`; a base such as
 `https://dweb.link` produces `https://<cid>.ipfs.dweb.link/...`.
 An empty chain endpoint uses the generation's default gateway; a custom chain base
 must serve `/g/cid/<chain>/<root>/<path>`. Use HTTPS bases without a trailing slash.
+The SDK and CLI also refuse a chain base containing `& ( ) [ ] ^ { | }`. The contract
+accepts these, but they can end a Markdown link or a CSS `url()` where a viewer embeds
+`animation_url`, so tooling applies the same rule as `abxfs.view`.
 
 A first publication uses Auto when its org supports presentation, including an
 already-minted empty project. Tooling suggests `index.html`, otherwise the sole
@@ -81,16 +84,41 @@ analysis without a signer. Native preview and payload analysis do not prove that
 the full ABX metadata can be serialized within a caller budget. A 100 KiB payload
 can require close to 50 million gas for complete `tokenURI`, depending on content
 and metadata. A Ready URL preview does not check that its remote
-endpoint is online. Semantic missing or unpublished targets and unsupported codec/MIME states return an
-empty `text/plain` payload, encoded by ABX as the inert `data:text/plain;base64,`
-animation URI. Actual native read or IPFS derivation failure is surfaced as a typed
-render failure, and insufficient caller gas can fail the complete metadata read.
-Inspect diagnostic preview to distinguish these cases; do not treat native preview
-as a guarantee of complete metadata availability.
+endpoint is online.
+
+When the selected content cannot be shown, what the token renders depends on the
+case and the method:
+
+- A missing or unpublished target gives neutral output: an empty `text/plain`
+  payload, which ABX encodes as the inert `data:text/plain;base64,` animation URI.
+  Under Embedded, a file with a file-level codec or an unsupported MIME type gives
+  neutral output too.
+- Under IPFS, content the IPFS resolver refuses fails the whole `tokenURI` with
+  `RenderFailed(IpfsFailed)`. The resolver derives the whole selected root, so this
+  happens for a file with a file-level codec anywhere in it, not only at the
+  selected path, and for a directory that would need sharding. It refuses these
+  every time: retrying does not help. ChainGateway derives no IPFS CID, so it is
+  not affected.
+- Any other failed content read fails the whole `tokenURI` with
+  `RenderFailed(ReadFailed)`.
+- Embedded reads the whole file before it checks the MIME type. A large file with
+  an unsupported MIME type can therefore exhaust the caller's gas and fail the
+  whole `tokenURI` instead of giving neutral output.
+- Under any method, insufficient caller gas can fail the complete metadata read.
+
+`presentation preview` shows which of these applies. Do not treat native preview as
+a guarantee of complete metadata availability.
 
 Browser and marketplace support for HTML, data URIs and IPFS varies. Preserved bytes
 and valid token metadata do not guarantee that every viewer can display or execute
 the content.
+
+Changing the target, method or endpoints, or moving or removing a tag that the
+target follows, emits no ERC-4906 `MetadataUpdate` event on the org's token, so a
+marketplace may keep showing the previous animation until someone refreshes the
+token there. Publishing a version does emit one, because ABX emits it for every
+token param write, so a Latest target is refreshed by marketplaces that follow
+ERC-4906.
 
 ## Freeze independent choices
 
@@ -111,6 +139,23 @@ checks it when the transaction executes; changed selected state requires a fresh
 review. SDK callers read the commitment at the preview's block. Locks survive transfers and have no
 force override. Publishing later versions remains possible. Freezing content alone
 does not freeze its delivery method or the services an endpoint depends on.
+
+A content lock checks only that the selected root and path resolve, not that they
+render. Run `presentation preview` and see a `Ready` status before you lock. Content
+and method locked on a target that always fails, such as IPFS over a root with a
+file-level codec, leave that token's `tokenURI` failing for good, for every later
+holder too.
+The CLI refuses a lock that would leave content and method both locked while the
+reviewed preview is `ReadFailed` or `IpfsFailed`, or while the preview itself reverts.
+There is no override. The SDK's `lockPresentation` requires the reviewed preview and
+refuses the same locks.
+
+Settings and locks take effect only in orgs whose `animation_url` renderer is this
+presentation contract, which means orgs from the current factory. The contract also
+accepts settings and locks for orgs from earlier factories, but those orgs render
+`animation_url` elsewhere (`ProjectLinks` for orgs from the original factory), so
+there a setting changes nothing and a lock freezes nothing. The SDK and CLI refuse
+these orgs (see below); a direct contract call does not.
 
 `external_url` remains separate: it uses the org's link renderer and `abxfs.view`
 override. A view override cannot bypass presentation locks or replace the new
@@ -159,6 +204,11 @@ representation. The pointer identifies this fixed adapter; any other pointer is
 rejected. Its source and limits cannot be redirected after deployment. File codecs
 remain unsupported. This adapter supplies bytes to an ABX field; it does not give an
 older ABX FS org the new presentation renderer.
+
+The adapter's constructor accepts any reader address, so these guarantees hold only
+when its `reader()` is the canonical `ContentReader`. Before relying on an adapter,
+check its `reader()` against `contentReader` in the SDK's address book
+(`requireCanonicalAddresses(chainId).contentReader`).
 
 ## Factory generations stay available
 

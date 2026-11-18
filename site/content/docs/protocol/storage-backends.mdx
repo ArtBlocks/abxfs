@@ -99,6 +99,26 @@ A backend that is not EVM-readable needs an off-chain reader for its
 `ChunkStore.read` today; for a chunk it cannot read that way it throws
 `ChunkUnavailableError`, carrying the backend's own `retrieval()` answer.
 
+Two rules matter because `ChunkStore` cannot check them, and the first write of
+a chunk id fixes its record for good. A later write of the same id returns that
+record without calling the backend.
+
+- **`retrieve` returns exactly one ABI-encoded `bytes`:** an offset word of
+  `0x20`, a length word, then the data padded to the next 32-byte boundary, and
+  nothing more. A Solidity function returning `bytes memory` does this. `write`
+  checks the result with Solidity's ordinary decoder, which also accepts other
+  layouts, such as an offset of `0x40`, but `read` accepts only this one. A
+  readable backend that returns another layout gets its chunks recorded and
+  then refused by every read with `RetrieveFailed`.
+- **The pointer `store` returns depends on the input alone,** or the backend
+  binds whatever else it depends on, such as `caller`, into the input. The chunk
+  id does not commit to the pointer. If the pointer depends on who writes, or on
+  state the writer controls (a calldata or rented-storage backend, say), whoever
+  writes an id first can bind it to a pointer that later stops serving.
+
+Both launch backends meet these rules: their pointer is a CREATE2 address of the
+input, and it holds exactly that input for good.
+
 ## Cancun is required
 
 All sources target Solidity 0.8.24 and EVM Cancun. The IPFS resolver uses

@@ -9,12 +9,14 @@ import * as kinds from "../src/kind.js";
 import { asAbxfsCid, ProjectKind, type ContractAddresses } from "../src/types.js";
 import {
   analyzePresentationDependencies, configurePresentationTarget, inspectPresentation,
-  lockPresentation, PresentationCapabilityError, PresentationMethod, PresentationSelection,
+  lockPresentation, PresentationCapabilityError, PresentationLock, PresentationMethod, PresentationSelection, PresentationStatus,
+  presentationEndpointProblem, presentationLockProblem,
   previewPresentation, readPresentation, readPresentationLockCommitment, recommendPresentationMethod, setPresentationEndpoints, setPresentationMethod,
 } from "../src/presentation.js";
 
 const a = (n: number) => `0x${n.toString(16).padStart(40, "0")}` as Address;
 const ROOT = asAbxfsCid(`0x${"aa".repeat(32)}`), ORG = a(900), HASH = `0x${"11".repeat(32)}` as const;
+const READY = { locks: 0, status: PresentationStatus.Ready };
 const addresses: ContractAddresses = {
   chunkStore: a(1), fileStore: a(2), directoryStore: a(3), sstore2Backend: a(4), fastLzBackend: a(5),
   orgFactory: a(6), projectHook: a(7), projectPresentation: a(8), contentReader: a(9),
@@ -70,7 +72,7 @@ describe("presentation generations and writes", () => {
       () => configurePresentationTarget(c, addresses, ORG, 0n, { selection: PresentationSelection.Latest }),
       () => setPresentationMethod(c, addresses, ORG, 0n, "auto"),
       () => setPresentationEndpoints(c, addresses, ORG, 0n, { chainBase: "", ipfsBase: "" }),
-      () => lockPresentation(c, addresses, ORG, 0n, 1, ROOT),
+      () => lockPresentation(c, addresses, ORG, 0n, 1, ROOT, READY),
     ];
     for (const operation of operations) await expect(operation()).rejects.toThrow(/chain 2.*chain 1/);
     expect(c.readContract).not.toHaveBeenCalled(); expect(c.writeContract).not.toHaveBeenCalled();
@@ -78,8 +80,8 @@ describe("presentation generations and writes", () => {
 
   it("requires the reviewed commitment for every mask without silently rereading it", async () => {
     const c = clients();
-    await expect(lockPresentation(c, addresses, ORG, 0n, 1, ZERO_HASH)).rejects.toThrow(/reviewed snapshot/);
-    for (const mask of [1, 2, 3, 4, 7]) await lockPresentation(c, addresses, ORG, 0n, mask, HASH);
+    await expect(lockPresentation(c, addresses, ORG, 0n, 1, ZERO_HASH, READY)).rejects.toThrow(/reviewed snapshot/);
+    for (const mask of [1, 2, 3, 4, 7]) await lockPresentation(c, addresses, ORG, 0n, mask, HASH, READY);
     expect(c.readContract).not.toHaveBeenCalled();
     expect(c.writeContract.mock.calls.map(call => call[0])).toEqual([1, 2, 3, 4, 7].map(mask => expect.objectContaining({ functionName: "lock", args: [ORG, 0n, mask, HASH] })));
     expect(c.waitForTransactionReceipt).toHaveBeenCalledWith({ hash: HASH });
@@ -113,6 +115,115 @@ describe("presentation generations and writes", () => {
     const c = clients(0, "reverted");
     await expect(configurePresentationTarget(c, addresses, ORG, 7n, { selection: PresentationSelection.Version, version: 3, path: "art/index.html" })).rejects.toThrow(/reverted/);
     expect(c.writeContract.mock.calls[0]?.[0]).toMatchObject({ args: [ORG, 7n, 1, 3, "", "art/index.html"] });
+  });
+});
+
+describe("presentation endpoints match the contract and the token links renderer", () => {
+  // `ProjectPresentation._endpoint` refuses these after `https://`; `ProjectLinks._REFUSED` refuses the second set.
+  const contractRefuses = (code: number) => code <= 0x20 || code >= 0x7f || `"'<>\\\`?#`.includes(String.fromCharCode(code));
+  const linksRefuses = (code: number) => code <= 0x20 || code >= 0x7f || `"&'()<>[\\]^\`{|}`.includes(String.fromCharCode(code));
+
+  it("refuses exactly the characters either contract refuses, and names the character", () => {
+    for (let code = 0; code < 0x100; code++) {
+      const c = String.fromCharCode(code);
+      const point = `U+${code.toString(16).toUpperCase().padStart(4, "0")}`;
+      const named = code > 0x20 && code < 0x7f ? `'${c}' (${point})` : point;
+      for (const endpoint of [`https://a.example/x${c}y`, `https://a${c}b.example`]) {
+        const problem = presentationEndpointProblem(endpoint, "chainBase");
+        expect(problem, endpoint).toBe(contractRefuses(code) || linksRefuses(code) ? `must not contain ${named}` : null);
+      }
+    }
+    expect(presentationEndpointProblem("https://a.example/\u{1F600}", "chainBase")).toBe("must not contain U+1F600");
+  });
+
+  it.each(["&", "(", ")", "[", "]", "^", "{", "|", "}"])("refuses %s, which the presentation contract alone would accept", c => {
+    expect(contractRefuses(c.charCodeAt(0))).toBe(false);
+    expect(presentationEndpointProblem(`https://a.example/x${c}y`, "chainBase")).toContain(`'${c}'`);
+  });
+
+  it("refuses a chain base that would end the animation_url in Markdown", () => {
+    expect(presentationEndpointProblem("https://a.example/x)[y](javascript:alert(1));", "chainBase")).toBe("must not contain ')' (U+0029)");
+  });
+
+  it("accepts the default and ordinary gateway bases", () => {
+    for (const ok of ["", "https://gateway.example", "https://gateway.example:8443/base/path", "https://a.example/%28x%29", "https://a.example/@user~x"])
+      expect(presentationEndpointProblem(ok, "chainBase"), ok).toBeNull();
+    for (const ok of ["", "https://dweb.link", "https://ipfs-1.Gateway.example", "https://x"])
+      expect(presentationEndpointProblem(ok, "ipfsBase"), ok).toBeNull();
+  });
+
+  it("applies the contract's scheme, host, length and trailing-slash rules", () => {
+    expect(presentationEndpointProblem("http://a.example", "chainBase")).toMatch(/https:\/\//);
+    expect(presentationEndpointProblem("HTTPS://a.example", "chainBase")).toMatch(/https:\/\//);
+    expect(presentationEndpointProblem("javascript:alert(1)", "chainBase")).toMatch(/https:\/\//);
+    expect(presentationEndpointProblem("https://", "chainBase")).toMatch(/host/);
+    expect(presentationEndpointProblem("https:///x", "chainBase")).toMatch(/host/);
+    expect(presentationEndpointProblem("https://a.example/", "chainBase")).toMatch(/'\/'/);
+    expect(presentationEndpointProblem("https://a.example/", "ipfsBase")).toMatch(/'\/'/);
+    const at512 = `https://a.example/${"a".repeat(512 - 18)}`;
+    expect(presentationEndpointProblem(at512, "chainBase")).toBeNull();
+    expect(presentationEndpointProblem(`${at512}a`, "chainBase")).toMatch(/512 bytes/);
+    const at196 = `https://${"a".repeat(196 - 8 - 8)}.example`;
+    expect(at196).toHaveLength(196);
+    expect(presentationEndpointProblem(at196, "ipfsBase")).toBeNull();
+    expect(presentationEndpointProblem(`https://a${at196.slice(8)}`, "ipfsBase")).toMatch(/196 bytes/);
+  });
+
+  it("keeps an IPFS base to a bare host name, as the contract does", () => {
+    expect(presentationEndpointProblem("https://gateway.example/ipfs", "ipfsBase")).toMatch(/host name.*'\/'/);
+    expect(presentationEndpointProblem("https://user@gateway.example", "ipfsBase")).toMatch(/host name.*'@'/);
+    expect(presentationEndpointProblem("https://gateway.example:8080", "ipfsBase")).toMatch(/host name.*':'/);
+    expect(presentationEndpointProblem("https://gate_way.example", "ipfsBase")).toMatch(/host name.*'_'/);
+    for (const bad of ["https://.a.example", "https://a..example", "https://a.example.", "https://-a.example", "https://a-.example", "https://a.example-"])
+      expect(presentationEndpointProblem(bad, "ipfsBase"), bad).toMatch(/labels/);
+  });
+
+  it("refuses a bad endpoint before reading or sending anything", async () => {
+    const c = clients();
+    await expect(setPresentationEndpoints(c, addresses, ORG, 0n, { chainBase: "https://a.example/x)[y](javascript:alert(1));", ipfsBase: "" }))
+      .rejects.toThrow("refusing to set presentation endpoints: chainBase must not contain ')' (U+0029)");
+    await expect(setPresentationEndpoints(c, addresses, ORG, 0n, { chainBase: "", ipfsBase: "https://gateway.example/ipfs" }))
+      .rejects.toThrow(/ipfsBase must be a bare host name/);
+    expect(c.readContract).not.toHaveBeenCalled(); expect(c.writeContract).not.toHaveBeenCalled();
+    await setPresentationEndpoints(c, addresses, ORG, 0n, { chainBase: "https://gateway.example", ipfsBase: "https://dweb.link" });
+    expect(c.writeContract.mock.calls[0]?.[0]).toMatchObject({ functionName: "setEndpoints", args: [ORG, 0n, "https://gateway.example", "https://dweb.link"] });
+  });
+});
+
+describe("a lock never freezes a failing render", () => {
+  const { Content, Method, Endpoints } = PresentationLock;
+  const failing = [PresentationStatus.ReadFailed, PresentationStatus.IpfsFailed];
+  const neutral = [PresentationStatus.Ready, PresentationStatus.Unpublished, PresentationStatus.InvalidTarget,
+    PresentationStatus.UnsupportedMime, PresentationStatus.UnsupportedCodec, PresentationStatus.OverBudget];
+
+  it("refuses when content and method would both be locked over a ReadFailed or IpfsFailed preview", () => {
+    for (let locks = 0; locks < 8; locks++) for (let mask = 1; mask < 8; mask++) {
+      const frozen = ((locks | mask) & (Content | Method)) === (Content | Method);
+      for (const status of failing) {
+        const problem = presentationLockProblem({ locks, status }, mask);
+        if (frozen) expect(problem, `${locks}/${mask}`).toContain(PresentationStatus[status]);
+        else expect(problem, `${locks}/${mask}`).toBeNull();
+      }
+      for (const status of neutral) expect(presentationLockProblem({ locks, status }, mask)).toBeNull();
+    }
+  });
+
+  it("refuses from the reviewed preview alone, before sending and without rereading state", async () => {
+    const c = clients();
+    const reviewed = { locks: 0, status: PresentationStatus.IpfsFailed };
+    await expect(lockPresentation(c, addresses, ORG, 0n, Content | Method, HASH, reviewed)).rejects.toThrow(/refusing to lock presentation: .*IpfsFailed/);
+    await expect(lockPresentation(c, addresses, ORG, 0n, Content, HASH, { locks: Method, status: PresentationStatus.ReadFailed })).rejects.toThrow(/ReadFailed/);
+    await expect(lockPresentation(c, addresses, ORG, 0n, Endpoints, HASH, { locks: Content | Method, status: PresentationStatus.IpfsFailed })).rejects.toThrow(/IpfsFailed/);
+    expect(c.writeContract).not.toHaveBeenCalled();
+    // A lock that leaves the method changeable can still be repaired, and a neutral status renders an empty animation.
+    await lockPresentation(c, addresses, ORG, 0n, Content, HASH, reviewed);
+    await lockPresentation(c, addresses, ORG, 0n, Content | Method, HASH, { locks: 0, status: PresentationStatus.UnsupportedCodec });
+    await lockPresentation(c, addresses, ORG, 0n, Content | Method, HASH, READY);
+    expect(c.writeContract).toHaveBeenCalledTimes(3);
+    // The reviewed preview is required: a caller that omits it (plain JavaScript) is refused before sending.
+    await expect(lockPresentation(c, addresses, ORG, 0n, Content | Method, HASH, undefined as never)).rejects.toThrow(/requires the reviewed preview/);
+    expect(c.writeContract).toHaveBeenCalledTimes(3);
+    expect(c.readContract).not.toHaveBeenCalled();
   });
 });
 

@@ -1,8 +1,8 @@
 import { Command } from "commander";
 import { bytesToHex, keccak256, type Hex } from "viem";
 import {
-  PresentationLock, PresentationMethod, PresentationSelection, PresentationStatus,
-  recommendPresentationMethod, ZERO_HASH, type PresentationTarget,
+  isRevertFailure, PresentationLock, PresentationMethod, PresentationSelection, PresentationStatus,
+  presentationEndpointProblem, presentationLockProblem, recommendPresentationMethod, ZERO_HASH, type PresentationTarget,
 } from "@artblocks/abxfs-sdk";
 import { parseTokenId, parsePositiveInt } from "../args.js";
 import { createOrgClient } from "../client.js";
@@ -149,6 +149,10 @@ export function presentationCommand(): Command {
     .requiredOption("--ipfs-base <url>", "IPFS gateway base URL")
     .action(async (opts: Options) => {
       const endpoints = { chainBase: opts.chainBase!, ipfsBase: opts.ipfsBase! };
+      for (const [kind, flag] of [["chainBase", "--chain-base"], ["ipfsBase", "--ipfs-base"]] as const) {
+        const problem = presentationEndpointProblem(endpoints[kind], kind);
+        if (problem) throw new Error(`${flag} ${problem}`);
+      }
       await change(opts, "set presentation endpoints", PresentationLock.Endpoints, endpoints,
         (client, id) => client.setPresentationEndpoints(id, endpoints));
     }));
@@ -158,7 +162,13 @@ export function presentationCommand(): Command {
     .action(async (value: string, opts: Options) => {
       const mask = parsePresentationLocks(value);
       const ctx = await context(opts);
-      const preview = await ctx.client.previewPresentation(ctx.tokenId);
+      const preview = await ctx.client.previewPresentation(ctx.tokenId).catch((error: unknown) => {
+        if (!isRevertFailure(error)) throw error;
+        throw new Error("refusing to lock: the presentation preview reverts, and render runs the same read, so the token's " +
+          "tokenURI would revert too; there is no reviewed state to lock", { cause: error });
+      });
+      const problem = presentationLockProblem(preview, mask);
+      if (problem) throw new Error(`refusing to lock ${value}: ${problem}; there is no force override`);
       const commitment = await ctx.client.readPresentationLockCommitment(ctx.tokenId, mask, preview.blockNumber);
       if (opts.expectedCommitment && (!/^0x[0-9a-fA-F]{64}$/.test(opts.expectedCommitment) ||
         opts.expectedCommitment.toLowerCase() === ZERO_HASH || opts.expectedCommitment.toLowerCase() !== commitment.toLowerCase()))
@@ -171,7 +181,7 @@ export function presentationCommand(): Command {
         payloadBytes: bytes.length, payloadHash: keccak256(bytes),
         recommendation: recommendation ? { ...recommendation, reason: redact(recommendation.reason) } : null };
       await change(opts, "lock presentation", 0, { mask, expectedCommitment, review },
-        (client, id) => client.lockPresentation(id, mask, expectedCommitment),
+        (client, id) => client.lockPresentation(id, mask, expectedCommitment, preview),
         ["selected presentation locks are permanent for all future owners; no force bypass exists",
           ...((mask & PresentationLock.Content) ? [`content freezes the reviewed root ${preview.root} and path ${preview.path}; later versions and tag moves cannot change it`] : []),
           ...(preview.status !== PresentationStatus.Ready ? ["the current presentation is not Ready; locking content and method may preserve an unusable display"] : [])], preview);

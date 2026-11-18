@@ -205,7 +205,7 @@ describe.skipIf(!live)(`live: throwaway rehearsal on chain ${CHAIN_ID}`, () => {
       const reviewed = await sdk.previewPresentation(0n);
       expect(reviewed.root?.toLowerCase()).toBe(second.rootCid.toLowerCase());
       const commitment = await sdk.readPresentationLockCommitment(0n, PresentationLock.Content, reviewed.blockNumber);
-      const lockHash = await sdk.lockPresentation(0n, PresentationLock.Content, commitment);
+      const lockHash = await sdk.lockPresentation(0n, PresentationLock.Content, commitment, reviewed);
       await assertEvent(lockHash, "PresentationLocked", { org: created.org, tokenId: 0n, locks: PresentationLock.Content, frozenRoot: second.rootCid });
       const third = await publishRootAndTag(clients, project, 0n, result.rootCid);
       expect(third.versionNumber).toBe(3n);
