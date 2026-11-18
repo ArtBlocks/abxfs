@@ -1,0 +1,140 @@
+[
+  {
+    "check": "assembly",
+    "id": "0349331285b367accd9c9893d1af8580619692608e284140e86e9b514eee65b3",
+    "description": "FileStore._scanLeaf(NodeTree.Node,uint256) (src/FileStore.sol#205-227) uses assembly\n\t- INLINE ASM (src/FileStore.sol#212-214)\n\t- INLINE ASM (src/FileStore.sol#216-218)\n",
+    "reason": "Informational. Hand decoding and bounded scans, reviewed and covered by the unit tests and golden vectors."
+  },
+  {
+    "check": "assembly",
+    "id": "07d734ba224bbb59f12cd3e6b41379b6f8ca4cb9def65f4e0fdd079f218ad818",
+    "description": "NameOps.compare(bytes,bytes) (src/utils/NameOps.sol#10-34) uses assembly\n\t- INLINE ASM (src/utils/NameOps.sol#11-33)\n",
+    "reason": "Informational. Hand decoding and bounded scans, reviewed and covered by the unit tests and golden vectors."
+  },
+  {
+    "check": "assembly",
+    "id": "5a1cfcc3f4283dcbf7f1eb5c224dbc413202667c4bcd574aaff55c6c66eebcdd",
+    "description": "FileStore.getChunkIds(bytes32,uint256,uint256) (src/FileStore.sol#162-186) uses assembly\n\t- INLINE ASM (src/FileStore.sol#176-178)\n",
+    "reason": "Informational. Hand decoding and bounded scans, reviewed and covered by the unit tests and golden vectors."
+  },
+  {
+    "check": "assembly",
+    "id": "5b88bb7dabfac4efeedda78db9b15ba8239273f47e62e1353bdb2721d01fb314",
+    "description": "ChunkStore.read(bytes32) (src/ChunkStore.sol#58-93) uses assembly\n\t- INLINE ASM (src/ChunkStore.sol#69-75)\n\t- INLINE ASM (src/ChunkStore.sol#81-85)\n\t- INLINE ASM (src/ChunkStore.sol#89-91)\n",
+    "reason": "Informational. Hand decoding and bounded scans, reviewed and covered by the unit tests and golden vectors."
+  },
+  {
+    "check": "assembly",
+    "id": "6f99b1fbf71fdcbdfb6c07e19ee7320dcfa34484156b273fad8bd7eb2f7665a6",
+    "description": "NameOps.hasSeparator(bytes) (src/utils/NameOps.sol#40-64) uses assembly\n\t- INLINE ASM (src/utils/NameOps.sol#41-63)\n",
+    "reason": "Informational. Hand decoding and bounded scans, reviewed and covered by the unit tests and golden vectors."
+  },
+  {
+    "check": "assembly",
+    "id": "fca57084918e1f669bb554fd9e40b9b135c392a225f49dfb34172122f1a4d6fc",
+    "description": "NodeTree._readUint(address,uint256,uint256) (src/NodeTree.sol#137-143) uses assembly\n\t- INLINE ASM (src/NodeTree.sol#138-142)\n",
+    "reason": "Informational. Hand decoding and bounded scans, reviewed and covered by the unit tests and golden vectors."
+  },
+  {
+    "check": "calls-loop",
+    "id": "0877ffa1c27e7c347e009964ad9cdbbadf340443025a6ff476de54f433b34137",
+    "description": "FileStore._validateLeaf(bytes) (src/FileStore.sol#100-119) has external calls inside a loop: recorded = chunkStore.sizeOf(id) (src/FileStore.sol#110)\n\tCalls stack containing the loop:\n\t\tFileStore.putChunkNode(bytes)\n\t\tNodeTree._putNode(bytes1,bytes)\n",
+    "reason": "By design. A file leaf checks each chunk's recorded size with ChunkStore.sizeOf; bounded by the leaf's item count."
+  },
+  {
+    "check": "calls-loop",
+    "id": "f91dbcdbed4300884cf6f4f324464675bcd9ebb7b7a7940dce5742c9ea823636",
+    "description": "DirectoryStore._validateLeaf(bytes) (src/DirectoryStore.sol#71-108) has external calls inside a loop: ! fileStore.fileExists(child) (src/DirectoryStore.sol#98)\n\tCalls stack containing the loop:\n\t\tDirectoryStore.putEntryNode(bytes)\n\t\tNodeTree._putNode(bytes1,bytes)\n",
+    "reason": "By design. A directory leaf checks that each file child exists in FileStore; bounded by the leaf's item count."
+  },
+  {
+    "check": "cyclomatic-complexity",
+    "id": "65a0504598a6338e55a83291e51193b4a661a133b94dcf2a5aca40a1b8ae4f07",
+    "description": "DirectoryStore._validateLeaf(bytes) (src/DirectoryStore.sol#71-108) has a high cyclomatic complexity (14).\n",
+    "reason": "Informational. Directory leaf validation checks entry structure, name rules, ordering and child existence in one pass."
+  },
+  {
+    "check": "incorrect-shift",
+    "id": "1d2e84b4580106a6f90a77c6e75cb0730e450b7fc7560ca87c9eccb51b4d1e63",
+    "description": "NameOps.hasSeparator(bytes) (src/utils/NameOps.sol#40-64) contains an incorrect shift operation: keep_hasSeparator_asm_0 = ~ 1 << 0x20 - rem_hasSeparator_asm_0 << 3 - 1 (src/utils/NameOps.sol#51)\n",
+    "reason": "False positive. Yul shl(shift, value) takes the shift amount first, so not(sub(shl(shl(3, sub(0x20, rem)), 1), 1)) keeps the first `rem` bytes of the word. Covered by NameOps.t.sol, NameOpsTail.t.sol and the golden vectors."
+  },
+  {
+    "check": "pragma",
+    "id": "fd7b511d2fc0dc523d9b9f4c1c3f1d062780ea195b46cb1b1fee7a956aa1711d",
+    "description": "2 different versions of Solidity are used:\n\t- Version constraint ^0.8.4 is used by:\n\t\t-^0.8.4 (lib/solady/src/utils/LibZip.sol#2)\n\t\t-^0.8.4 (lib/solady/src/utils/Multicallable.sol#2)\n\t\t-^0.8.4 (lib/solady/src/utils/SSTORE2.sol#2)\n\t- Version constraint ^0.8.24 is used by:\n\t\t-^0.8.24 (src/ChunkStore.sol#2)\n\t\t-^0.8.24 (src/DirectoryStore.sol#2)\n\t\t-^0.8.24 (src/FileStore.sol#2)\n\t\t-^0.8.24 (src/NodeTree.sol#2)\n\t\t-^0.8.24 (src/backends/FastLzSstore2Backend.sol#2)\n\t\t-^0.8.24 (src/backends/Sstore2Backend.sol#2)\n\t\t-^0.8.24 (src/interfaces/IChunkStore.sol#2)\n\t\t-^0.8.24 (src/interfaces/IDirectoryStore.sol#2)\n\t\t-^0.8.24 (src/interfaces/IFileStore.sol#2)\n\t\t-^0.8.24 (src/interfaces/IStorageBackend.sol#2)\n\t\t-^0.8.24 (src/utils/CodeStore.sol#2)\n\t\t-^0.8.24 (src/utils/NameOps.sol#2)\n",
+    "reason": "Informational. The two constraints are Solady's ^0.8.4 and this package's ^0.8.24. The build is pinned to solc 0.8.24 in foundry.toml."
+  },
+  {
+    "check": "reentrancy-events",
+    "id": "ba11cc058bef4fea4baf2621bb5f84a3464331815f00cb195908e2d35f12a3c6",
+    "description": "Reentrancy in ChunkStore.write(address,bytes,bytes32,uint48) (src/ChunkStore.sol#32-50):\n\tExternal calls:\n\t- pointer = IStorageBackend(backend).store(input,msg.sender) (src/ChunkStore.sol#39)\n\tEvent emitted after the call(s):\n\t- ChunkWritten(id,backend,pointer,inputHash,dataHash,size) (src/ChunkStore.sol#49)\n",
+    "reason": "By design; same call as the reentrancy-no-eth entry. ChunkWritten is emitted only for the record this call writes."
+  },
+  {
+    "check": "reentrancy-no-eth",
+    "id": "73abd9297ee175a20dcf75f4c3e66068bedb05646cd3c82a4f93f80f62d7e770",
+    "description": "Reentrancy in ChunkStore.write(address,bytes,bytes32,uint48) (src/ChunkStore.sol#32-50):\n\tExternal calls:\n\t- pointer = IStorageBackend(backend).store(input,msg.sender) (src/ChunkStore.sol#39)\n\tState variables written after the call(s):\n\t- _records[id] = Record({backend:backend,size:size,pointer:pointer,dataHash:dataHash}) (src/ChunkStore.sol#48)\n\tChunkStore._records (src/ChunkStore.sol#29) can be used in cross function reentrancies:\n\t- ChunkStore._record(bytes32) (src/ChunkStore.sol#115-118)\n\t- ChunkStore.exists(bytes32) (src/ChunkStore.sol#96-98)\n\t- ChunkStore.read(bytes32) (src/ChunkStore.sol#58-93)\n\t- ChunkStore.write(address,bytes,bytes32,uint48) (src/ChunkStore.sol#32-50)\n",
+    "reason": "By design. write() calls the backend the writer chose. The id commits to that backend's address, so a re-entering backend can only create records under its own address. A record set during the call stands (checked again after it), and a readable backend's result is checked against dataHash and size before the record is written. Covered by the re-entrant backend mock in ChunkStore.t.sol."
+  },
+  {
+    "check": "uninitialized-local",
+    "id": "192ecfe4c64180d79257d2e6dff6670ce2ad216fc9ddd68247d2cc5b328b5e12",
+    "description": "DirectoryStore.resolvePath(bytes32,string).depth (src/DirectoryStore.sol#192) is a local variable never initialized\n",
+    "reason": "False positive. resolvePath's path-depth counter starts at zero."
+  },
+  {
+    "check": "uninitialized-local",
+    "id": "3d9e37c45aced96115a0111452535f0974b60bb6175233ec1de49bac0b721ef1",
+    "description": "NodeTree._validateBranch(uint8,bytes).prev (src/NodeTree.sol#88) is a local variable never initialized\n",
+    "reason": "False positive. _validateBranch's previous child id; it is read only from the second child on."
+  },
+  {
+    "check": "uninitialized-local",
+    "id": "3df04b2ce76e7d6e1910b4d7bb5dff8c02157d15f3db0b362272797ec9ed16b6",
+    "description": "DirectoryStore._validateLeaf(bytes).prev (src/DirectoryStore.sol#79) is a local variable never initialized\n",
+    "reason": "False positive. The directory leaf's previous-name holder starts empty for the first entry."
+  },
+  {
+    "check": "uninitialized-local",
+    "id": "4bebb5f92d5b5c6bb90eb01da52ba6d29d4be69624f3fe0544500dcb635b4950",
+    "description": "CodeStore.place(bytes).codeHash (src/utils/CodeStore.sol#35) is a local variable never initialized\n",
+    "reason": "False positive. place() computes the code hash only the first time a candidate address already has code; zero means not yet computed."
+  },
+  {
+    "check": "uninitialized-local",
+    "id": "742314d1ba142719c933e3c61f85c8208bdbb1c65e380f49ad7b0e53fd1b0377",
+    "description": "FileStore.createFile(bytes32,string,bytes32,bytes32).count (src/FileStore.sol#69) is a local variable never initialized\n",
+    "reason": "False positive. The empty file has zero chunks; otherwise it is set from the root node."
+  },
+  {
+    "check": "uninitialized-local",
+    "id": "88f87931f79e0eab031b28f3611b35dba414ba670ab952fc8d9faca1077c8441",
+    "description": "NodeTree._validateBranch(uint8,bytes).running (src/NodeTree.sol#86) is a local variable never initialized\n",
+    "reason": "False positive. _validateBranch's running item total starts at zero."
+  },
+  {
+    "check": "uninitialized-local",
+    "id": "a6bff201f30374580845b9e9be220c756e9742cc34c7547ec2f573a57c3abfd9",
+    "description": "FileStore.createFile(bytes32,string,bytes32,bytes32).size (src/FileStore.sol#70) is a local variable never initialized\n",
+    "reason": "False positive. The empty file has zero bytes; otherwise it is set from the root node."
+  },
+  {
+    "check": "uninitialized-local",
+    "id": "a77d6e3a4030d7c3bb8f53071848885976107b1de56a3c1c335cfaec28a14243",
+    "description": "FileStore._validateLeaf(bytes).total (src/FileStore.sol#104) is a local variable never initialized\n",
+    "reason": "False positive. The file leaf's running byte total starts at zero."
+  },
+  {
+    "check": "uninitialized-local",
+    "id": "b9a7ccc9d6afe95bd1ed3715e5b37a68a0f7bbc06ae59145af69e677c8dc2d47",
+    "description": "NodeTree._validateBranch(uint8,bytes).runningBytes (src/NodeTree.sol#87) is a local variable never initialized\n",
+    "reason": "False positive. _validateBranch's running byte total starts at zero."
+  },
+  {
+    "check": "uninitialized-local",
+    "id": "e573ab914368a2d0d9765c8883c98faf373a858161fc165354dabc5c2d3a05bd",
+    "description": "DirectoryStore.resolvePath(bytes32,string).start (src/DirectoryStore.sol#193) is a local variable never initialized\n",
+    "reason": "False positive. resolvePath's segment start offset starts at zero."
+  }
+]
