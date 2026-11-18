@@ -187,6 +187,33 @@ contract ChunkStoreTest is Test {
         assertEq(chunks.read(id), d);
     }
 
+    /// @dev What a backend author must avoid. `retrieve` must return the standard ABI encoding of one `bytes` (head
+    ///      offset 0x20, then the length, then the data), which is what a Solidity `return` of a `bytes memory`
+    ///      produces. An encoding Solidity's decoder still accepts, here a head offset of 0x40 with an unused word
+    ///      before the length, passes the typed check in `write`, so the chunk is recorded. `read` decodes by hand,
+    ///      accepts only the standard encoding, and refuses it. The record is permanent: writing the same input again
+    ///      finds it and never asks the backend, so the chunk cannot be repaired by rewriting it.
+    function test_nonStandardRetrieveEncodingIsRecordedAndThenNeverReadable() public {
+        bytes memory d = "a backend must return the standard bytes encoding";
+        bytes memory padded = bytes.concat(d, new bytes((32 - d.length % 32) % 32));
+        scripted.setRaw(abi.encodePacked(uint256(0x40), uint256(0), uint256(d.length), padded));
+        assertEq(scripted.retrieve(keccak256(d)), d, "Solidity decodes it to the data");
+
+        bytes32 id = _write(address(scripted), d);
+        assertEq(id, chunks.chunkId(address(scripted), keccak256(d), keccak256(d), uint48(d.length)));
+        assertTrue(chunks.exists(id), "the write accepted it");
+        assertEq(scripted.stores(), 1);
+        vm.expectRevert(abi.encodeWithSelector(IChunkStore.RetrieveFailed.selector, id, address(scripted)));
+        chunks.read(id);
+
+        vm.recordLogs();
+        assertEq(_write(address(scripted), d), id, "the same input names the same chunk");
+        assertEq(vm.getRecordedLogs().length, 0, "nothing is recorded again");
+        assertEq(scripted.stores(), 1, "the backend is not asked again");
+        vm.expectRevert(abi.encodeWithSelector(IChunkStore.RetrieveFailed.selector, id, address(scripted)));
+        chunks.read(id);
+    }
+
     // ---- unreadable backends ------------------------------------------
 
     function test_unreadableClaimsAreBoundNotChecked() public {
