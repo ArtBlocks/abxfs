@@ -12,6 +12,7 @@ import { isUserRejection } from "@artblocks/abxfs-sdk";
 
 import { setAllowConfigOverrides } from "./config.js";
 import { formatCliError } from "./redact.js";
+import { authCommand } from "./commands/auth.js";
 import { diffCommand } from "./commands/diff.js";
 import { devCommand } from "./commands/dev.js";
 import { infoCommand } from "./commands/info.js";
@@ -48,6 +49,7 @@ function buildProgram(): Command {
       if (thisCommand.opts()["allowConfigOverrides"]) setAllowConfigOverrides(true);
     });
 
+  program.addCommand(authCommand());
   program.addCommand(orgCommand());
   program.addCommand(uploadCommand());
   program.addCommand(updateCommand());

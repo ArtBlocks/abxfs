@@ -41,6 +41,7 @@
     "cli": "node --experimental-strip-types ./src/index.ts"
   },
   "dependencies": {
+    "@artblocks/abx-creator-wallet": "^0.1.0",
     "@artblocks/abxfs-sdk": "workspace:*",
     "@artblocks/abxfs-pinning": "workspace:*",
     "commander": "^12.1.0",

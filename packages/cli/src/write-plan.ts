@@ -115,7 +115,7 @@ const approxEth = (wei: bigint) => {
  * The lines {@link confirmWrite} prints, without the balance check or the prompt. `gasPrice`, the node's current
  * price when it gave one, adds the likely cost: the max cost is a ceiling at the fee cap, often thousands of times more.
  */
-export function describeWritePlan(plan: WritePlan, gasPrice?: bigint): string[] {
+export function describeWritePlan(plan: WritePlan, gasPrice?: bigint, sponsored = false): string[] {
   const txs = plan.steps.reduce((a, s) => a + s.txs, 0);
   const gas = plan.steps.reduce((a, s) => a + s.gas, 0);
   const upTo = plan.steps.some((s) => s.upTo);
@@ -132,19 +132,20 @@ export function describeWritePlan(plan: WritePlan, gasPrice?: bigint): string[] 
   for (const s of plan.steps) {
     lines.push(kleur.gray(`                ${s.upTo ? "up to " : ""}${s.txs} × ${s.what}`.padEnd(64) + ` ~${n(s.gas)} gas`));
   }
-  if (gasPrice !== undefined && gasPrice > 0n) {
+  if (sponsored) lines.push("  gas payer:  ABX sponsorship (up to the available 24-hour budget)");
+  if (!sponsored && gasPrice !== undefined && gasPrice > 0n) {
     lines.push(
       `  est. cost:  ~${approxEth(BigInt(gas) * gasPrice)} ETH` + kleur.gray(` (at the current gas price, ${formatGwei(gasPrice)} gwei)`),
     );
   }
-  lines.push(
+  if (!sponsored) lines.push(
     `  max cost:   ${formatEther(maxCost)} ETH` +
       kleur.gray(` (the estimate at the ${formatGwei(cap)} gwei fee ceiling, ABXFS_MAX_FEE_GWEI: what it could cost if fees spiked)`),
   );
-  if (isOpStackChain(plan.chainId)) {
+  if (!sponsored && isOpStackChain(plan.chainId)) {
     // Charged per byte of each transaction at the L1's price, outside the gas the fee ceiling caps.
     lines.push(kleur.gray("              not included: this chain's L1 data fee, charged on top for each transaction's calldata"));
-  } else if (isArbitrumChain(plan.chainId)) {
+  } else if (!sponsored && isArbitrumChain(plan.chainId)) {
     // Arbitrum folds the same charge into gas: extra gas units at this chain's price, which the estimates above omit.
     lines.push(
       kleur.gray("              not included: this chain's L1 component, charged as extra gas on each transaction for its calldata"),
@@ -175,28 +176,28 @@ export function describeWritePlan(plan: WritePlan, gasPrice?: bigint): string[] 
 export async function confirmWrite(
   client: Pick<AbxfsClient, "publicClient" | "walletClient">,
   plan: WritePlan,
-  opts: { yes?: boolean | undefined; stderr?: boolean | undefined },
+  opts: { yes?: boolean | undefined; stderr?: boolean | undefined; sponsored?: boolean },
 ): Promise<boolean> {
   const print = opts.stderr ? console.error : console.log;
   let gasPrice: bigint | undefined;
   try {
     // Display only, so a node that cannot say leaves the line out rather than stopping the write.
-    if (typeof client.publicClient.getGasPrice === "function") gasPrice = await client.publicClient.getGasPrice();
+    if (!opts.sponsored && typeof client.publicClient.getGasPrice === "function") gasPrice = await client.publicClient.getGasPrice();
   } catch {
     gasPrice = undefined;
   }
-  for (const line of describeWritePlan(plan, gasPrice)) print(line);
+  for (const line of describeWritePlan(plan, gasPrice, opts.sponsored)) print(line);
 
   const txs = plan.steps.reduce((a, s) => a + s.txs, 0);
   const gas = plan.steps.reduce((a, s) => a + s.gas, 0);
   const account = client.walletClient?.account?.address;
   if (!account) throw new Error("no account to write with — set ABXFS_PRIVATE_KEY");
-  const balance = await client.publicClient.getBalance({ address: account });
+  const balance = opts.sponsored ? null : await client.publicClient.getBalance({ address: account });
   if (balance === 0n) {
     throw new Error(`account ${account} has no ETH on ${chainDisplayName(plan.chainId)}, so it cannot pay for any transaction. Nothing was sent.`);
   }
   const maxCost = BigInt(gas) * maxFeeCapWei(plan.chainId);
-  if (balance < maxCost) {
+  if (balance !== null && balance < maxCost) {
     print(
       kleur.yellow(
         `  ! account ${account} holds ${formatEther(balance)} ETH, less than the max cost above. That is enough if fees stay low; ` +
