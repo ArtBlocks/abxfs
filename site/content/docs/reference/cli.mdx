@@ -86,8 +86,9 @@ you pass `--yes`**, which sends without asking (the plan is still printed). This
 `tag set` / `tag remove`, `view`, `org create`, `org mint`, `org open`, `org close`, `org transfer-admin`,
 `org accept-admin` and `transfer`. `--dry-run` never sends, so it needs neither.
 
-Every write caps `maxFeePerGas` and `maxPriorityFeePerGas` at `ABXFS_MAX_FEE_GWEI` (default 50 gwei, 200 on Ethereum
-L1 and its testnets) and stops with an error, signing nothing, if the node quotes above it. Writes are only reported
+Local-key writes enforce `ABXFS_MAX_FEE_GWEI` (default 50 gwei, 200 on Ethereum L1 and its testnets)
+against `maxFeePerGas`, `maxPriorityFeePerGas`, or the legacy `gasPrice`. The CLI keeps the RPC-filled fee quote and
+refuses to broadcast any signed transaction above the ceiling. Writes are only reported
 as done once their receipt says success. If a mint's receipt (or `org create`'s) does not arrive in time, the CLI
 reads the chain to find the project that transaction made and carries on with it; if it is still pending it stops
 with the hash, the explorer link, and what to run once it confirms (for `upload`, the command that publishes into

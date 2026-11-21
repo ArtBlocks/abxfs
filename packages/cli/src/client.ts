@@ -38,6 +38,8 @@ function ceilingText(cap: bigint): string {
  */
 function cappedFees(chainId: number): NonNullable<Chain["fees"]> {
   return {
+    // The custom estimator already sets its own headroom. Keep RPC-filled fees at the node's quote too.
+    baseFeeMultiplier: 1,
     async estimateFeesPerGas({ client, type }) {
       const cap = maxFeeCapWei(chainId);
       const hint = "Raise ABXFS_MAX_FEE_GWEI if this is real, or use a different RPC.";
