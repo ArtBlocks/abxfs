@@ -194,7 +194,7 @@ export function uploadCommand(): Command {
         console.log(kleur.yellow("dry-run:"), "root =", preflight.rootCid, kleur.gray(file ? "(file)" : "(directory)"));
         if (!file) for (const f of (preflight as { files: Array<{ cid: string; path: string }> }).files) console.log("  ", f.cid, safe(f.path));
         printSummary(summary);
-        if (opts.name || projectId !== undefined) printProjectSteps(summary, opts, projectId);
+        if (opts.name || projectId !== undefined) printProjectSteps(summary, opts, projectId, presentation);
         return;
       }
 
@@ -332,10 +332,15 @@ function printSummary(s: UploadSummary): void {
 }
 
 /**
- * The project transactions a real run adds after the content, which the dry run does not plan: choosing or creating
- * the org needs the account, so both possibilities are named. The real run prints the exact plan before sending.
+ * Print the project's transactions alongside the content plan. Choosing or creating an org needs an account,
+ * so the dry run names both possibilities. The real run prints the account-specific plan before sending.
  */
-function printProjectSteps(s: UploadSummary, opts: UploadOpts, projectId: bigint | undefined): void {
+function printProjectSteps(
+  s: UploadSummary,
+  opts: UploadOpts,
+  projectId: bigint | undefined,
+  presentation?: PresentationPlan,
+): void {
   const lines: [string, number | undefined][] = [];
   if (projectId === undefined) {
     if (opts.org) lines.push(["mint a new project token into the org", WRITE_GAS.mint]);
@@ -347,6 +352,8 @@ function printProjectSteps(s: UploadSummary, opts: UploadOpts, projectId: bigint
   lines.push(["publish the root as the project's next version", WRITE_GAS.publish]);
   if (opts.tag) lines.push([`point tag "${safe(opts.tag)}" at it`, WRITE_GAS.setTag]);
   if (opts.name) lines.push([`set the project's name to "${safe(opts.name)}"`, WRITE_GAS.setName]);
+  if (presentation?.configureTarget) lines.push(["set the project's presentation target", undefined]);
+  if (presentation?.configureMethod) lines.push(["set the project's presentation method", undefined]);
   console.log(kleur.yellow("dry-run:"), "then, to publish it as a project:");
   for (const [what, gas] of lines) {
     console.log("  ", `${what.startsWith("  or") ? "" : "1 × "}${what}`.padEnd(70), gas === undefined ? "" : kleur.gray(`~${gas.toLocaleString()} gas`));
