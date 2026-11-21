@@ -78,6 +78,30 @@ not acquire invented history. See
 `projectPresentation` capabilities only after they have passed the checks above. Never add presentation to an old
 factory record. A reader capability can be shared only by generations with its exact immutable store pair.
 
+## Optional: FileDataReader
+
+`FileDataReader` (`packages/contracts-companion`) returns a file's stored data, for any codec, with its codec label and
+`outputHash`. Nothing stores its address and no factory or generation depends on it, so it can be deployed to a chain
+at any time after the content layer, independently of the presentation generation. It is not deployed anywhere yet:
+deploying it, like anything on a production network, needs the maintainers' explicit go-ahead.
+
+1. In `packages/contracts-companion`, run the suite, then dry-run `script/DeployDataReader.s.sol` (no
+   `--broadcast`) and compare its prediction with `pinned()`. `FILE_STORE`, `DIRECTORY_STORE` and `SSTORE2_BACKEND`
+   select the existing stores and raw backend (or default to their predictions); the pin covers all three, so any
+   other backend is refused off a local chain.
+2. Broadcast that same script, then read back `fileStore()`, `directoryStore()`, `chunkStore()` and
+   `sstore2Backend()`.
+3. Read a known raw file and a known gzip file and compare each with `FileStore.readChunk` joined, then verify the
+   source with its three constructor arguments.
+
+```bash
+cd packages/contracts-companion
+forge script script/DeployDataReader.s.sol --rpc-url "$RPC" --sender "$DEPLOYER"
+```
+
+Registering it in `canonical.ts`, the SDK's ABIs and the verification inventory follows a verified deployment, as for
+every other companion.
+
 ## Legacy deployment procedure
 
 The remaining build tag, pins and deployment inventory describe the legacy generation. For a presentation
@@ -126,7 +150,7 @@ The org factory takes three of ABX's contracts as constructor arguments, so they
   (`0x4e59b44847b379578588920cA78FbF26c0B4956C`) with a fixed salt and no sender-dependent constructor argument, so
   **any key** lands it at the same address on every chain.
 - The salts are `keccak256("abx-fs/content")` (all five content contracts), `keccak256("abx-fs/ipfs-cid-resolver")`,
-  `keccak256("abx-fs/content-reader")`, `keccak256("abx-fs/project-presentation")`,
+  `keccak256("abx-fs/content-reader")`, `keccak256("abx-fs/file-data-reader")`, `keccak256("abx-fs/project-presentation")`,
   `keccak256("abx-fs/org-meta")`, `keccak256("abx-fs/org-factory")`, `keccak256("abx-fs/org-components")` and
   `keccak256("abx-fs/lens")`.
 - Predictions also include constructor arguments: the stores for the resolver and reader; the reader, resolver and
