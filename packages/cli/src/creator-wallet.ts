@@ -14,7 +14,12 @@ import { createClient } from "./client.js";
 import type { ChainConfig } from "./config.js";
 import { CliRefusal, registerSecret } from "./redact.js";
 
-export const CREATOR_PILOT_CHAIN = "base-sepolia";
+const sponsoredChainKeys = new Map([
+  [8453, "base"],
+  [84532, "base-sepolia"],
+  [42161, "arbitrum"],
+  [421614, "arbitrum-sepolia"],
+]);
 
 export function accountEnvPath(): string {
   return resolve(".env");
@@ -33,14 +38,17 @@ export interface UploadWallet {
 
 /** The native provider sees the same creator wallet as ABX. Open its grant lazily after FS review. */
 export async function creatorUploadWallet(chain: ChainConfig): Promise<UploadWallet> {
-  if (chain.chainId !== 84532) throw new CliRefusal("The creator-wallet upload pilot runs on Base Sepolia.");
+  const chainKey = sponsoredChainKeys.get(chain.chainId);
+  if (!chainKey) {
+    throw new CliRefusal("Sponsored creator-wallet uploads are available on Base, Arbitrum, and their Sepolia testnets.");
+  }
   const token = creatorToken();
   if (!token) throw new CliRefusal("Sign in with abxfs auth login to use the creator wallet.");
   // Keep the account credential scoped to the first-party provider.
   const env = { [ABX_SERVICES_API_KEY_VAR]: token };
 
   const read = createClient(chain);
-  const address = await sponsoredWalletAddress(CREATOR_PILOT_CHAIN, { env, requireSponsorshipBudget: true });
+  const address = await sponsoredWalletAddress(chainKey, { env, requireSponsorshipBudget: true });
   if (await read.publicClient.getChainId() !== chain.chainId) throw new CliRefusal("The FS RPC is on the wrong chain.");
   let session: Promise<SponsoredSession> | undefined;
   let closed = false;
@@ -62,7 +70,7 @@ export async function creatorUploadWallet(chain: ChainConfig): Promise<UploadWal
       functionName: request.functionName as string,
       args: request.args as readonly unknown[] | undefined,
     });
-    session ??= openSponsoredSession(CREATOR_PILOT_CHAIN, {
+    session ??= openSponsoredSession(chainKey, {
       env,
       recoveryCommand: "abxfs auth operation",
       requireSponsorshipBudget: true,

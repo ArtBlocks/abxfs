@@ -114,7 +114,7 @@ export function uploadCommand(): Command {
       "max estimated gas per multicall bundle, a positive whole number, counted as the chain's per-transaction cap counts it " +
         "(all gas, or only execution gas under EIP-8037); defaults to the chain's defaultBundleGasBudget, else 12000000",
     )
-    .option("--embedded", "use your ABX creator wallet with sponsored gas (Base Sepolia pilot)")
+    .option("--embedded", "use your ABX creator wallet with eligible sponsored gas on Base, Arbitrum, or their Sepolia testnets")
     .option("--yes", "send without asking (the plan is still printed). Required when there is no terminal to confirm on")
     .action(async (path: string, opts: UploadOpts) => jsonAction(opts.json, async (report) => {
       // Everything that can be checked offline is checked FIRST: a bad tag, name, id, kind or gas budget must not be

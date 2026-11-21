@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { createPublicClient, createWalletClient, defineChain, encodeFunctionData, http, parseAbi } from "viem";
-import { baseSepolia } from "viem/chains";
+import { arbitrum, arbitrumSepolia, base, baseSepolia, mainnet } from "viem/chains";
 import {
   CreatorSponsorshipBudgetError,
   openSponsoredSession,
@@ -34,30 +34,50 @@ beforeEach(() => {
 });
 afterEach(() => vi.clearAllMocks());
 
-test("uses the same approved wallet and opens one session for multiple reviewed upload stages", async () => {
+test.each([
+  ["base", base],
+  ["base-sepolia", baseSepolia],
+  ["arbitrum", arbitrum],
+  ["arbitrum-sepolia", arbitrumSepolia],
+] as const)("uses the approved wallet and opens one session for multiple upload stages on %s", async (key, network) => {
+  const publicClient = { chain: network, getChainId: async () => network.id };
+  vi.mocked(createClient).mockReturnValue({ publicClient, addresses: {} } as never);
   const send = vi.fn().mockResolvedValue({ txHash });
   const close = vi.fn();
   vi.mocked(openSponsoredSession).mockResolvedValue({ address, send, close });
-  const wallet = await creatorUploadWallet(chain);
+  const wallet = await creatorUploadWallet({ ...chain, chainId: network.id });
   expect(wallet.client.walletClient?.account?.address).toBe(address);
+  expect(sponsoredWalletAddress).toHaveBeenCalledWith(key, expect.objectContaining({ requireSponsorshipBudget: true }));
   expect(openSponsoredSession).not.toHaveBeenCalled();
 
   const signer = wallet.client.walletClient!;
-  expect(await signer.writeContract({ ...request, account: signer.account!, chain: baseSepolia })).toBe(txHash);
-  expect(await signer.writeContract({ ...request, account: signer.account!, chain: baseSepolia })).toBe(txHash);
+  expect(await signer.writeContract({ ...request, account: signer.account!, chain: network })).toBe(txHash);
+  expect(await signer.writeContract({ ...request, account: signer.account!, chain: network })).toBe(txHash);
 
   expect(openSponsoredSession).toHaveBeenCalledTimes(1);
-  expect(openSponsoredSession).toHaveBeenCalledWith("base-sepolia", expect.objectContaining({
+  expect(openSponsoredSession).toHaveBeenCalledWith(key, expect.objectContaining({
     requireSponsorshipBudget: true, recoveryCommand: "abxfs auth operation",
   }));
   expect(send).toHaveBeenCalledWith(expect.objectContaining({
     to: target,
     data: encodeFunctionData(request),
-    chainId: baseSepolia.id,
+    chainId: network.id,
     value: "0x0",
   }));
   await wallet.close();
   expect(close).toHaveBeenCalledTimes(1);
+});
+
+test("refuses Ethereum sponsorship before accessing the provider", async () => {
+  await expect(creatorUploadWallet({ ...chain, chainId: mainnet.id })).rejects.toThrow(/Base, Arbitrum, and their Sepolia testnets/);
+  expect(sponsoredWalletAddress).not.toHaveBeenCalled();
+  expect(openSponsoredSession).not.toHaveBeenCalled();
+});
+
+test("refuses an account outside the sponsorship budget before requesting a grant", async () => {
+  vi.mocked(sponsoredWalletAddress).mockRejectedValueOnce(new Error("Budgeted ABX sponsorship is not available"));
+  await expect(creatorUploadWallet({ ...chain, chainId: arbitrum.id })).rejects.toThrow(/Budgeted ABX sponsorship/);
+  expect(openSponsoredSession).not.toHaveBeenCalled();
 });
 
 test("returns a sponsorship refusal without wrapping it as a gas failure or retrying the write", async () => {
