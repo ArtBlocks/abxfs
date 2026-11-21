@@ -1,5 +1,15 @@
 # @artblocks/abxfs-cli
 
+## 0.4.0
+
+### Minor Changes
+
+- 2acb262: Add shared ABX account login and an opt-in creator-wallet lane for eligible Base Sepolia uploads.
+
+### Patch Changes
+
+- 112b8b3: Include required presentation target and method writes in the upload dry-run transaction total.
+
 ## 0.3.1
 
 ### Patch Changes
