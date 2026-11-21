@@ -62,6 +62,7 @@ CREATE2 salts:
 | `keccak256("abx-fs/content")` | `ChunkStore`, `Sstore2Backend`, `FastLzSstore2Backend`, `FileStore`, `DirectoryStore` |
 | `keccak256("abx-fs/ipfs-cid-resolver")` | `IpfsCidResolver` |
 | `keccak256("abx-fs/content-reader")` | `ContentReader` |
+| `keccak256("abx-fs/file-data-reader")` | `FileDataReader` (proposed companion; no deployment yet) |
 | `keccak256("abx-fs/project-presentation")` | `ProjectPresentation` |
 | `keccak256("abx-fs/org-meta")` | `OrgMeta` |
 | `keccak256("abx-fs/org-factory")` | `OrgFactory` |
@@ -384,7 +385,9 @@ hash must be zero: an optional redundant hash would give one file two CIDs.
 
 Consequences: byte ranges are supported when `codec == 0` (offsets index the joined chunk data, which is then the
 content; that includes FastLZ chunks). With a codec there are no ranges, no on-chain reads of the content and no
-on-chain IPFS-CID derivation (§8).
+on-chain IPFS-CID derivation (§8). The data stays readable on chain, chunk by chunk through `FileStore.readChunk`, or
+whole and labelled with its codec and `outputHash` through the `FileDataReader` companion, for a consumer that hands it
+to a decoder off chain (a browser, for a gzip data URI) which then checks `outputHash`.
 
 SDK defaults: `codec = 0` with the FastLZ backend per chunk (raw where FastLZ does not help). Opt-in: `gzip` with the
 raw backend.

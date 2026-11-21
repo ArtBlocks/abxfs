@@ -63,7 +63,11 @@ must be zero: an optional redundant hash would give one file two CIDs.
 
 What a codec gives up:
 
-- **On-chain reads of the content.** The chain holds the encoded bytes.
+- **On-chain reads of the content.** The chain holds the encoded bytes. A
+  contract can still read those bytes, whole and labelled with the codec and
+  `outputHash`, through `FileDataReader` (see
+  [Presentation](/docs/reference/presentation#read-a-files-stored-data)), and
+  hand them to a decoder off chain: a browser, for a gzip data URI.
 - **On-chain IPFS-CID derivation.** `IpfsCidResolver` reverts `CodecNotSupported`
   for such a file (the SDK raises `CodecNotSupportedOnChainError`); the CID is
   derived off chain instead. See [IPFS](/docs/using-abxfs/ipfs).
