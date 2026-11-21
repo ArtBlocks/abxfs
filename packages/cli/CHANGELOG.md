@@ -1,5 +1,15 @@
 # @artblocks/abxfs-cli
 
+## 0.5.0
+
+### Minor Changes
+
+- 9505e53: Enable creator-wallet uploads on Base, Arbitrum, and their Sepolia testnets for accounts with budgeted sponsorship.
+
+### Patch Changes
+
+- a4e6636: Keep RPC-filled fees at the quoted amount when enforcing `ABXFS_MAX_FEE_GWEI`.
+
 ## 0.4.0
 
 ### Minor Changes
