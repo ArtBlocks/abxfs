@@ -20,9 +20,9 @@ Settings come from a config file and from environment variables; the one secret,
   and `defaultBundleGasBudget`. Reads against a canonical chain need none of this;
   the SDK ships the addresses. A chain the registry lists but ABX FS has not been
   deployed to loads without addresses, and every command on it says so.
-- **`ABXFS_PRIVATE_KEY`** in the environment — required only for writes, and the
-  only variable the CLI reads a key from (no `PRIVATE_KEY` fallback). The CLI
-  never reads a key from disk and never writes one there.
+- **`ABXFS_PRIVATE_KEY`** in the environment supplies the local signer for writes. For eligible
+  Base Sepolia uploads, use `abxfs auth login` and `abxfs upload --embedded` to use the shared
+  ABX creator wallet.
 
 A config file's values are checked when it loads: `rpcUrl` and every `fallbackRpcUrls` entry must be an
 `http(s)` URL, `org` and every address an address, `defaultBundleGasBudget` a positive whole number. A key the CLI

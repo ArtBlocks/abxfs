@@ -4,6 +4,7 @@ import { basename } from "node:path";
 import { Command } from "commander";
 import kleur from "kleur";
 import type { Address, Hex } from "viem";
+import { CreatorSponsorshipBudgetError } from "@artblocks/abx-creator-wallet";
 
 import {
   autoRegisterNodeCodecs,
@@ -29,12 +30,13 @@ import {
 import { parsePresentationMethod } from "./presentation.js";
 import { parsePositiveInt, parseTokenId } from "../args.js";
 import { createClient } from "../client.js";
+import { creatorUploadWallet } from "../creator-wallet.js";
 import { FASTLZ_HELP, resolveContentOptions } from "../codec.js";
 import { loadConfig, requireOrg, resolveChain, resolveOrg, type ChainConfig } from "../config.js";
 import { assertNotSymlink, scanDirectoryReport } from "../fsscan.js";
 import { loadSingleFile, scanTreeForUpload, validateAllowPublicGlob } from "../scan-guard.js";
 import { describeStage, summarizeUpload, type UploadSummary } from "../plan-summary.js";
-import { withMintRecovery } from "../recover.js";
+import { PendingWriteError, withMintRecovery } from "../recover.js";
 import { printProjectLinks, printRootLink } from "../links.js";
 import { CliRefusal, redact } from "../redact.js";
 import { safe, shellArg, txHash } from "../text.js";
@@ -62,6 +64,7 @@ export interface UploadOpts {
   tag?: string;
   kind?: string;
   dryRun?: boolean;
+  embedded?: boolean;
   includeHidden?: boolean;
   /** Always set: commander's default for `--allow-public` is `[]`. */
   allowPublic: string[];
@@ -111,6 +114,7 @@ export function uploadCommand(): Command {
       "max estimated gas per multicall bundle, a positive whole number, counted as the chain's per-transaction cap counts it " +
         "(all gas, or only execution gas under EIP-8037); defaults to the chain's defaultBundleGasBudget, else 12000000",
     )
+    .option("--embedded", "use your ABX creator wallet with sponsored gas (Base Sepolia pilot)")
     .option("--yes", "send without asking (the plan is still printed). Required when there is no terminal to confirm on")
     .action(async (path: string, opts: UploadOpts) => jsonAction(opts.json, async (report) => {
       // Everything that can be checked offline is checked FIRST: a bad tag, name, id, kind or gas budget must not be
@@ -131,7 +135,8 @@ export function uploadCommand(): Command {
       // Keep recovery on the selected network even when it came from env/config defaults.
       const chainName = opts.chain ?? (process.env["ABXFS_CHAIN"]?.trim() || undefined)
         ?? cfg.defaultChain ?? Object.keys(cfg.chains)[0]!;
-      const client = createClient(chain, { write: !opts.dryRun });
+      const creator = !opts.dryRun && opts.embedded ? await creatorUploadWallet(chain) : undefined;
+      const client = creator?.client ?? createClient(chain, { write: !opts.dryRun });
 
       const { codec, fastLz } = resolveContentOptions(chain, opts);
       const maxBundleGas = maxBundleGasFlag ?? chain.defaultBundleGasBudget;
@@ -255,26 +260,41 @@ export function uploadCommand(): Command {
           steps,
           permanent,
         },
-        { yes: opts.yes },
+        { yes: opts.yes, sponsored: !!creator },
       );
       if (!ok) { report({ outcome: "cancelled" }); return; }
 
       // What a recovery command must reproduce: every choice that decides the root, resolved, and the root itself.
-      const recoveryOpts = projectId === undefined && target && presentationSupported
-        ? { ...opts, presentation: opts.presentation ?? "auto" } : opts;
+      const recoveryOpts = {
+        ...opts,
+        chain: chainName,
+        ...(projectId === undefined && target && presentationSupported ? { presentation: opts.presentation ?? "auto" } : {}),
+      };
       const recovery = recoveryCommand(path, recoveryOpts, { codec, fastLz, kind, maxBundleGas, root: preflight.rootCid });
-      const resolved = target ? await executeTarget(client, target, recovery) : undefined;
+      try {
+        const resolved = target ? await executeTarget(client, target, recovery) : undefined;
 
-      console.log(kleur.gray("  large uploads are many transactions; if one is interrupted, run the same command again: what is already on chain is skipped"));
-      const onFileUploaded = (f: { path: string; chunkIds: unknown[] }) =>
-        console.log(kleur.gray("•"), safe(f.path), kleur.gray(`(${f.chunkIds.length} chunk${f.chunkIds.length === 1 ? "" : "s"})`));
-      const result = file
-        ? await client.uploadFile(file, { codec, fastLz, ...gas, onProgress, onFileUploaded })
-        : await client.upload(files, { codec, fastLz, emptyDirectories, ...gas, onProgress, onFileUploaded });
-      console.log(kleur.green("✓"), file ? "file root:" : "root directory:", result.rootCid);
-      report({ root: result.rootCid, contentTxHashes: result.txHashes, phase: "content-stored" });
-      await maybeCreateProject(client, result, opts, resolved, projectId, recovery, { name: chainName, chainId: chain.chainId }, presentationPlan, report);
-      if (!resolved) await printRootLink(client, chain.chainId, result.rootCid);
+        console.log(kleur.gray("  large uploads are many transactions; if one is interrupted, run the same command again: what is already on chain is skipped"));
+        const onFileUploaded = (f: { path: string; chunkIds: unknown[] }) =>
+          console.log(kleur.gray("•"), safe(f.path), kleur.gray(`(${f.chunkIds.length} chunk${f.chunkIds.length === 1 ? "" : "s"})`));
+        const result = await (file
+          ? client.uploadFile(file, { codec, fastLz, ...gas, onProgress, onFileUploaded })
+          : client.upload(files, { codec, fastLz, emptyDirectories, ...gas, onProgress, onFileUploaded })
+        ).catch((cause: unknown) => {
+          if (!(cause instanceof CreatorSponsorshipBudgetError) || resolved?.firstTokenId === undefined) throw cause;
+          const reason = cause instanceof Error ? cause.message : "Content upload stopped.";
+          throw new PendingWriteError(
+            `${reason} The first project exists. Resume its content upload with the command below.`,
+            recovery.command(resolved.org, String(resolved.firstTokenId)),
+          );
+        });
+        console.log(kleur.green("✓"), file ? "file root:" : "root directory:", result.rootCid);
+        report({ root: result.rootCid, contentTxHashes: result.txHashes, phase: "content-stored" });
+        await maybeCreateProject(client, result, opts, resolved, projectId, recovery, { name: chainName, chainId: chain.chainId }, presentationPlan, report);
+        if (!resolved) await printRootLink(client, chain.chainId, result.rootCid);
+      } finally {
+        await creator?.close();
+      }
     }));
 }
 
@@ -379,6 +399,7 @@ export function recoveryCommand(path: string, opts: UploadOpts, choices: RootCho
       "abxfs upload",
       sh(path),
       ...(opts.chain ? ["--chain", sh(opts.chain)] : []),
+      ...(opts.embedded ? ["--embedded"] : []),
       "--org",
       org,
       "--project-id",
@@ -601,7 +622,14 @@ async function maybeCreateProject(
   // root just published, and only then tags. Do not reintroduce a CLI-local copy: two copies is how
   // this race was fixed in one place and left in another.
   report({ org, tokenId, phase: "publishing" });
-  const published = await orgClient.publishAndTag(tokenId, result.rootCid, opts.tag ? { tag: opts.tag } : {});
+  const published = await orgClient.publishAndTag(tokenId, result.rootCid, opts.tag ? { tag: opts.tag } : {})
+    .catch((error: unknown) => {
+      if (!(error instanceof CreatorSponsorshipBudgetError)) throw error;
+      throw new PendingWriteError(
+        `${error.message} Project #${tokenId} already exists. Resume publication with the command below.`,
+        recovery.command(org, String(tokenId)),
+      );
+    });
   report({ published: true, outcome: "published", org, tokenId, root: result.rootCid,
     publishTxHash: published.publishTxHash, versionNumber: published.versionNumber, phase: "published" });
   console.log(

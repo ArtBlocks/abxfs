@@ -47,8 +47,22 @@ abxfs read <root> --path index.html --chain <network>
 abxfs info --project-id 0 --org <org> --chain <network>
 ```
 
-Writes are signed by a private key you hold, in the environment only: the CLI never reads one from disk. (On
-fs.abx.io they are signed by your browser wallet.)
+For accounts enrolled in the Base Sepolia creator-wallet pilot, use the same ABX account and agent
+approval for an FS upload:
+
+```bash
+abxfs auth login
+abxfs upload ./site --chain base-sepolia --name my-project --embedded
+```
+
+The CLI opens browser sign-in if you need an account. It uses the saved creator-wallet grant when
+one is already available. Review the upload plan before sending. Eligible gas comes out of the
+wallet's shared rolling sponsorship budget. If the budget stops an upload, the confirmed content
+can be reused when you resume. Follow the printed recovery command when a project already exists.
+For an uncertain submission, check `abxfs auth operation <id>` before retrying.
+
+You can also sign with a private key held in the environment. The CLI reads that key from
+`ABXFS_PRIVATE_KEY`. On fs.abx.io, project writes use your connected browser wallet.
 
 To try it on a testnet, make a key just for that, and keep it out of files and shell history:
 
