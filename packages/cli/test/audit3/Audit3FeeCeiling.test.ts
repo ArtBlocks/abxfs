@@ -1,6 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { parseGwei, parseTransaction, toHex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { createClient, maxFeeCapWei } from "../../src/client.js";
 import { BUILTIN_CHAINS } from "../../src/config.js";
@@ -11,7 +12,8 @@ vi.mock("@artblocks/abxfs-sdk", async (orig) => (await import("../../../sdk/test
 const PK = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
 let server: Server;
 let log: { method: string; params?: unknown[] }[] = [];
-let cfg = { baseFee: 10_000_000n, prio: 1_000_000n, gasPrice: 20_000_000n, fill: false };
+const defaults = { baseFee: 10_000_000n, prio: 1_000_000n, gasPrice: 20_000_000n };
+let cfg: typeof defaults & { filledFee?: bigint } = { ...defaults };
 
 function reply(m: string, p: unknown[] | undefined): unknown {
   switch (m) {
@@ -21,6 +23,12 @@ function reply(m: string, p: unknown[] | undefined): unknown {
     case "eth_gasPrice": return "0x" + cfg.gasPrice.toString(16);
     case "eth_estimateGas": return "0x5208";
     case "eth_getTransactionCount": return "0x0";
+    case "eth_fillTransaction": {
+      if (cfg.filledFee === undefined) throw new Error("method not found");
+      const { to } = p?.[0] as { to: string };
+      return { raw: "0x", tx: { type: "0x2", chainId: "0x14a34", gas: "0x5208", nonce: "0x0", to,
+        input: "0x", value: "0x0", maxFeePerGas: toHex(cfg.filledFee), maxPriorityFeePerGas: toHex(cfg.prio) } };
+    }
     case "eth_sendRawTransaction": return "0x" + "ab".repeat(32);
     case "eth_sendRawTransactionSync": return { status: "0x1" };
     default: throw new Error("unexpected " + m);
@@ -29,6 +37,7 @@ function reply(m: string, p: unknown[] | undefined): unknown {
 
 beforeEach(async () => {
   log = [];
+  cfg = { ...defaults };
   server = createServer((req, res) => {
     let b = "";
     req.on("data", (d) => (b += d));
@@ -36,7 +45,6 @@ beforeEach(async () => {
       const j = JSON.parse(b);
       const one = (c: { id: number; method: string; params?: unknown[] }) => {
         log.push({ method: c.method, params: c.params });
-        if (c.method === "eth_fillTransaction" && !cfg.fill) return { jsonrpc: "2.0", id: c.id, error: { code: -32601, message: "no" } };
         try { return { jsonrpc: "2.0", id: c.id, result: reply(c.method, c.params) }; } catch (e) { return { jsonrpc: "2.0", id: c.id, error: { code: -32601, message: String(e) } }; }
       };
       res.setHeader("content-type", "application/json");
@@ -71,6 +79,18 @@ describe("Audit3 fee ceiling", () => {
     const hash = await (c.walletClient as any).sendTransaction({ to: "0x000000000000000000000000000000000000dEaD", value: 0n });
     expect(hash).toMatch(/^0x/);
     expect(sent()).toBe(1);
+  });
+  it("keeps an RPC-filled quote below the ceiling through signing", async () => {
+    cfg = { ...defaults, baseFee: parseGwei("20"), prio: parseGwei("2"), filledFee: parseGwei("42") };
+    process.env["ABXFS_MAX_FEE_GWEI"] = "45";
+    const c = client();
+    const w = c.walletClient!;
+    expect((await c.publicClient.estimateFeesPerGas()).maxFeePerGas).toBe(cfg.filledFee);
+    await w.sendTransaction({ account: w.account!, chain: w.chain, to: "0x000000000000000000000000000000000000dEaD" });
+    expect(log.some((entry) => entry.method === "eth_fillTransaction")).toBe(true);
+    expect(sent()).toBe(1);
+    const raw = log.find((entry) => entry.method === "eth_sendRawTransaction")!.params![0] as `0x${string}`;
+    expect(parseTransaction(raw).maxFeePerGas).toBe(cfg.filledFee);
   });
   it("user supplied maxFeePerGas 1000 gwei is refused AFTER signing, before send", async () => {
     const c = client();
