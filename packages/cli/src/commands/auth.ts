@@ -10,7 +10,7 @@ import {
   sponsoredOperationStatus,
 } from "@artblocks/abx-creator-wallet";
 
-import { accountEnvPath, CREATOR_PILOT_CHAIN, creatorToken } from "../creator-wallet.js";
+import { accountEnvPath, creatorToken } from "../creator-wallet.js";
 
 export function authCommand(): Command {
   const auth = new Command("auth").description("Manage the shared ABX creator account");
@@ -52,7 +52,8 @@ export function authCommand(): Command {
     .action(async (id: string) => {
       const token = creatorToken();
       if (!token) throw new Error("Sign in with abxfs auth login first.");
-      const op = await sponsoredOperationStatus(CREATOR_PILOT_CHAIN, id, { env: { [ABX_SERVICES_API_KEY_VAR]: token } });
+      // The shared provider looks up the operation by account and ID regardless of the transaction's chain.
+      const op = await sponsoredOperationStatus("base-sepolia", id, { env: { [ABX_SERVICES_API_KEY_VAR]: token } });
       console.log(`Creator-wallet operation ${op.operationId} is ${op.state}.`);
       if (op.transactionHash) console.log(`Transaction: ${op.transactionHash}`);
       if (op.errorCode) console.log(`Error: ${op.errorCode}`);
