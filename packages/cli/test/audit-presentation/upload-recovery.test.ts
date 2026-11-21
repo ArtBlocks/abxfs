@@ -151,6 +151,26 @@ it("emits one signer-free JSON dry run with the concrete first-publication plan 
  expect(h.calls).toEqual([]);
 });
 
+it.each([
+  { project: "fresh", versionCount: 0, configuredFlags: 0, target: true, method: true },
+  { project: "preconfigured", versionCount: 0, configuredFlags: 2, target: true, method: false },
+  { project: "published", versionCount: 1, configuredFlags: 3, target: false, method: false },
+])("counts the presentation writes in the $project project dry run", async ({ project, versionCount, configuredFlags, target, method }) => {
+  h.versionCount = versionCount;
+  h.configuredFlags = configuredFlags;
+  const fresh = project === "fresh";
+  const projectArgs = fresh ? ["--name", "art"] : ["--project-id", "7", "--org", ORG];
+  await uploadCommand().parseAsync([dir, ...projectArgs, "--dry-run"], { from: "user" });
+
+  const printed = output.join("\n");
+  const contentTxs = Number(/up to (\d+) transaction\(s\), ~/.exec(printed)?.[1]);
+  const projectTxs = (fresh ? 3 : 1) + Number(target) + Number(method);
+  expect(printed.includes("1 × set the project's presentation target")).toBe(target);
+  expect(printed.includes("1 × set the project's presentation method")).toBe(method);
+  expect(printed).toContain(`in all, up to ${contentTxs + projectTxs} transaction(s)`);
+  expect(h.calls).toEqual([]);
+});
+
 it("blocks invalid explicit ChainGateway presentation paths before any upload, mint or publish",async()=>{
  await uploadCommand().parseAsync([dir,"--name","art","--org",ORG,"--yes","--json","--presentation","chain-gateway","--presentation-path","../index.html"],{from:"user"});
  expect(JSON.parse(output.at(-1)!)).toMatchObject({ok:false,published:false,outcome:"failed"});

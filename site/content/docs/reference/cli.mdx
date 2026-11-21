@@ -202,7 +202,8 @@ every ABX FS contract in the chain's address book: the content stores and backen
 and lens of the current org-layer generation and of every earlier one).
 
 `--dry-run` is the cheap way to answer "how many transactions is this, and what
-will the CID be" before spending anything.
+will the CID be" before spending anything. For project uploads, the total includes any
+transactions needed to set the presentation target and method.
 
 The protocol never refuses a folder or file for its size: a large one is more transactions. The CLI holds an upload
 in memory to hash it, so it refuses a single file over 256 MiB before reading it, and stops an upload whose files add
