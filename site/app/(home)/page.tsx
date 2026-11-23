@@ -27,7 +27,7 @@ const ENTRY_POINTS = [
 
 export default function HomePage() {
   return (
-    <main className="relative isolate flex flex-1 flex-col">
+    <main className="relative isolate flex flex-1 flex-col [grid-area:main]">
       <section className="mx-auto w-full max-w-3xl px-6 pt-20 pb-16">
         <p className="font-mono text-xs uppercase tracking-[0.08em] text-fd-primary">A place for files. On chain.</p>
         <h1 className="mt-5 text-4xl font-medium sm:text-5xl">Drop a folder. Put it on chain.</h1>
