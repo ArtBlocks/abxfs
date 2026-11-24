@@ -8,6 +8,7 @@ import {FileStore} from "@abxfs/core/FileStore.sol";
 import {DirectoryStore} from "@abxfs/core/DirectoryStore.sol";
 import {IChunkStore} from "@abxfs/core/interfaces/IChunkStore.sol";
 import {IFileStore} from "@abxfs/core/interfaces/IFileStore.sol";
+import {Base64} from "solady/utils/Base64.sol";
 
 /// @dev A file store and chunk store in one, answering whatever records a test sets, so the reader's own length checks
 ///      can be driven with records the real stores would never hold.
@@ -230,6 +231,63 @@ contract FileDataReaderTest is BaseCompanionTest {
         bytes32 gz = withCodec(writeFile(HELLO_GZIP, "text/javascript"), GZIP, keccak256(helloContent()));
         (,,, string memory gzB64) = reader.readFileDataBase64(gz, HELLO_GZIP.length, 1);
         assertEq(gzB64, vm.toBase64(HELLO_GZIP));
+    }
+
+    // ---- the returned encoding ---------------------------------------------
+
+    /// @dev The reader builds its return value by hand; it must be byte for byte what Solidity's own encoder makes.
+    function assertCanonical(bytes32 cid, bytes memory content, string memory mime, bytes32 codec, bytes32 outputHash)
+        internal
+        view
+    {
+        uint256 n = fileStore.chunkCount(cid);
+        (bool ok, bytes memory ret) =
+            address(reader).staticcall(abi.encodeCall(FileDataReader.readFileData, (cid, content.length, n)));
+        assertTrue(ok, "readFileData");
+        assertEq(ret, abi.encode(mime, codec, outputHash, content), "readFileData encoding");
+        (ok, ret) =
+            address(reader).staticcall(abi.encodeCall(FileDataReader.readFileDataBase64, (cid, content.length, n)));
+        assertTrue(ok, "readFileDataBase64");
+        assertEq(ret, abi.encode(mime, codec, outputHash, Base64.encode(content)), "readFileDataBase64 encoding");
+    }
+
+    function mimeOfLength(uint256 n) internal pure returns (string memory) {
+        bytes memory m = new bytes(n);
+        for (uint256 i; i < n; i++) {
+            m[i] = bytes1(uint8(0x61 + i % 26));
+        }
+        return string(m);
+    }
+
+    /// Every data length around the word, base64-group and chunk boundaries, under MIME types around the word
+    /// boundaries too, with and without a codec, against `abi.encode` of the same values.
+    function test_returnIsTheCanonicalEncoding() public {
+        uint256[15] memory lengths = [uint256(0), 1, 2, 3, 4, 5, 6, 31, 32, 33, 63, 64, 65, RAW_MAX, RAW_MAX + 1];
+        uint256[5] memory mimes = [uint256(1), 31, 32, 33, 127];
+        for (uint256 i; i < lengths.length; i++) {
+            bytes memory content = deterministicBytes(lengths[i], "canonical");
+            for (uint256 j; j < mimes.length; j++) {
+                string memory mime = mimeOfLength(mimes[j]);
+                bytes32 cid = writeFile(content, mime);
+                assertCanonical(cid, content, mime, 0, 0);
+                if (lengths[i] != 0) {
+                    bytes32 coded = withCodec(cid, GZIP, keccak256(abi.encode(i, j)));
+                    assertCanonical(coded, content, mime, GZIP, keccak256(abi.encode(i, j)));
+                }
+            }
+        }
+    }
+
+    /// The in-place base64 at every length from 1 to 400: the encoding runs over the data it reads, and its margin
+    /// grows with the length, so short files are where an off-by-one would show.
+    function test_inPlaceBase64AtEverySmallLength() public {
+        bytes memory all = deterministicBytes(400, "every length");
+        for (uint256 n = 1; n <= 400; n++) {
+            bytes memory content = slice(all, 0, n);
+            bytes32 cid = writeFile(content, "application/octet-stream");
+            (,,, string memory b64) = reader.readFileDataBase64(cid, n, 1);
+            assertEq(b64, vm.toBase64(content));
+        }
     }
 
     // ---- paths -----------------------------------------------------------
@@ -461,10 +519,12 @@ contract FileDataReaderTest is BaseCompanionTest {
             ids[i] = (rawMask >> i) & 1 == 1 ? rawChunk(piece) : flzChunk(piece);
             off += sizes[i];
         }
-        bytes32 cid = createFileFromChunks(ids, sizes, "application/octet-stream");
+        string memory mime = mimeOfLength(1 + seed % 127);
+        bytes32 cid = createFileFromChunks(ids, sizes, mime);
         assertData(reader, cid, content);
         (,,, string memory b64) = reader.readFileDataBase64(cid, content.length, n);
         assertEq(b64, vm.toBase64(content));
+        assertCanonical(cid, content, mime, 0, 0);
     }
 
     function _readChunkError(bytes32 cid, uint256 index) internal view returns (bytes memory err) {

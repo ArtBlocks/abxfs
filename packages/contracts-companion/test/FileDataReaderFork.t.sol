@@ -2,18 +2,47 @@
 pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
+import {Base64} from "solady/utils/Base64.sol";
 
+import {IFileStore} from "@abxfs/core/interfaces/IFileStore.sol";
 import {DeployDataReader} from "../script/DeployDataReader.s.sol";
 import {FileDataReader} from "../src/FileDataReader.sol";
 import {Deploy as CoreDeploy} from "@abxfs/core-script/Deploy.s.sol";
 import {GasMeter} from "./FileDataReader.t.sol";
 
+/// @dev How a contract without this reader gets a file's data: every chunk through `FileStore.readChunk`, joined.
+contract ReadChunkJoiner {
+    IFileStore internal immutable fileStore;
+
+    constructor(address fileStore_) {
+        fileStore = IFileStore(fileStore_);
+    }
+
+    function join(bytes32 cid) public view returns (bytes memory data) {
+        IFileStore.FileInfo memory info = fileStore.getFileInfo(cid);
+        data = new bytes(info.size);
+        uint256 offset;
+        for (uint256 i; i < info.chunkCount; ++i) {
+            bytes memory chunk = fileStore.readChunk(cid, i);
+            assembly ("memory-safe") {
+                mcopy(add(add(data, 0x20), offset), add(chunk, 0x20), mload(chunk))
+            }
+            offset += chunk.length;
+        }
+    }
+
+    function joinBase64(bytes32 cid) external view returns (string memory) {
+        return Base64.encode(join(cid));
+    }
+}
+
 /// @dev The pinned reader over the canonical content layer of a live chain, reading a real gzip upload: the 13
 ///      JavaScript libraries of the first 500 Art Blocks Curated projects, stored with `--codec gzip --no-fastlz` under
-///      one directory root on Base Sepolia, Base, Arbitrum One, Robinhood and Ethereum. Each file's data must hash to
-///      the gzip bytes that were uploaded, and its `outputHash` to the original library. Takes `ABXFS_RPC_URL_84532`
-///      (any chain holding the root works; the fork reads state, not `eth_call`, so endpoint gas caps do not apply);
-///      skipped without it.
+///      one directory root on Ethereum, Sepolia, Base, Base Sepolia, Arbitrum One and Robinhood. Each file's data must
+///      be byte for byte what `FileStore.readChunk` joins, hash to the gzip bytes that were uploaded, and carry the
+///      original library's hash as its `outputHash`. Takes `ABXFS_FORK_RPC_URL`, else `ABXFS_RPC_URL_1`, else
+///      `ABXFS_RPC_URL_84532` (any chain holding the root works; the fork reads state, not `eth_call`, so endpoint gas
+///      caps do not apply); skipped without one.
 contract FileDataReaderForkTest is Test {
     bytes32 internal constant AB500_ROOT = 0x60cdc71765dc6954ebc3dcc4545d92a04d5a09ebd891bb02333d95ba0c39fa2d;
 
@@ -27,7 +56,9 @@ contract FileDataReaderForkTest is Test {
     FileDataReader internal reader;
 
     function setUp() public {
-        string memory url = vm.envOr("ABXFS_RPC_URL_84532", string(""));
+        string memory url = vm.envOr("ABXFS_FORK_RPC_URL", string(""));
+        if (bytes(url).length == 0) url = vm.envOr("ABXFS_RPC_URL_1", string(""));
+        if (bytes(url).length == 0) url = vm.envOr("ABXFS_RPC_URL_84532", string(""));
         if (bytes(url).length == 0) vm.skip(true);
         vm.createSelectFork(url);
         CoreDeploy.Addresses memory core = new CoreDeploy().pinned();
@@ -117,8 +148,9 @@ contract FileDataReaderForkTest is Test {
         );
     }
 
-    function test_ab500GzipLibrariesReadBackByteExact() public view {
+    function test_ab500GzipLibrariesReadBackByteExact() public {
         Lib[13] memory l = libs();
+        ReadChunkJoiner joiner = new ReadChunkJoiner(address(reader.fileStore()));
         for (uint256 i; i < l.length; i++) {
             (string memory mime, bytes32 codec, bytes32 outputHash, bytes memory data) =
                 reader.readPathData(AB500_ROOT, l[i].name, 1 << 20, 64);
@@ -127,30 +159,63 @@ contract FileDataReaderForkTest is Test {
             assertEq(data.length, l[i].gzipBytes, l[i].name);
             assertEq(keccak256(data), l[i].gzipHash, l[i].name);
             assertEq(outputHash, l[i].jsHash, l[i].name);
+            assertEq(keccak256(joiner.join(_lookup(l[i].name))), l[i].gzipHash, "FileStore.readChunk joined");
         }
     }
 
-    function test_ab500Base64() public view {
-        (,,, string memory b64) = reader.readPathDataBase64(AB500_ROOT, "zdog-1.1.2.min.js", 1 << 20, 64);
-        (,,, bytes memory data) = reader.readPathData(AB500_ROOT, "zdog-1.1.2.min.js", 1 << 20, 64);
-        assertEq(b64, vm.toBase64(data));
+    function test_ab500Base64() public {
+        Lib[13] memory l = libs();
+        ReadChunkJoiner joiner = new ReadChunkJoiner(address(reader.fileStore()));
+        for (uint256 i; i < l.length; i++) {
+            (,,, string memory b64) = reader.readPathDataBase64(AB500_ROOT, l[i].name, 1 << 20, 64);
+            assertEq(keccak256(bytes(b64)), keccak256(bytes(joiner.joinBase64(_lookup(l[i].name)))), l[i].name);
+        }
     }
 
-    /// Cold gas for Babylon (904,335 bytes in 37 raw chunks), one path per test so neither warms the other: the direct
-    /// read, and the same reader forced onto `ChunkStore.read` for every chunk (raw backend unset).
+    /// Cold gas for Babylon (904,335 bytes in 42 raw chunks), one path per test so none warms another: the direct
+    /// read, the same reader forced onto `ChunkStore.read` for every chunk (raw backend unset), every chunk through
+    /// `FileStore.readChunk`, and the base64 views of the first and last.
     function test_ab500BabylonGasDirect() public {
-        emit log_named_uint("babylon direct", _babylonGas(address(reader)));
+        emit log_named_uint("babylon readFileData", _babylonGas(address(reader), false));
     }
 
     function test_ab500BabylonGasThroughChunkStore() public {
         FileDataReader viaStore =
             new FileDataReader(address(reader.directoryStore()), address(reader.fileStore()), address(0));
-        emit log_named_uint("babylon through ChunkStore.read", _babylonGas(address(viaStore)));
+        emit log_named_uint("babylon readFileData through ChunkStore.read", _babylonGas(address(viaStore), false));
     }
 
-    function _babylonGas(address r) internal returns (uint256) {
+    function test_ab500BabylonGasThroughReadChunk() public {
+        ReadChunkJoiner joiner = new ReadChunkJoiner(address(reader.fileStore()));
         bytes32 cid = _lookup("babylon-5.0.0.min.js");
-        return new GasMeter().measure(r, abi.encodeCall(FileDataReader.readFileData, (cid, 1 << 20, 64)));
+        emit log_named_uint(
+            "babylon FileStore.readChunk joined",
+            new GasMeter().measure(address(joiner), abi.encodeCall(ReadChunkJoiner.join, (cid)))
+        );
+    }
+
+    function test_ab500BabylonGasBase64() public {
+        emit log_named_uint("babylon readFileDataBase64", _babylonGas(address(reader), true));
+    }
+
+    function test_ab500BabylonGasBase64ThroughReadChunk() public {
+        ReadChunkJoiner joiner = new ReadChunkJoiner(address(reader.fileStore()));
+        bytes32 cid = _lookup("babylon-5.0.0.min.js");
+        emit log_named_uint(
+            "babylon FileStore.readChunk joined + Base64.encode",
+            new GasMeter().measure(address(joiner), abi.encodeCall(ReadChunkJoiner.joinBase64, (cid)))
+        );
+    }
+
+    function _babylonGas(address r, bool base64) internal returns (uint256) {
+        bytes32 cid = _lookup("babylon-5.0.0.min.js");
+        return new GasMeter()
+            .measure(
+                r,
+                base64
+                    ? abi.encodeCall(FileDataReader.readFileDataBase64, (cid, 1 << 20, 64))
+                    : abi.encodeCall(FileDataReader.readFileData, (cid, 1 << 20, 64))
+            );
     }
 
     function _lookup(string memory name) internal view returns (bytes32 cid) {
