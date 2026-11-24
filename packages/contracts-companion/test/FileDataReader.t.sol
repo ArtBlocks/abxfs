@@ -54,6 +54,18 @@ contract HostileStores {
     function read(bytes32) external view returns (bytes memory) {
         return _chunk;
     }
+
+    /// `locateByte` answers from a fixed table keyed by offset, so a test can make the two ends of a range disagree.
+    mapping(uint256 => uint256[3]) internal _located;
+
+    function setLocate(uint256 offset, uint256 index, uint256 chunkStart, uint256 chunkSize) external {
+        _located[offset] = [index, chunkStart, chunkSize];
+    }
+
+    function locateByte(bytes32, uint256 offset) external view returns (uint256, uint256, bytes32, uint256) {
+        uint256[3] memory l = _located[offset];
+        return (l[0], l[1], bytes32(l[0] + 1), l[2]);
+    }
 }
 
 /// @dev Gas of one static call, with the return data left unread so its size costs the caller nothing.
@@ -290,6 +302,188 @@ contract FileDataReaderTest is BaseCompanionTest {
         }
     }
 
+    // ---- ranges ----------------------------------------------------------
+
+    /// @dev Raw and FastLZ chunks of 9,000 / 15,000 / 15,000 / 4 bytes, so ranges cut both kinds.
+    function mixedFile() internal returns (bytes32 cid, bytes memory content) {
+        content = bytes.concat(deterministicBytes(9_000, "range"), runBytes(30_000), bytes("tail"));
+        bytes32[] memory ids = new bytes32[](4);
+        uint256[] memory sizes = new uint256[](4);
+        (sizes[0], sizes[1], sizes[2], sizes[3]) = (9_000, 15_000, 15_000, 4);
+        ids[0] = rawChunk(slice(content, 0, 9_000));
+        ids[1] = flzChunk(slice(content, 9_000, 15_000));
+        ids[2] = rawChunk(slice(content, 24_000, 15_000));
+        ids[3] = flzChunk(slice(content, 39_000, 4));
+        cid = createFileFromChunks(ids, sizes, "text/plain");
+    }
+
+    function assertRange(bytes32 cid, bytes memory content, uint256 start, uint256 length) internal view {
+        (bool ok, bytes memory ret) = address(reader)
+            .staticcall(
+                abi.encodeCall(
+                    FileDataReader.readFileDataRange, (cid, start, length, type(uint256).max, type(uint256).max)
+                )
+            );
+        assertTrue(ok, "readFileDataRange");
+        assertEq(ret, abi.encode("text/plain", bytes32(0), bytes32(0), slice(content, start, length)), "range encoding");
+    }
+
+    /// Ranges inside one chunk, across every boundary, exactly on chunk edges, the whole file and empty ranges, each
+    /// against a slice of the content and the canonical encoding.
+    function test_rangesAreSlicesOfTheData() public {
+        (bytes32 cid, bytes memory content) = mixedFile();
+        uint256 n = content.length; // 39,004
+        uint256[2][16] memory cases = [
+            [uint256(0), 1],
+            [uint256(0), 9_000],
+            [uint256(8_999), 2],
+            [uint256(9_000), 15_000],
+            [uint256(100), 8_000],
+            [uint256(12_345), 6_789],
+            [uint256(8_000), 20_000],
+            [uint256(1), n - 2],
+            [uint256(0), n],
+            [uint256(38_999), 5],
+            [n - 1, 1],
+            [n - 4, 4],
+            [uint256(0), 0],
+            [uint256(20_000), 0],
+            [n, 0],
+            [uint256(23_999), 15_002]
+        ];
+        for (uint256 i; i < cases.length; i++) {
+            assertRange(cid, content, cases[i][0], cases[i][1]);
+        }
+    }
+
+    /// Base64 pages of any multiple of 3, the last ending at the end of the file, concatenate to the whole file's
+    /// base64, and each is a slice of it.
+    function test_base64RangesConcatenateToTheWholeFile() public {
+        (bytes32 cid, bytes memory content) = mixedFile();
+        string memory whole = vm.toBase64(content);
+        uint256[5] memory pages = [uint256(3), 8_997, 9_000, 24_576, 30_000];
+        for (uint256 p; p < pages.length; p++) {
+            bytes memory joinedB64;
+            for (uint256 start; start < content.length; start += pages[p]) {
+                uint256 length = content.length - start < pages[p] ? content.length - start : pages[p];
+                if (pages[p] == 3 && start > 120 && start + 300 < content.length) continue; // keep the 3-byte walk short
+                (bool ok, bytes memory ret) = address(reader)
+                    .staticcall(
+                        abi.encodeCall(
+                            FileDataReader.readFileDataRangeBase64,
+                            (cid, start, length, type(uint256).max, type(uint256).max)
+                        )
+                    );
+                assertTrue(ok, "readFileDataRangeBase64");
+                string memory page = Base64.encode(slice(content, start, length));
+                assertEq(ret, abi.encode("text/plain", bytes32(0), bytes32(0), page), "page encoding");
+                joinedB64 = bytes.concat(joinedB64, bytes(page));
+            }
+            if (pages[p] != 3) assertEq(string(joinedB64), whole, "pages concatenate");
+        }
+    }
+
+    function test_rangeBoundsAndAlignment() public {
+        (bytes32 cid, bytes memory content) = mixedFile();
+        uint256 n = content.length;
+        vm.expectRevert(abi.encodeWithSelector(FileDataReader.RangeOutOfBounds.selector, n + 1, 0, n));
+        reader.readFileDataRange(cid, n + 1, 0, n, 4);
+        vm.expectRevert(abi.encodeWithSelector(FileDataReader.RangeOutOfBounds.selector, 10, n - 9, n));
+        reader.readFileDataRange(cid, 10, n - 9, n, 4);
+        vm.expectRevert(abi.encodeWithSelector(FileDataReader.RangeOutOfBounds.selector, 0, type(uint256).max, n));
+        reader.readFileDataRange(cid, 0, type(uint256).max, n, 4);
+
+        vm.expectRevert(abi.encodeWithSelector(FileDataReader.UnalignedBase64Range.selector, 1, 3));
+        reader.readFileDataRangeBase64(cid, 1, 3, n, 4);
+        vm.expectRevert(abi.encodeWithSelector(FileDataReader.UnalignedBase64Range.selector, 3, 4));
+        reader.readFileDataRangeBase64(cid, 3, 4, n, 4);
+        // n = 39,004 = 3 * 13,001 + 1: a range ending at the end of the file may have any length.
+        (,,, string memory tail) = reader.readFileDataRangeBase64(cid, 39_000, 4, n, 4);
+        assertEq(tail, Base64.encode(slice(content, 39_000, 4)));
+        // An empty range is valid anywhere in bounds, aligned or not, in both forms.
+        (,,, tail) = reader.readFileDataRangeBase64(cid, 7, 0, 0, 0);
+        assertEq(tail, "");
+        (,,, bytes memory none) = reader.readFileDataRange(cid, n, 0, 0, 0);
+        assertEq(none.length, 0);
+        // The empty file has only the empty range.
+        bytes32 empty = writeFile("", "text/plain");
+        (,,, none) = reader.readFileDataRange(empty, 0, 0, 0, 0);
+        assertEq(none.length, 0);
+        vm.expectRevert(abi.encodeWithSelector(FileDataReader.RangeOutOfBounds.selector, 0, 1, 0));
+        reader.readFileDataRange(empty, 0, 1, 1, 1);
+    }
+
+    /// Limits count every chunk the range touches in full, as `ContentReader.readFileRange` does: each is read whole to
+    /// check its hash. The returned length alone is refused first.
+    function test_rangeLimitsCountWholeTouchedChunks() public {
+        (bytes32 cid,) = mixedFile();
+        vm.expectRevert(abi.encodeWithSelector(FileDataReader.ByteLimitExceeded.selector, 10, 9));
+        reader.readFileDataRange(cid, 0, 10, 9, 1);
+        // Bytes 8,999..9,000 touch the first two chunks: 24,000 bytes read.
+        vm.expectRevert(abi.encodeWithSelector(FileDataReader.ByteLimitExceeded.selector, 24_000, 23_999));
+        reader.readFileDataRange(cid, 8_999, 2, 23_999, 2);
+        vm.expectRevert(abi.encodeWithSelector(FileDataReader.ChunkLimitExceeded.selector, 2, 1));
+        reader.readFileDataRange(cid, 8_999, 2, 24_000, 1);
+        (,,, bytes memory two) = reader.readFileDataRange(cid, 8_999, 2, 24_000, 2);
+        assertEq(two.length, 2);
+    }
+
+    function test_rangeOfACodecFileIsOfItsEncodedData() public {
+        bytes memory encoded = deterministicBytes(60_000, "encoded");
+        bytes32 cid = withCodec(writeFile(encoded, "text/javascript"), GZIP, keccak256("content"));
+        (string memory mime, bytes32 codec, bytes32 outputHash, bytes memory data) =
+            reader.readFileDataRange(cid, 24_000, 12_000, 60_000, 3);
+        assertEq(mime, "text/javascript");
+        assertEq(codec, GZIP);
+        assertEq(outputHash, keccak256("content"));
+        assertEq(data, slice(encoded, 24_000, 12_000));
+    }
+
+    /// A raw chunk the range cuts is still checked whole: a forged one fails the direct read and reverts as the store
+    /// does, even when the forged byte lies outside the range.
+    function test_tamperedChunkInARangeRevertsLikeTheStore() public {
+        bytes memory content = deterministicBytes(30_000, "tamper range");
+        bytes32 cid = writeFile(content, "application/octet-stream");
+        bytes32 id = fileStore.getChunkId(cid, 1);
+        (,, bytes32 pointer,) = chunkStore.recordOf(id);
+        address p = address(uint160(uint256(pointer)));
+        bytes memory forged = p.code;
+        forged[forged.length - 1] = forged[forged.length - 1] ^ 0x01;
+        vm.etch(p, forged);
+        vm.expectRevert(abi.encodeWithSelector(IChunkStore.DataMismatch.selector, id));
+        reader.readFileDataRange(cid, 24_575, 10, content.length, 2);
+    }
+
+    /// Any range of any chunking and backend mix is the matching slice; any aligned base64 range is the matching slice
+    /// of the whole file's base64.
+    function testFuzz_ranges(uint256 seed, uint8 count, uint256 rawMask, uint256 start, uint256 length) public {
+        uint256 n = bound(count, 1, 8);
+        uint256[] memory sizes = new uint256[](n);
+        uint256 total;
+        for (uint256 i; i < n; i++) {
+            sizes[i] = 1 + uint256(keccak256(abi.encode(seed, i))) % 3_000;
+            total += sizes[i];
+        }
+        bytes memory content = bytes.concat(runBytes(total / 2), deterministicBytes(total - total / 2, "fuzz range"));
+        bytes32[] memory ids = new bytes32[](n);
+        uint256 off;
+        for (uint256 i; i < n; i++) {
+            bytes memory piece = slice(content, off, sizes[i]);
+            ids[i] = (rawMask >> i) & 1 == 1 ? rawChunk(piece) : flzChunk(piece);
+            off += sizes[i];
+        }
+        bytes32 cid = createFileFromChunks(ids, sizes, "text/plain");
+        start = bound(start, 0, total);
+        length = bound(length, 0, total - start);
+        assertRange(cid, content, start, length);
+
+        start = start / 3 * 3;
+        length = start + length >= total ? total - start : length / 3 * 3;
+        (,,, string memory b64) =
+            reader.readFileDataRangeBase64(cid, start, length, type(uint256).max, type(uint256).max);
+        assertEq(b64, Base64.encode(slice(content, start, length)));
+    }
+
     // ---- paths -----------------------------------------------------------
 
     /// @dev root/{index.html, libs/hello-1.0.0.min.js (gzip)}.
@@ -449,6 +643,34 @@ contract FileDataReaderTest is BaseCompanionTest {
         stores.set(3, sizes, "abc");
         (,,, bytes memory data) = hostile.readFileData(0, 10, 10);
         assertEq(data, "abc");
+    }
+
+    /// A store whose `locateByte` answers do not bracket the range is refused before any chunk is read.
+    function test_inconsistentRangeEndsAreRefused() public {
+        HostileStores stores = new HostileStores();
+        FileDataReader hostile = new FileDataReader(address(stores), address(stores), address(raw));
+        uint48[] memory sizes = new uint48[](2);
+        (sizes[0], sizes[1]) = (5, 5);
+        stores.set(10, sizes, "abcde");
+
+        stores.setLocate(2, 0, 3, 5); // the chunk said to hold byte 2 starts after it
+        stores.setLocate(6, 1, 5, 5);
+        vm.expectRevert(FileDataReader.InvalidFileLength.selector);
+        hostile.readFileDataRange(0, 2, 5, 10, 2);
+
+        stores.setLocate(2, 1, 0, 5); // the first end lies in a later chunk than the last
+        stores.setLocate(6, 0, 5, 5);
+        vm.expectRevert(FileDataReader.InvalidFileLength.selector);
+        hostile.readFileDataRange(0, 2, 5, 10, 2);
+
+        stores.setLocate(2, 0, 0, 2); // the chunk said to hold byte 2 ends before it
+        stores.setLocate(6, 1, 5, 5);
+        vm.expectRevert(FileDataReader.InvalidFileLength.selector);
+        hostile.readFileDataRange(0, 2, 5, 10, 2);
+
+        stores.setLocate(2, 0, 0, 5); // consistent: bytes 2..6 of "abcde" + "abcde"
+        (,,, bytes memory data) = hostile.readFileDataRange(0, 2, 5, 10, 2);
+        assertEq(data, "cdeab");
     }
 
     // ---- gas -------------------------------------------------------------

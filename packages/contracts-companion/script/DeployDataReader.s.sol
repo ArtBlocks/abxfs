@@ -55,7 +55,7 @@ contract DeployDataReader is LocalChain {
     ///         broadcast. The content layer's addresses are constructor arguments, so a re-pinned content layer moves
     ///         this too. Re-pin deliberately, and only before a deployment.
     function pinned() public pure returns (address) {
-        return 0xb428DD4C4bd730e72461C62447f6247Dc2225CcB;
+        return 0xb13D24967aB9B41787E2280D22d1d43a286c197a;
     }
 
     /// @notice Reverts `UnexpectedAddress` unless `reader` is `pinned()`.

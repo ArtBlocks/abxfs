@@ -24,6 +24,10 @@ import {IFileStore} from "@abxfs/core/interfaces/IFileStore.sol";
 ///         `Sstore2Backend` as `sstore2Backend` (its `retrieve` returns the code after the leading zero byte), a call
 ///         returns exactly the bytes `FileStore.readChunk` returns, chunk by chunk, or reverts as it would.
 ///
+///         Whole files and byte ranges: a range lets a caller page a file in calls that each fit its gas budget
+///         (EIP-8037 bounds one call's execution gas at 2^24), and base64 ranges aligned to 3 bytes concatenate to the
+///         whole file's base64.
+///
 ///         Each read builds its ABI-encoded return value in one buffer, writes the chunks into it where the encoding
 ///         puts them, and returns that buffer, so the data is never copied a second time. A base64 view writes the
 ///         data a third of the way into the space its encoding will fill and encodes forward over it, so the data and
@@ -47,6 +51,17 @@ contract FileDataReader {
     error ByteLimitExceeded(uint256 bytesRequired, uint256 maxBytes);
     error ChunkLimitExceeded(uint256 chunksRequired, uint256 maxChunks);
     error InvalidFileLength();
+    error RangeOutOfBounds(uint256 start, uint256 length, uint256 size);
+    error UnalignedBase64Range(uint256 start, uint256 length);
+
+    /// @dev What one read returns and the chunks it reads: `ids` in file order, `skip` bytes into the first, `length`
+    ///      bytes returned, and `readBytes`, the full size of the chunks read (each is read whole, to check its hash).
+    struct Span {
+        bytes32[] ids;
+        uint256 skip;
+        uint256 length;
+        uint256 readBytes;
+    }
 
     constructor(address directoryStore_, address fileStore_, address sstore2Backend_) {
         directoryStore = IDirectoryStore(directoryStore_);
@@ -77,7 +92,7 @@ contract FileDataReader {
         view
         returns (string memory mimeType, bytes32 codec, bytes32 outputHash, bytes memory data)
     {
-        _respond(cid, maxBytes, maxChunks, false);
+        _readWhole(cid, maxBytes, maxChunks, false);
     }
 
     /// @notice A path's file data, using index.html when the exact path resolves to a directory (as
@@ -87,7 +102,7 @@ contract FileDataReader {
         view
         returns (string memory mimeType, bytes32 codec, bytes32 outputHash, bytes memory data)
     {
-        _respond(_fileAt(root, path), maxBytes, maxChunks, false);
+        _readWhole(_fileAt(root, path), maxBytes, maxChunks, false);
     }
 
     /// @notice `readFileData` with the data base64-encoded (RFC 4648, padded), ready for a data URI. `maxBytes` bounds
@@ -97,7 +112,7 @@ contract FileDataReader {
         view
         returns (string memory mimeType, bytes32 codec, bytes32 outputHash, string memory base64)
     {
-        _respond(cid, maxBytes, maxChunks, true);
+        _readWhole(cid, maxBytes, maxChunks, true);
     }
 
     /// @notice `readPathData` with the data base64-encoded (RFC 4648, padded).
@@ -106,7 +121,34 @@ contract FileDataReader {
         view
         returns (string memory mimeType, bytes32 codec, bytes32 outputHash, string memory base64)
     {
-        _respond(_fileAt(root, path), maxBytes, maxChunks, true);
+        _readWhole(_fileAt(root, path), maxBytes, maxChunks, true);
+    }
+
+    /// @notice `[start, start + length)` of a file's data, for any codec. Bounds are strict; a zero length at the end
+    ///         of the file is valid. With a codec the range is of the encoded data: ranges of one file joined in order
+    ///         are its data, which a caller decodes whole. Ranges let a file be read in calls that each fit a gas
+    ///         budget (EIP-8037 bounds one call's execution gas at 2^24).
+    /// @dev `maxBytes` and `maxChunks` cover every chunk the range touches, read in full because each is checked
+    ///      against its recorded hash, as `ContentReader.readFileRange` counts them. `FileStore.locateByte` finds both
+    ///      ends without reading the chunks before them.
+    function readFileDataRange(bytes32 cid, uint256 start, uint256 length, uint256 maxBytes, uint256 maxChunks)
+        external
+        view
+        returns (string memory mimeType, bytes32 codec, bytes32 outputHash, bytes memory data)
+    {
+        _readRange(cid, start, length, maxBytes, maxChunks, false);
+    }
+
+    /// @notice Base64 (RFC 4648) of `[start, start + length)` of a file's data: exactly the matching slice of
+    ///         `readFileDataBase64`'s result, so consecutive ranges concatenate to the whole file's base64. `start` must
+    ///         be a multiple of 3, and so must `length` unless the range ends at the end of the file
+    ///         (`UnalignedBase64Range`); padding appears only there. A zero length is valid anywhere in bounds.
+    function readFileDataRangeBase64(bytes32 cid, uint256 start, uint256 length, uint256 maxBytes, uint256 maxChunks)
+        external
+        view
+        returns (string memory mimeType, bytes32 codec, bytes32 outputHash, string memory base64)
+    {
+        _readRange(cid, start, length, maxBytes, maxChunks, true);
     }
 
     function _fileAt(bytes32 root, string memory path) private view returns (bytes32 cid) {
@@ -116,23 +158,73 @@ contract FileDataReader {
         if (isDirectory) revert IsDirectory(cid);
     }
 
-    /// @dev Reads `cid` and RETURNS from the current call `abi.encode(mimeType, codec, outputHash, out)`, where `out`
-    ///      is the data or, when `base64`, its padded base64. The encoding is canonical (head, MIME tail, `out` tail),
-    ///      built in one buffer (`_allocate`), and the data is written where the encoding needs it.
-    function _respond(bytes32 cid, uint256 maxBytes, uint256 maxChunks, bool base64) private view {
+    /// @dev The whole file, refused on its recorded byte and chunk totals before anything is read.
+    function _readWhole(bytes32 cid, uint256 maxBytes, uint256 maxChunks, bool base64) private view {
         IFileStore.FileInfo memory info = fileStore.getFileInfo(cid);
         if (info.size > maxBytes) revert ByteLimitExceeded(info.size, maxBytes);
         if (info.chunkCount > maxChunks) revert ChunkLimitExceeded(info.chunkCount, maxChunks);
-        bytes32[] memory ids = fileStore.getChunkIds(cid, 0, info.chunkCount);
-        (uint256 buf, uint256 out, uint256 at, uint256 outLength) = _allocate(info, base64);
-        _readChunks(ids, at, info.size);
-        if (base64) _encodeBase64(at, info.size, out);
+        _respond(info, Span(fileStore.getChunkIds(cid, 0, info.chunkCount), 0, info.size, info.size), base64);
+    }
+
+    function _readRange(bytes32 cid, uint256 start, uint256 length, uint256 maxBytes, uint256 maxChunks, bool base64)
+        private
+        view
+    {
+        IFileStore.FileInfo memory info = fileStore.getFileInfo(cid);
+        if (start > info.size || length > info.size - start) revert RangeOutOfBounds(start, length, info.size);
+        if (base64 && length != 0 && (start % 3 != 0 || (length % 3 != 0 && start + length != info.size))) {
+            revert UnalignedBase64Range(start, length);
+        }
+        Span memory span;
+        if (length != 0) span = _span(cid, info.chunkCount, start, length, maxBytes, maxChunks);
+        _respond(info, span, base64);
+    }
+
+    /// @dev The chunks `[start, start + length)` touches. The returned length is bounded first, even if a
+    ///      noncanonical store reports inconsistent ends; then the chunks read in full.
+    function _span(bytes32 cid, uint256 chunkCount, uint256 start, uint256 length, uint256 maxBytes, uint256 maxChunks)
+        private
+        view
+        returns (Span memory span)
+    {
+        if (length > maxBytes) revert ByteLimitExceeded(length, maxBytes);
+        uint256 first;
+        uint256 firstStart;
+        uint256 last;
+        uint256 lastEnd;
+        (first, firstStart,) = _locate(cid, start);
+        (last,, lastEnd) = _locate(cid, start + length - 1);
+        if (last < first || last >= chunkCount) revert InvalidFileLength();
+        span.skip = start - firstStart;
+        span.length = length;
+        span.readBytes = lastEnd - firstStart;
+        if (span.readBytes > maxBytes) revert ByteLimitExceeded(span.readBytes, maxBytes);
+        if (last - first + 1 > maxChunks) revert ChunkLimitExceeded(last - first + 1, maxChunks);
+        span.ids = fileStore.getChunkIds(cid, first, last + 1);
+    }
+
+    /// @dev The chunk holding byte `offset`: its index and the file offsets where it starts and ends, which must
+    ///      bracket `offset`.
+    function _locate(bytes32 cid, uint256 offset) private view returns (uint256 index, uint256 start, uint256 end) {
+        uint256 size;
+        (index, start,, size) = fileStore.locateByte(cid, offset);
+        end = start + size;
+        if (start > offset || end <= offset) revert InvalidFileLength();
+    }
+
+    /// @dev RETURNS from the current call `abi.encode(mimeType, codec, outputHash, out)`, where `out` is the span's
+    ///      data or, when `base64`, its padded base64. The encoding is canonical (head, MIME tail, `out` tail), built in
+    ///      one buffer (`_allocate`), and the data is written where the encoding needs it.
+    function _respond(IFileStore.FileInfo memory info, Span memory span, bool base64) private view {
+        (uint256 buf, uint256 out, uint256 at, uint256 outLength) = _allocate(info, span.length, base64);
+        _readChunks(span, at);
+        if (base64) _encodeBase64(at, span.length, out);
         assembly ("memory-safe") {
             return(buf, sub(add(out, and(add(outLength, 0x1f), not(0x1f))), buf))
         }
     }
 
-    /// @dev Allocates and fills in the return buffer except for `out`'s bytes:
+    /// @dev Allocates and fills in the return buffer for `size` data bytes, except for `out`'s bytes:
     ///
     ///          buf: [0x80][codec][outputHash][offset of out] [mime length][mime, padded] [out length][out, padded]
     ///
@@ -140,12 +232,11 @@ contract FileDataReader {
     ///      space, where encoding forward over it never overwrites a byte not yet read (see `_encodeBase64`). The
     ///      allocation ends one word past `out`'s padded end and past the word after the data, both of which are
     ///      written whole.
-    function _allocate(IFileStore.FileInfo memory info, bool base64)
+    function _allocate(IFileStore.FileInfo memory info, uint256 size, bool base64)
         private
         pure
         returns (uint256 buf, uint256 out, uint256 at, uint256 outLength)
     {
-        uint256 size = info.size;
         uint256 groups = (size + 2) / 3;
         outLength = base64 ? groups << 2 : size;
         bytes memory mime = bytes(info.mimeType);
@@ -176,35 +267,64 @@ contract FileDataReader {
         }
     }
 
-    /// @dev Writes the chunks' data, joined, to memory at `at`, then zeroes the word after it (the data's padding, or
-    ///      the zeros the last base64 group reads past its end). Sizes come from the chunk records, which FileStore
-    ///      bound to the file's leaves at creation; their sum must be the file's recorded size. Memory a fallback read
-    ///      allocates is released after its bytes are copied into place.
-    function _readChunks(bytes32[] memory ids, uint256 at, uint256 size) private view {
-        uint256 offset;
+    /// @dev Writes the span's data to memory at `at`, then zeroes the word after it (the data's padding, or the zeros
+    ///      the last base64 group reads past its end). Sizes come from the chunk records, which FileStore bound to the
+    ///      file's leaves at creation; they must add up to the span's `readBytes`. Memory a chunk needed is released
+    ///      once its bytes are in place.
+    function _readChunks(Span memory span, uint256 at) private view {
+        uint256 copied;
+        uint256 read;
+        uint256 skip = span.skip;
         uint256 free;
         assembly ("memory-safe") {
             free := mload(0x40)
         }
-        for (uint256 i; i < ids.length; ++i) {
-            (address backend, uint48 chunkSize, bytes32 pointer, bytes32 dataHash) = chunkStore.recordOf(ids[i]);
-            if (chunkSize == 0 || chunkSize > size - offset) revert InvalidFileLength();
-            uint256 dst = at + offset;
-            if (backend != sstore2Backend || !_copyRaw(dst, pointer, chunkSize, dataHash)) {
-                bytes memory chunk = chunkStore.read(ids[i]);
-                if (chunk.length != chunkSize) revert InvalidFileLength();
-                assembly ("memory-safe") {
-                    mcopy(dst, add(chunk, 0x20), chunkSize)
-                }
-            }
+        for (uint256 i; i < span.ids.length; ++i) {
+            (uint256 chunkSize, uint256 take) = _place(span.ids[i], at + copied, skip, span.length - copied);
+            if (chunkSize > span.readBytes - read) revert InvalidFileLength();
             assembly ("memory-safe") {
                 mstore(0x40, free)
             }
-            offset += chunkSize;
+            copied += take;
+            read += chunkSize;
+            skip = 0;
         }
-        if (offset != size) revert InvalidFileLength();
+        if (copied != span.length || read != span.readBytes) revert InvalidFileLength();
         assembly ("memory-safe") {
-            mstore(add(at, size), 0)
+            mstore(add(at, copied), 0)
+        }
+    }
+
+    /// @dev Writes the part of chunk `id` after its first `skip` bytes, at most `room` bytes of it, to `to`. A chunk
+    ///      that fits whole is read in place; a chunk the span cuts is read whole into temporary memory and checked
+    ///      there, and its part copied.
+    function _place(bytes32 id, uint256 to, uint256 skip, uint256 room)
+        private
+        view
+        returns (uint256 chunkSize, uint256 take)
+    {
+        (address backend, uint48 size, bytes32 pointer, bytes32 dataHash) = chunkStore.recordOf(id);
+        chunkSize = size;
+        if (chunkSize <= skip) revert InvalidFileLength();
+        take = chunkSize - skip;
+        if (take > room) take = room;
+        uint256 dst = to;
+        if (take != chunkSize) {
+            assembly ("memory-safe") {
+                dst := mload(0x40)
+                mstore(0x40, add(dst, and(add(chunkSize, 0x1f), not(0x1f))))
+            }
+        }
+        uint256 src = dst;
+        if (backend != sstore2Backend || !_copyRaw(dst, pointer, chunkSize, dataHash)) {
+            bytes memory chunk = chunkStore.read(id);
+            if (chunk.length != chunkSize) revert InvalidFileLength();
+            assembly ("memory-safe") {
+                src := add(chunk, 0x20)
+            }
+        }
+        assembly ("memory-safe") {
+            if iszero(eq(add(src, skip), to)) { mcopy(to, add(src, skip), take) }
         }
     }
 
