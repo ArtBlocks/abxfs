@@ -136,3 +136,40 @@ rather than cosmetic — see [Deployments](/docs/reference/deployments).
 
 Pagination is what keeps a read under that ceiling: fetch a range, not a
 collection.
+
+### One call's execution budget under EIP-8037
+
+On a chain with EIP-8037 (Glamsterdam: live on Sepolia, expected on Ethereum), one
+call's execution gas is bounded by the transaction gas cap, whatever gas limit the
+call asks for:
+
+```
+gas_left = min(TX_MAX_GAS_LIMIT - intrinsic_gas, evm_gas)     TX_MAX_GAS_LIMIT = 2^24 = 16,777,216
+```
+
+Running past it behaves exactly like running out of gas. Only the state a call
+creates is billed in the separate state dimension, and a read creates none, so all
+of a read's gas is execution gas, memory expansion included: a call that builds a
+large result in memory pays for that memory inside the budget. Nodes apply the rule
+to `eth_call`, not only to transactions and `eth_estimateGas`. On Sepolia an
+`eth_call` sent with a 60M gas limit still fails with
+`out of gas: gas required exceeds: 16777216`, on every provider tried (Alchemy,
+publicnode, Tenderly), while the same call on Ethereum mainnet, before Glamsterdam,
+runs to its endpoint's own cap. For a direct `eth_call`, `intrinsic_gas` is 21,000
+plus 4 gas per zero calldata byte and 16 per nonzero one, so a read gets about
+16.75M.
+
+What fits in one call there, measured cold from the start of a file:
+
+| Read | Most data in one call |
+| --- | --- |
+| `FileDataReader.readFileDataRange` | about 2.7 MB |
+| `FileDataReader.readFileDataRangeBase64` | about 313 KB of data (418 KB of base64) |
+| `ChunkStore.read` multicall, as the SDK plans it | at least 4 full chunks (FastLZ at its costliest), 64 raw |
+
+The SDK plans each chunk-read `eth_call` at no more than 25M of estimated gas, and
+after a node refuses one for gas it re-plans the rest at 12.5M, under the cap, so
+`readFile` works unchanged on such a chain. A contract that builds a large result in
+one `eth_call`, such as an on-chain generator inlining a library, shares the budget
+with its own work: page with range reads instead, one call per page
+([Read files from contracts](/docs/reference/contract-reads#one-calls-gas-budget)).

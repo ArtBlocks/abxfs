@@ -35,6 +35,7 @@ store, so the same bytes resolve whatever org points at them.
 | --- | --- |
 | Understand the on-chain content protocol | [`specs/abx-fs.md`](./specs/abx-fs.md) |
 | Understand orgs, projects, the factory, the hooks, or who can mint | [`specs/abx-fs-orgs.md`](./specs/abx-fs-orgs.md) |
+| Read a file from a contract | [`site/content/docs/reference/contract-reads.mdx`](./site/content/docs/reference/contract-reads.mdx): `ContentReader` for content, `FileDataReader` for stored data of any codec, whole or in ranges (`packages/contracts-companion`) |
 | Understand on-chain IPFS CID derivation | [`specs/abx-fs.md`](./specs/abx-fs.md) §8 and `packages/contracts-companion` (`IpfsCidResolver`) |
 | Work on the gateway | `packages/gateway/src/handler.ts` and `resolve.ts` — `abxfs-gateway` and every site built on the package run this code |
 | Pin everything published to IPFS | `packages/gateway/src/mirror.ts` (`abxfs-mirror`) — one cursor over the cross-org ledger |

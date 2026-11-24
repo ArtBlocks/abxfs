@@ -145,11 +145,19 @@ Event logs are not a substitute: providers prune them on a rolling window, so
 an index built on events expires while one built on storage does not. That is
 why the hooks carry state at all.
 
-## Companion contract
+## Companion contracts
 
-**`IpfsCidResolver`** derives a canonical IPFS CIDv1 on chain, view-only, from
-the stored content. It is optional and not on the path to reading content. See
-[IPFS](/docs/using-abxfs/ipfs).
+Stateless, view-only contracts over the content layer. None is on the path to
+storing content or to reading it off chain.
+
+- **`IpfsCidResolver`** derives a canonical IPFS CIDv1 on chain from the stored
+  content. See [IPFS](/docs/using-abxfs/ipfs).
+- **`ContentReader`** returns a file's content, or a byte range of it, in one call.
+  The current generation's presentation renderer reads through it.
+- **`FileDataReader`** returns a file's stored data for any codec in one call,
+  labelled with the codec and `outputHash`, with base64 views for data URIs. Nothing
+  depends on it, and it is not deployed yet. See
+  [Read files from contracts](/docs/reference/contract-reads).
 
 A permissionless contract that records root → IPFS CID over several
 transactions, for content too large for one call, may be added later; it would

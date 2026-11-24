@@ -43,6 +43,7 @@ contract's address (§1, principle 8), so keep the numbering.
 | Chunks | `ChunkStore`, `IStorageBackend`, `Sstore2Backend`, `FastLzSstore2Backend` | content-addressed chunk records; bytes live in backends |
 | Index | `NodeTree` (abstract), `FileStore`, `DirectoryStore` | trees of immutable nodes listing chunks and entries |
 | IPFS | `IpfsCidResolver` | view-only IPFS CIDv1 derivation from on-chain content |
+| Readers | `ContentReader`, `FileDataReader` (proposed), `AbxContentReader` | view-only whole-file reads for contracts: content (no codec) and stored data (any codec) |
 | Projects and orgs | `OrgFactory`, `OrgMeta`, `OrgMinter`, `ProjectHook`, `ProjectEnumeration`, `ProjectCard`, `ProjectTraits`, `ProjectLinks`, `Lens` | [`abx-fs-orgs.md`](./abx-fs-orgs.md) |
 
 Hash prefixes:
@@ -581,6 +582,17 @@ that validates roots against `FileStore` and `DirectoryStore`, and the token met
 
 - **A stored input hash per chunk.** It only helps a reader that verifies the whole tree from the root (§4).
 - **A decompressor registry or reader-supplied decompressors.** On-chain decoding lives in backends.
+- **Data-level reads inside `ContentReader` or a store.** A codec file's data is readable on chain, but not through
+  either. The stores are the content layer: a change forks the content-address space (§4). `ContentReader` answers for
+  content, which a codec file's data is not, and it is a constructor argument of the presentation renderer, so changing
+  it means a new factory generation. A separate companion (`FileDataReader`) carries the one new capability: no state,
+  no address stored anywhere, deployable to any chain at any time, replaceable. A library-only form was rejected because
+  its direct read depends on the raw backend's code layout and is easy to get subtly wrong; one pinned, tested contract
+  serves every integrator and `eth_call`s alike. Its base64 views exist because an on-chain generator holds a whole
+  document in one frame, where memory is quadratic: encoding in the reader's frame keeps the raw data out of the
+  caller's.
+- **A reader-built `data:` URI for a codec file.** A browser does not apply a content coding to a `data:` URI, so a
+  gzip file's data URI only works in a page that inflates it; the reader returns the base64 and the caller frames it.
 - **Required backends, or a per-node backend summary.** Which backends a project uses is derivable off chain.
 - **Org-layer decisions** (royalties, supply cap, link bases, admin powers) are listed in
   [`abx-fs-orgs.md`](./abx-fs-orgs.md).

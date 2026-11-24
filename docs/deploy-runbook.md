@@ -80,27 +80,34 @@ factory record. A reader capability can be shared only by generations with its e
 
 ## Optional: FileDataReader
 
-`FileDataReader` (`packages/contracts-companion`) returns a file's stored data, for any codec, with its codec label and
-`outputHash`. Nothing stores its address and no factory or generation depends on it, so it can be deployed to a chain
-at any time after the content layer, independently of the presentation generation. It is not deployed anywhere yet:
-deploying it, like anything on a production network, needs the maintainers' explicit go-ahead.
+`FileDataReader` (`packages/contracts-companion`) returns a file's stored data, whole or as a byte range, for any
+codec, with its codec label and `outputHash`, plus base64 views. Nothing stores its address and no factory or
+generation depends on it, so it can be deployed to a chain at any time after the content layer, independently of the
+presentation generation. It is not deployed anywhere yet: deploying it, like anything on a production network, needs
+the maintainers' explicit go-ahead. Testnets first, as always.
 
 1. In `packages/contracts-companion`, run the suite, then dry-run `script/DeployDataReader.s.sol` (no
    `--broadcast`) and compare its prediction with `pinned()`. `FILE_STORE`, `DIRECTORY_STORE` and `SSTORE2_BACKEND`
    select the existing stores and raw backend (or default to their predictions); the pin covers all three, so any
-   other backend is refused off a local chain.
+   other backend is refused off a local chain. The deploy is one account and its code, no storage: about 1.5M gas
+   on a legacy chain, about 11.1M under EIP-8037, nearly all of it state (`test_dataReaderDeployFitsInitcodeRuntimeAndGasBounds`
+   logs both).
 2. Broadcast that same script, then read back `fileStore()`, `directoryStore()`, `chunkStore()` and
    `sstore2Backend()`.
-3. Read a known raw file and a known gzip file and compare each with `FileStore.readChunk` joined, then verify the
-   source with its three constructor arguments.
+3. Read a known raw file and a known gzip file whole and as a range, and compare each with `FileStore.readChunk`
+   joined (`test/FileDataReaderFork.t.sol` does this for the 13 AB500 files with `ABXFS_FORK_RPC_URL` set to the
+   chain), then verify the source with its three constructor arguments.
 
 ```bash
 cd packages/contracts-companion
 forge script script/DeployDataReader.s.sol --rpc-url "$RPC" --sender "$DEPLOYER"
 ```
 
-Registering it in `canonical.ts`, the SDK's ABIs and the verification inventory follows a verified deployment, as for
-every other companion.
+Promotion follows the verified deployment, per chain: add `fileDataReader` to that chain's entry in
+`packages/sdk/src/canonical.ts` (`canonical.test.ts` then holds it to `pinned()`), list it on the deployments page,
+and run source verification (`scripts/verification-plan.mjs` includes it wherever the book records it). The SDK's ABI,
+its `fileDataReader` address field and the CLI's config key already exist, so a candidate address can be configured
+and rehearsed before promotion.
 
 ## Legacy deployment procedure
 

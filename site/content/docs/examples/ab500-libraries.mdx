@@ -1,0 +1,177 @@
+---
+title: "Art Blocks' libraries on chain"
+description: "The 13 JavaScript libraries behind the first 500 Art Blocks Curated projects, stored once as a gzip directory: one content address on six chains, readable by contracts."
+---
+
+Art Blocks Curated projects keep their code on Ethereum, but many of them load a
+JavaScript library (p5.js, three.js, Babylon.js, Tone.js and others) that the
+artwork itself does not contain. The first 500 projects depend on 13 such builds.
+In November 2026 all 13 were stored on ABX FS as one directory. Its content
+address is the same on every chain it was uploaded to, and any contract on those
+chains can read it.
+
+## Why
+
+- **Most of the libraries were not on chain.** Nine of the 13 builds lived only on
+  CDNs (cdnjs and unpkg). A token whose library is a CDN URL renders only while that
+  CDN keeps serving exactly that file.
+- **One URL had already drifted.** zdog's recorded URL, `zdog@1`, floats to the
+  newest 1.x release and now serves 1.1.3, not the 1.1.2 the artworks were made
+  with. A content address names exact bytes, so it cannot drift.
+- **A store has to outlive its uploader.** ABX FS content has no owner and no admin,
+  and its contracts cannot be changed, so nobody can take it down or swap it,
+  including the account that uploaded it.
+
+## What was stored
+
+Each file is the exact build Art Blocks' dependency registry names, downloaded from
+its CDN and checked against a SHA-256 fixed before the upload, then gzipped whole.
+
+| Library | File | Bytes | Gzip bytes | Chunks |
+| --- | --- | --- | --- | --- |
+| A-Frame 1.2.0 | `aframe-1.2.0.min.js` | 1,324,388 | 344,012 | 15 |
+| Babylon.js 5.0.0 | `babylon-5.0.0.min.js` | 4,086,853 | 904,335 | 42 |
+| p5.js 1.0.0 | `p5-1.0.0.min.js` | 623,013 | 163,587 | 8 |
+| p5.js 1.9.0 | `p5-1.9.0.min.js` | 1,029,097 | 243,275 | 11 |
+| Paper.js 0.12.15 | `paper-0.12.15.min.js` | 235,545 | 83,273 | 5 |
+| Processing.js 1.4.6 | `processing-1.4.6.min.js` | 224,507 | 66,156 | 4 |
+| regl 2.1.0 | `regl-2.1.0.min.js` | 86,891 | 28,736 | 2 |
+| three.js r124 | `three-0.124.0.min.js` | 653,449 | 159,859 | 8 |
+| three.js r160 | `three-0.160.0.min.js` | 669,884 | 167,719 | 8 |
+| three.js r167 (ES module) | `three-0.167.0.module.min.js` | 684,042 | 170,163 | 8 |
+| Tone.js 14.8.15 | `tone-14.8.15.js` | 349,761 | 79,558 | 4 |
+| Twemoji 14.0.2 | `twemoji-14.0.2.min.js` | 17,437 | 4,196 | 1 |
+| Zdog 1.1.2 | `zdog-1.1.2.min.js` | 29,737 | 7,258 | 1 |
+
+The whole directory is 10.0 MB of JavaScript in 2,422,127 stored bytes and 117
+chunks, under one root:
+
+```
+0x60cdc71765dc6954ebc3dcc4545d92a04d5a09ebd891bb02333d95ba0c39fa2d
+```
+
+One command uploaded it, on each chain:
+
+```sh
+abxfs upload ./ab500-libs --codec gzip --no-fastlz --chain <chain>
+```
+
+- **`--codec gzip`** stores each library at about a quarter of its size. Each file
+  also records `outputHash`, the hash of the original library, so every reader that
+  inflates it gets exactly that library or refuses
+  ([Compression](/docs/using-abxfs/compression)).
+- **`--no-fastlz`** keeps every chunk raw. Gzip output does not compress further,
+  and raw chunks are the ones a contract can read most cheaply (below).
+
+## One root, six chains
+
+The same command ran against five chains on 2026-11-21, and against Sepolia on
+2026-11-24, and produced the same root on each. All 413 transactions succeeded.
+
+| Chain | Transactions | Gas | Fee (ETH) |
+| --- | --- | --- | --- |
+| Base Sepolia | 60 | 558,532,001 | 0.007546 |
+| Base | 56 | 519,895,488 | 0.003148 |
+| Arbitrum One | 60 | 561,666,028 | 0.011257 |
+| Robinhood | 60 | 558,532,001 | 0.011283 |
+| Ethereum | 60 | 558,532,001 | 0.075191 |
+| Sepolia | 117 | 3,847,298,183 | 0.00000007 |
+
+Fees on the four production chains came to 0.100879 ETH.
+
+- **Base needed four fewer transactions.** Eight of the 117 chunks were already on
+  Base, from an earlier upload of identical bytes by someone else, and ABX FS reused
+  them. Content addressing deduplicates across uploaders, not just within one upload.
+- **Ethereum went out in five runs.** A fee ceiling (`ABXFS_MAX_FEE_GWEI`) made the
+  CLI stop rather than overpay whenever the base fee rose. Each re-run planned
+  against what was already stored and sent only the rest, at an average of about
+  0.135 gwei per gas.
+- **Sepolia took 6.9 times the gas.** It runs EIP-8037, the schedule Ethereum
+  adopts with Glamsterdam, which prices the state a write creates in its own
+  dimension: contract code costs 1,530 gas a byte instead of 200, so every full chunk
+  is a transaction of its own. The same bytes landed under the same root; the SDK
+  detects the schedule and plans for it ([Gas schedules](/docs/reference/deployments#gas-schedules-and-local-chains)).
+
+## Checked four ways
+
+On every chain after its upload:
+
+1. Every transaction receipt succeeded.
+2. `abxfs read <root>` listed all 13 files.
+3. Each file fetched from the [gateway](/docs/using-abxfs/run-a-gateway) matched the
+   original SHA-256.
+4. A reader contract run in an `eth_call` read each file's gzip bytes from the
+   canonical stores and base64-encoded them, and the result inflated to the original
+   SHA-256.
+
+On Sepolia, EIP-8037 caps one call at 2<sup>24</sup> of execution gas, so the fourth
+check ran through `FileDataReader` instead (supplied to each `eth_call` as a state
+override, since it is not deployed yet): every file read whole as data in one
+call and inflated to its `outputHash`, eleven read whole as base64, and A-Frame and
+Babylon.js read as base64 in two and four range calls whose pages joined to the
+same result ([below](#read-from-a-contract)).
+
+## Published as a project
+
+The root is also version 1 of a project, so it has a name, an owner and a page: org
+"Art Blocks", `0x2380EcC56B74eccb52F6AeAC7590024C9E7Fe8FE`, project #0,
+"AB500 libraries". The org was created with a salt (`abxfs org create --salt`, see
+the [CLI](/docs/reference/cli#orgs)), and an org's address follows from its salt
+alone, so it is the same on all five chains of the first upload. Publishing the
+project uploaded nothing again: the content was already stored.
+
+Its files are live at
+`https://fs.abx.io/g/p/<chainId>/0x2380ecc56b74eccb52f6aeac7590024c9e7fe8fe/0/latest/`,
+and each file by its own content address on any of the six chains.
+
+## Read from a contract
+
+Art Blocks' on-chain generator builds a token's whole HTML document in an `eth_call`.
+For a library stored on chain it emits the gzip as a base64 data URI,
+`<script type="text/javascript+gzip" src="data:text/javascript;base64,…">`, and a
+small gunzip script in the page inflates it in the browser. That is the job
+[`FileDataReader`](/docs/reference/contract-reads) does for any ABX FS file: one call
+returns the stored gzip, labelled `gzip` with its `outputHash`, and its base64 view
+returns the data URI's payload.
+
+Measured on an Ethereum mainnet fork, each read cold and in a call of its own:
+
+| File | Every chunk through `FileStore.readChunk` | `readFileData` | `readFileDataBase64` |
+| --- | --- | --- | --- |
+| `babylon-5.0.0.min.js` | 39.54M | 2.46M | 50.13M |
+| `aframe-1.2.0.min.js` | 9.12M | 0.57M | 18.41M |
+| `p5-1.9.0.min.js` | 5.71M | 0.37M | 12.95M |
+| `three-0.167.0.module.min.js` | 3.62M | 0.24M | 9.03M |
+| `three-0.160.0.min.js` | 3.56M | 0.24M | 8.90M |
+| `p5-1.0.0.min.js` | 3.45M | 0.24M | 8.68M |
+| `three-0.124.0.min.js` | 3.36M | 0.23M | 8.48M |
+| `paper-0.12.15.min.js` | 1.57M | 0.13M | 4.42M |
+| `tone-14.8.15.js` | 1.49M | 0.12M | 4.22M |
+| `processing-1.4.6.min.js` | 1.23M | 0.11M | 3.51M |
+| `regl-2.1.0.min.js` | 0.52M | 0.06M | 1.54M |
+| `zdog-1.1.2.min.js` | 0.15M | 0.04M | 0.42M |
+| `twemoji-14.0.2.min.js` | 0.11M | 0.04M | 0.26M |
+
+`readFileData` reads raw chunks straight from their contracts and checks each
+against its recorded hash; for Babylon that is about 16 times cheaper than going
+through the stores chunk by chunk. Base64 costs about 50 gas per input byte, and the reader encodes in
+its own call so the caller never holds the raw bytes. Inlining Babylon still takes
+more than the 50M gas many public RPC endpoints allow in one `eth_call`, so today
+tokens that need it render on chain through a larger-cap endpoint. Under EIP-8037,
+live on Sepolia and expected on Ethereum, one call gets at most 2<sup>24</sup> of
+execution gas whatever endpoint serves it: every one of these files still reads
+whole as data in one call, but Babylon's base64 takes four range reads and
+A-Frame's two ([One call's gas budget](/docs/reference/contract-reads#one-calls-gas-budget)). The CDN URLs remain in
+Art Blocks' registry for renderers that run off chain.
+
+Art Blocks is moving its dependency registry and generator onto these files: each
+dependency names its ABX FS file, and the generator inlines it as above. The change
+is in review in
+[ArtBlocks/artblocks-contracts#2035](https://github.com/ArtBlocks/artblocks-contracts/pull/2035).
+
+## The record
+
+Every file hash, file CID and transaction hash, with per-chain gas and fees, is in
+Art Blocks' deployment record:
+[ArtBlocks/artblocks-contracts#2034](https://github.com/ArtBlocks/artblocks-contracts/pull/2034)
+(`packages/contracts/deployments/abxfs/`).

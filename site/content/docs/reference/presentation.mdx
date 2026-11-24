@@ -185,32 +185,15 @@ and chunk totals before allocating content. Range limits include the full decode
 sizes of touched boundary chunks, not just returned bytes. Limits bound bytes and
 chunk reads, not backend gas; Solidity callers containing failures should also cap
 call gas. `projectRoot` follows the org's own configure hook, including older orgs;
-it is a content convenience, not proof of factory registration.
+it is a content convenience, not proof of factory registration. Choosing between the
+two readers is covered in [Read files from contracts](/docs/reference/contract-reads).
 
 ## Read a file's stored data
 
-`ContentReader` returns content, so it refuses a file with a codec: that file's
-content is `decode(codec, data)`, which the chain neither performs nor checks.
-`FileDataReader` is its data-level counterpart, a stateless companion with the
-same store wiring and path rules plus the raw SSTORE2 backend. It returns a
-file's stored data (its chunks joined) with the MIME type, `codec` and
-`outputHash`, and never decodes:
-
-```solidity
-(string memory mime, bytes32 codec, bytes32 outputHash, bytes memory data) =
-    dataReader.readPathData(root, "libs/p5-1.0.0.min.js", 400_000, 32);
-// Base64, for a data URI that a browser decodes (for gzip, with DecompressionStream):
-(, , , string memory b64) = dataReader.readFileDataBase64(fileCid, 400_000, 32);
-```
-
-A caller that decodes the data must check `keccak256(content) == outputHash`, as
-every reader must. With no codec, the data is the content. Every chunk is checked
-against the hash `ChunkStore` recorded for it: a chunk held raw in the SSTORE2
-backend is read directly from its contract and hashed, several times cheaper than
-`FileStore.readChunk` for large files, and every other chunk goes through
-`ChunkStore.read`, so the result is the bytes `FileStore.readChunk` returns, or
-the same revert. `FileDataReader` has no deployment yet; it is not in the SDK's
-address book.
+`ContentReader` refuses a file with a codec. Its data-level counterpart,
+`FileDataReader`, returns such a file's stored data in one call, labelled with its
+codec and `outputHash`, with base64 views for data URIs. See
+[Read files from contracts](/docs/reference/contract-reads).
 
 ## Use stored content in an ABX reader field
 

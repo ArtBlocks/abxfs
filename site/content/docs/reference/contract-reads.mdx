@@ -1,0 +1,205 @@
+---
+title: "Read files from contracts"
+description: "ContentReader returns a file's content; FileDataReader returns its stored data, for any codec, in one call."
+---
+
+Every file in ABX FS can be read from Solidity. The stores answer chunk by chunk
+(`FileStore.readChunk`); two stateless companions over them answer for a whole
+file or path in one call. Neither holds state, roles or ETH, and neither changes
+any CID. They differ in what they return.
+
+| | `ContentReader` | `FileDataReader` |
+| --- | --- | --- |
+| Returns | the file's **content** | the file's **data**: its chunks joined, labelled with `codec` and `outputHash` |
+| A file with a codec (gzip, …) | refused, `CodecNotSupported` | returned as stored, never decoded |
+| FastLZ chunks | decoded (the backend does it) | decoded (the backend does it) |
+| Byte ranges | `readFileRange`, of the content | `readFileDataRange`, of the data, and aligned base64 ranges |
+| Base64 views | no | `readFileDataBase64`, `readPathDataBase64` |
+| Project roots | `projectRoot`, `readProject` | no: take a root from `ContentReader.projectRoot` |
+| Deployed | on every network ([Deployments](/docs/reference/deployments)) | not yet |
+
+Content and data are the protocol's words ([SDK](/docs/reference/sdk#content-data-stored-bytes)):
+without a codec the data is the content; with one, the content is
+`decode(codec, data)`, which the chain does not perform.
+
+## Choose a reader
+
+- **A contract that renders or parses a file itself** (HTML, SVG, JSON): use
+  `ContentReader`. Store such files without a codec.
+- **An on-chain generator that inlines a compressed library for a browser to
+  inflate**: use `FileDataReader`'s base64 view and emit the result in a data URI.
+  The page needs its own inflater, because a browser does not decode a `data:` URI's
+  gzip by itself (there is no `Content-Encoding` for it); `DecompressionStream`
+  does the work in a few lines.
+- **Off chain**: use neither. The SDK's `readFile` pages through any file, decodes
+  its codec and checks `outputHash`, with no companion and no `eth_call` gas cap to
+  fit under.
+
+## FileDataReader
+
+```solidity
+interface IFileDataReader {
+    function readFileData(bytes32 cid, uint256 maxBytes, uint256 maxChunks)
+        external view returns (string memory mimeType, bytes32 codec, bytes32 outputHash, bytes memory data);
+    function readPathData(bytes32 root, string memory path, uint256 maxBytes, uint256 maxChunks)
+        external view returns (string memory mimeType, bytes32 codec, bytes32 outputHash, bytes memory data);
+    function readFileDataBase64(bytes32 cid, uint256 maxBytes, uint256 maxChunks)
+        external view returns (string memory mimeType, bytes32 codec, bytes32 outputHash, string memory base64);
+    function readPathDataBase64(bytes32 root, string memory path, uint256 maxBytes, uint256 maxChunks)
+        external view returns (string memory mimeType, bytes32 codec, bytes32 outputHash, string memory base64);
+    function readFileDataRange(bytes32 cid, uint256 start, uint256 length, uint256 maxBytes, uint256 maxChunks)
+        external view returns (string memory mimeType, bytes32 codec, bytes32 outputHash, bytes memory data);
+    function readFileDataRangeBase64(bytes32 cid, uint256 start, uint256 length, uint256 maxBytes, uint256 maxChunks)
+        external view returns (string memory mimeType, bytes32 codec, bytes32 outputHash, string memory base64);
+    function resolve(bytes32 root, string memory path) external view returns (bytes32 cid, bool isDirectory);
+}
+```
+
+`codec` is the file's codec token as a `bytes32` (`"gzip"`, zero for none) and
+`outputHash` is `keccak256(content)` (zero without a codec). A path follows
+`ContentReader`'s rules: a directory reads its `index.html`. The base64 is RFC 4648
+with padding.
+
+Inlining a gzip library into generated HTML:
+
+```solidity
+(, bytes32 codec,, string memory b64) = dataReader.readFileDataBase64(libraryCid, 2_000_000, 128);
+require(codec == "gzip", "not a gzip file");
+html = string.concat(html, '<script type="text/javascript+gzip" src="data:text/javascript;base64,', b64, '"></script>');
+// ...plus a script that fetches each such data URI, pipes it through DecompressionStream("gzip") and runs it.
+```
+
+### Ranges
+
+`readFileDataRange` returns `[start, start + length)` of a file's data. Bounds are
+strict, and a zero length is valid. For a file with a codec the range is of the
+encoded data: ranges joined in order are the data, which is then decoded whole.
+
+`readFileDataRangeBase64` returns the base64 of a range, and is exactly the
+matching slice of the whole file's base64, so pages concatenate. That needs 3-byte
+alignment: `start` must be a multiple of 3, and so must `length` unless the range
+ends at the end of the file, where the padding is (`UnalignedBase64Range`
+otherwise).
+
+```solidity
+// One page per call: 294,912 = 12 * 24,576 bytes, a multiple of 3 (393,216 base64 characters).
+uint256 page = 294_912;
+uint256 length = size - start < page ? size - start : page;
+(,,, string memory part) = dataReader.readFileDataRangeBase64(libraryCid, start, length, 1_000_000, 64);
+```
+
+A range reads every chunk it touches in full, because each chunk is checked whole
+against its recorded hash, and `maxBytes` and `maxChunks` count those chunks, as
+`ContentReader.readFileRange` does.
+
+A reader that decodes the data itself must check `keccak256(content) == outputHash`,
+as every ABX FS reader must ([Compression](/docs/using-abxfs/compression)). A browser
+inflating a data URI does not check it; what you get is the stored data, which the
+chain checked chunk by chunk.
+
+### Integrity
+
+Every chunk returned hashes to the `dataHash` `ChunkStore` recorded for it, the
+same check `ChunkStore.read` makes. A chunk stored raw in the SSTORE2 backend is read
+straight from its contract with `EXTCODECOPY` and hashed in the reader, which skips
+the `FileStore` → `ChunkStore` → backend call chain and its copies of every chunk.
+Every other chunk (FastLZ, or any other backend) goes through `ChunkStore.read`. The
+result is byte for byte what `FileStore.readChunk` returns for each chunk, joined, or
+the same revert.
+
+### Gas
+
+Measured on a mainnet fork for the largest file in the
+[Art Blocks library set](/docs/examples/ab500-libraries): Babylon.js 5.0.0, 904,335
+gzip bytes in 42 raw chunks, cold, call gas with the returned data unread.
+
+| Read | Gas |
+| --- | --- |
+| `FileDataReader.readFileData` | 2.46M |
+| the same, every chunk through `ChunkStore.read` | 9.46M |
+| every chunk through `FileStore.readChunk`, joined | 39.5M |
+| `FileDataReader.readFileDataBase64` | 50.1M |
+| every chunk through `FileStore.readChunk`, joined, then Solady `Base64.encode` | 113.4M |
+
+Memory costs gas quadratically within one call frame, so copies of a large file are
+what make it expensive. The reader builds its ABI-encoded return value in one buffer
+and writes the chunks where the encoding puts them; a base64 view writes the data
+part of the way into the space its encoding fills and encodes forward over it, so the
+data and its encoding share that space. What remains of the base64 view is the
+encoding itself, about 50 gas per input byte.
+
+Two consequences for callers:
+
+- **Encode in the reader's frame, not yours.** A generator that read the raw data
+  and base64-encoded it itself would hold the data and its encoding on top of the
+  document it is building.
+- **Decode the return in place.** A high-level Solidity call copies the returned
+  bytes into memory and then copies the decoded `string` again. For a large file,
+  make the `staticcall` yourself, copy the return data once, and point at the fourth
+  value: its offset is the return data's fourth word, and `codec` is the second.
+
+### One call's gas budget
+
+On a chain with EIP-8037 (live on Sepolia, expected on Ethereum with Glamsterdam),
+one call's execution gas is capped at 2<sup>24</sup>, whatever gas the call asks for
+and `eth_call` included: `gas_left = min(TX_MAX_GAS_LIMIT - intrinsic_gas, evm_gas)`,
+with `TX_MAX_GAS_LIMIT` = 16,777,216. A read creates no state, so all of its gas is
+execution gas, memory expansion included. A direct `eth_call` pays 21,000 plus its
+calldata out of that, leaving a read about 16.75M
+([Batched reads](/docs/reference/reads#one-calls-execution-budget-under-eip-8037)).
+
+Measured against that budget, cold, from the start of a file:
+
+| Read | Most data in one call |
+| --- | --- |
+| `readFileDataRange` | about 2.7 MB |
+| `readFileDataRangeBase64` | about 313 KB of data |
+
+So any file up to about 2.7 MB reads whole in one call as data, and its base64
+needs one call per ~300 KB. Every library in the
+[Art Blocks set](/docs/examples/ab500-libraries) reads whole as data in one call,
+and 11 of the 13 also as base64; Babylon.js (904 KB of gzip, 50.1M as one base64
+read) takes four 294,912-byte pages, and A-Frame (344 KB, 18.4M) two. Live on
+Sepolia, a whole-file base64 read of either fails with
+`out of gas: gas required exceeds: 16777216` even when the call is sent with 60M
+gas, and each page succeeds. A contract that reads a file and then does more work
+in the same call has less than this to spend on the read.
+
+Where the cap does not apply yet, endpoints still bound an `eth_call`: public ones
+commonly at 50M, keyed providers at several hundred million.
+
+### Limits
+
+`maxBytes` and `maxChunks` refuse a file whose recorded size or chunk count exceeds
+them before anything is read (`ByteLimitExceeded`, `ChunkLimitExceeded`). They are
+the caller's choice, not protocol constants. They bound bytes and chunk reads, not
+gas; a contract that must contain a failure should also cap the call's gas.
+
+### Deployment
+
+`FileDataReader` is not deployed yet. Its address is pinned, as every ABX FS
+contract's is: it lands at the same address on every chain through the keyless
+CREATE2 deployer, over the canonical stores, and the deploy script refuses any other
+build (`packages/contracts-companion/script/DeployDataReader.s.sol`). Once a
+deployment is verified on a chain, the address joins
+[Deployments](/docs/reference/deployments) and the SDK's address book as
+`fileDataReader`. Until then a call to the predicted address reaches no code and
+returns nothing.
+
+In TypeScript, `readNativeFileData`, `readNativePathData` and
+`readNativeFileDataRange` make the same calls and `decodeFileData` recovers the
+content ([SDK](/docs/reference/sdk#native-content-and-project-presentation)).
+
+## ContentReader
+
+```solidity
+(string memory mime, bytes memory data) = reader.readPath(root, "index.html", 8192, 32);
+(mime, data) = reader.readFile(fileCid, 8192, 32);
+(mime, data) = reader.readFileRange(fileCid, 0, 128, 8192, 32);
+bytes32 selected = reader.projectRoot(org, tokenId, 0, "");
+(mime, data) = reader.readProject(org, tokenId, 0, "stable", "index.html", 8192, 32);
+```
+
+It reads every chunk through `FileStore.readChunk`, which decodes FastLZ storage,
+and refuses file codecs. See [Native Solidity reads](/docs/reference/presentation#native-solidity-reads)
+for its limits and the ABX field adapter built on it.

@@ -258,13 +258,30 @@ calls decode raw and FastLZ storage on chain and reject file-level codecs such a
 gzip. Range limits count the entire decoded chunks touched, including bytes outside
 the returned slice. `readNativePath` uses `index.html` for a selected directory.
 
+`ContractAddresses.fileDataReader` enables `readNativeFileData`,
+`readNativePathData` and `readNativeFileDataRange`: a file's stored data for any
+codec, or a range of it, in one call, as a contract gets it from
+[`FileDataReader`](/docs/reference/contract-reads). The result is
+`{ mimeType, codec, outputHash, data }` and is not decoded; `decodeFileData` returns
+the content, refusing with `OutputHashMismatchError` when it does not hash to
+`outputHash` (`readFile` decodes through the same function). No chain's address book
+lists `fileDataReader` until a deployment there is verified; without it these calls
+raise `PresentationCapabilityError` naming the capability.
+
+```ts
+import { decodeFileData, readNativeFileData } from "@artblocks/abxfs-sdk";
+
+const file = await readNativeFileData(publicClient, addresses, cid, { maxBytes: 2_000_000n, maxChunks: 128n });
+const content = await decodeFileData({ cid, ...file }); // gzip needs a registered codec, as readFile does
+```
+
 Presentation is optional per factory generation. Resolve an existing org with
 `await client.resolveOrg(org)` before using it; an older generation without
 `projectPresentation` raises `PresentationCapabilityError` and never inherits a
 newer generation's presentation contract.
 An older generation with a different file/directory store pair also loses the
-current `contentReader` capability, because that reader is immutable to its own
-stores. Ordinary SDK content reads continue to use the generation's store pair.
+current `contentReader` and `fileDataReader` capabilities, because those readers
+are immutable to their own stores. Ordinary SDK content reads continue to use the generation's store pair.
 
 ```ts
 import { PresentationSelection, PresentationLock } from "@artblocks/abxfs-sdk";
