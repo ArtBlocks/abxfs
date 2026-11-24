@@ -48,6 +48,7 @@ interface Target {
 
 const TARGETS: Target[] = [
   { constName: "contentReaderAbi", contractPackage: "contracts-companion", interfacePath: "src/ContentReader.sol:ContentReader" },
+  { constName: "fileDataReaderAbi", contractPackage: "contracts-companion", interfacePath: "src/FileDataReader.sol:FileDataReader" },
   { constName: "iProjectPresentationAbi", contractPackage: "contracts-projects", interfacePath: "src/interfaces/IProjectPresentation.sol:IProjectPresentation" },
   {
     constName: "storageBackendAbi",

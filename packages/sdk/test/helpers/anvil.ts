@@ -81,7 +81,7 @@ export interface DeployedState {
   state: Hex;
 }
 
-/** What the global setup (`anvil-setup.ts`) deploys once per run: the content layer, and it with the companion. */
+/** What the global setup (`anvil-setup.ts`) deploys once per run: the content layer, and it with the companions. */
 export interface Deployments {
   core: DeployedState;
   companion: DeployedState;
@@ -150,7 +150,8 @@ export async function startAnvilWithAbxfs(opts: {
 
 /**
  * Deploy the content layer with its real deploy script (`forge script`, CREATE2 through the keyless deployer), then the
- * IPFS CID resolver over it, and keep each result as anvil state. The global setup calls this once per run.
+ * IPFS CID resolver and the file-data reader over it, and keep each result as anvil state. The global setup calls this
+ * once per run.
  */
 export async function deployOnce(): Promise<Deployments> {
   const { anvil, rpcUrl } = await spawnAnvil([]);
@@ -173,10 +174,20 @@ export async function deployOnce(): Promise<Deployments> {
       DIRECTORY_STORE: addresses.directoryStore,
     });
     if (!companion.IpfsCidResolver) throw new Error("the companion deploy did not emit IpfsCidResolver");
+    const dataReader = await runForgeDeploy(
+      CONTRACTS_COMPANION_DIR,
+      rpcUrl,
+      { FILE_STORE: addresses.fileStore, DIRECTORY_STORE: addresses.directoryStore, SSTORE2_BACKEND: addresses.sstore2Backend },
+      "script/DeployDataReader.s.sol",
+    );
+    if (!dataReader.FileDataReader) throw new Error("the companion deploy did not emit FileDataReader");
 
     return {
       core: { addresses, state: coreState },
-      companion: { addresses: { ...addresses, ipfsCidResolver: companion.IpfsCidResolver }, state: await dumpAccounts(rpcUrl) },
+      companion: {
+        addresses: { ...addresses, ipfsCidResolver: companion.IpfsCidResolver, fileDataReader: dataReader.FileDataReader },
+        state: await dumpAccounts(rpcUrl),
+      },
     };
   } finally {
     anvil.kill("SIGKILL");
@@ -316,7 +327,7 @@ async function runForgeDeploy(
 /** Parse lines like `  ChunkStore 0x…` emitted by the Deploy scripts. */
 function parseForgeAddresses(output: string): AddressMap {
   const addrs: AddressMap = {};
-  const re = /^\s*(ChunkStore|Sstore2Backend|FastLzSstore2Backend|FileStore|DirectoryStore|IpfsCidResolver)\s+(0x[a-fA-F0-9]{40})/gm;
+  const re = /^\s*(ChunkStore|Sstore2Backend|FastLzSstore2Backend|FileStore|DirectoryStore|IpfsCidResolver|FileDataReader)\s+(0x[a-fA-F0-9]{40})/gm;
   let m: RegExpExecArray | null;
   while ((m = re.exec(output)) !== null) {
     addrs[m[1]!] = m[2]! as `0x${string}`;

@@ -134,7 +134,7 @@ export function devCommand(): Command {
     .option("--port <port>", "Anvil port", "8545")
     .option("--chain-id <id>", "Anvil chain id", "31337")
     .option("--i-trust-this-dir", "required: confirm the current directory is an ABX FS checkout you trust (forge scripts run code from it)")
-    .option("--companion", "also deploy the on-chain IPFS CID resolver")
+    .option("--companion", "also deploy the companions: the on-chain IPFS CID resolver and the two native readers")
     .option("--out <file>", "write deployed addresses to this JSON file", ".abxfs/dev-chain.json")
     .action(async (opts: { port: string; chainId: string; companion?: boolean; out: string; iTrustThisDir?: boolean }) => {
       assertAbxfsCheckout(opts.iTrustThisDir === true);
@@ -257,6 +257,19 @@ export function devCommand(): Command {
             forges,
           );
           if (comp["IpfsCidResolver"]) addresses["ipfsCidResolver"] = comp["IpfsCidResolver"];
+          // The two native readers: content (ContentReader) and stored data of any codec (FileDataReader).
+          const stores = { FILE_STORE: addresses["fileStore"]!, DIRECTORY_STORE: addresses["directoryStore"]! };
+          const reader = await forgeDeploy(companionDir, "script/DeployReader.s.sol:DeployReader", rpcUrl, pk, stores, forges);
+          if (reader["ContentReader"]) addresses["contentReader"] = reader["ContentReader"];
+          const dataReader = await forgeDeploy(
+            companionDir,
+            "script/DeployDataReader.s.sol:DeployDataReader",
+            rpcUrl,
+            pk,
+            { ...stores, SSTORE2_BACKEND: addresses["sstore2Backend"]! },
+            forges,
+          );
+          if (dataReader["FileDataReader"]) addresses["fileDataReader"] = dataReader["FileDataReader"];
         }
 
         const outFile = resolve(opts.out);

@@ -229,9 +229,9 @@ export async function addressesForOrg(
       throw new RetiredOrgGenerationError(org);
     return undefined;
   }
-  const { previousGenerations: _drop, orgMinter: _m, projectEnumeration: _e, lens: _l, projectPresentation: _p, contentReader: _reader, ...rest } = addresses;
+  const { previousGenerations: _drop, orgMinter: _m, projectEnumeration: _e, lens: _l, projectPresentation: _p, contentReader: _reader, fileDataReader: _dataReader, ...rest } = addresses;
   void _drop; void _m; void _e; void _l; void _p;
-  // The native reader is bound to the book's immutable store pair, not to arbitrary older stores.
+  // The native readers are bound to the book's immutable store pair, not to arbitrary older stores.
   const changesStores =
     (generation.fileStore && generation.fileStore.toLowerCase() !== addresses.fileStore.toLowerCase()) ||
     (generation.directoryStore && generation.directoryStore.toLowerCase() !== addresses.directoryStore.toLowerCase());
@@ -248,6 +248,7 @@ export async function addressesForOrg(
     ...(generation.lens ? { lens: generation.lens } : {}),
     ...(generation.projectPresentation ? { projectPresentation: generation.projectPresentation } : {}),
     ...(!changesStores && _reader ? { contentReader: _reader } : {}),
+    ...(!changesStores && _dataReader ? { fileDataReader: _dataReader } : {}),
   };
 }
 
@@ -1071,7 +1072,7 @@ async function mintedIdFromReceipt(
  * locks it. Callers building a `forbid` list for {@link assertSafeRecipient} use this.
  */
 export function abxfsContractAddresses(a: ContractAddresses): (string | undefined)[] {
-  const out: (string | undefined)[] = [a.orgFactory, a.orgMinter, a.projectHook, a.projectEnumeration, a.lens, a.projectPresentation, a.contentReader];
+  const out: (string | undefined)[] = [a.orgFactory, a.orgMinter, a.projectHook, a.projectEnumeration, a.lens, a.projectPresentation, a.contentReader, a.fileDataReader];
   for (const g of a.previousGenerations ?? []) out.push(g.orgFactory, g.orgMinter, g.projectHook, g.projectEnumeration, g.lens, g.projectPresentation);
   return out;
 }

@@ -103,12 +103,16 @@ describe.skipIf(!anvilPath || !existsSync(CLI_DIST) || process.platform === "win
     await expect(assertPortFree(port)).resolves.toBeUndefined();
   }, 60_000);
 
-  it("--companion deploys the IPFS CID resolver from contracts-companion and records its address", async () => {
-    // The same stub answers both deploys, by the directory forge runs in.
+  it("--companion deploys the IPFS CID resolver and both native readers from contracts-companion and records them", async () => {
+    // The same stub answers every deploy, by the directory forge runs in and the script it is given.
     const co = checkout(
       [
         'case "$PWD" in',
-        `  *contracts-companion) ${addressLines(["IpfsCidResolver"], 0x99).replace(/\n/g, "; ")} ;;`,
+        '  *contracts-companion) case "$*" in',
+        `    *DeployDataReader*) ${addressLines(["FileDataReader"], 0x9b).replace(/\n/g, "; ")} ;;`,
+        `    *DeployReader*) ${addressLines(["ContentReader"], 0x9a).replace(/\n/g, "; ")} ;;`,
+        `    *) ${addressLines(["IpfsCidResolver"], 0x99).replace(/\n/g, "; ")} ;;`,
+        "  esac ;;",
         `  *) ${addressLines(CONTENT, 1).replace(/\n/g, "; ")} ;;`,
         "esac",
         "exit 0",
@@ -122,6 +126,8 @@ describe.skipIf(!anvilPath || !existsSync(CLI_DIST) || process.platform === "win
       chains: { local: { addresses: Record<string, string> } };
     };
     expect(manifest.chains.local.addresses["ipfsCidResolver"]).toBe(`0x${(0x99).toString(16).padStart(40, "0")}`);
+    expect(manifest.chains.local.addresses["contentReader"]).toBe(`0x${(0x9a).toString(16).padStart(40, "0")}`);
+    expect(manifest.chains.local.addresses["fileDataReader"]).toBe(`0x${(0x9b).toString(16).padStart(40, "0")}`);
     expect(manifest.chains.local.addresses["chunkStore"]).toMatch(/^0x0+1$/);
     dev.child.kill("SIGTERM");
     expect(await dev.exited, dev.output()).toBe(0);

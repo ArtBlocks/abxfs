@@ -99,6 +99,12 @@ export interface ContractAddresses {
   ipfsCidResolver?: Address;
   /** Native bounded on-chain content reader, independent of org generations. */
   contentReader?: Address;
+  /**
+   * `FileDataReader`: a file's stored data, for any file codec, labelled with its codec and `outputHash`, in one call;
+   * the data-level counterpart of `contentReader`. Like it, bound to the book's store pair and independent of org
+   * generations. Absent until a deployment has been verified on the chain.
+   */
+  fileDataReader?: Address;
   /** Presentation contract of the current org factory generation, when supported. */
   projectPresentation?: Address;
 }

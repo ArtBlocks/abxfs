@@ -40,6 +40,12 @@ export function verificationInventory(a, discovered) {
       item("contracts-projects", "ProjectPresentation", presentation, ["constructor(address,address,string)", reader, resolver, defaultChainBase]),
     );
   }
+  // The file-data reader is optional and generation-independent: it is verified wherever the book records it.
+  if (a.fileDataReader) {
+    contracts.push(item("contracts-companion", "FileDataReader", a.fileDataReader, [
+      "constructor(address,address,address)", a.directoryStore, a.fileStore, a.sstore2Backend,
+    ]));
+  }
   return contracts;
 }
 
