@@ -104,8 +104,10 @@ On every chain after its upload:
    canonical stores and base64-encoded them, and the result inflated to the original
    SHA-256.
 
-On Sepolia, EIP-8037 caps one call at 2<sup>24</sup> of execution gas, so the fourth
-check ran through `FileDataReader` instead (supplied to each `eth_call` as a state
+On Sepolia, the endpoints used (Alchemy, publicnode, Tenderly) refuse any `eth_call`
+past 2<sup>24</sup> of execution gas, a client bug since fixed in geth, erigon and
+reth (reth's fix not yet released), so the fourth check ran through
+`FileDataReader` instead (supplied to each `eth_call` as a state
 override, since it is not deployed yet): every file read whole as data in one
 call and inflated to its `outputHash`, eleven read whole as base64, and A-Frame and
 Babylon.js read as base64 in two and four range calls whose pages joined to the
@@ -157,11 +159,11 @@ against its recorded hash; for Babylon that is about 16 times cheaper than going
 through the stores chunk by chunk. Base64 costs about 50 gas per input byte, and the reader encodes in
 its own call so the caller never holds the raw bytes. Inlining Babylon still takes
 more than the 50M gas many public RPC endpoints allow in one `eth_call`, so today
-tokens that need it render on chain through a larger-cap endpoint. Under EIP-8037,
-live on Sepolia and expected on Ethereum, one call gets at most 2<sup>24</sup> of
-execution gas whatever endpoint serves it: every one of these files still reads
-whole as data in one call, but Babylon's base64 takes four range reads and
-A-Frame's two ([One call's gas budget](/docs/reference/contract-reads#one-calls-gas-budget)). The CDN URLs remain in
+tokens that need it render on chain through a larger-cap endpoint. Where one read
+gets only 2<sup>24</sup> of execution gas (a contract reading inside a transaction
+under EIP-8037, or an endpoint whose client still applies that to `eth_call`),
+every one of these files still reads whole as data in one call, but Babylon's base64
+takes four range reads and A-Frame's two ([One call's gas budget](/docs/reference/contract-reads#one-calls-gas-budget)). The CDN URLs remain in
 Art Blocks' registry for renderers that run off chain.
 
 Art Blocks is moving its dependency registry and generator onto these files: each

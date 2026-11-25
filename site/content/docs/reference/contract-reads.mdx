@@ -140,15 +140,20 @@ Two consequences for callers:
 
 ### One call's gas budget
 
-On a chain with EIP-8037 (live on Sepolia, expected on Ethereum with Glamsterdam),
-one call's execution gas is capped at 2<sup>24</sup>, whatever gas the call asks for
-and `eth_call` included: `gas_left = min(TX_MAX_GAS_LIMIT - intrinsic_gas, evm_gas)`,
-with `TX_MAX_GAS_LIMIT` = 16,777,216. A read creates no state, so all of its gas is
-execution gas, memory expansion included. A direct `eth_call` pays 21,000 plus its
-calldata out of that, leaving a read about 16.75M
-([Batched reads](/docs/reference/reads#one-calls-execution-budget-under-eip-8037)).
+Two limits bound one read. An `eth_call` is bounded by its endpoint's cap: public
+endpoints commonly 50M, keyed providers several hundred million. A transaction is
+bounded, on a chain with EIP-8037 (live on Sepolia, expected on Ethereum with
+Glamsterdam), by a 2<sup>24</sup> execution budget,
+`gas_left = min(TX_MAX_GAS_LIMIT - intrinsic_gas, evm_gas)` with `TX_MAX_GAS_LIMIT`
+= 16,777,216, which binds a contract that reads inside a transaction. A read creates
+no state, so all of its gas is execution gas, memory expansion included. A
+transaction that only calls the reader pays 21,000 plus its calldata out of that,
+leaving about 16.75M. Some clients' RPC also applied the 2<sup>24</sup> budget to
+`eth_call`; geth, erigon and reth have each fixed that, reth's fix not yet released,
+so some endpoints still refuse an `eth_call` past it
+([Batched reads](/docs/reference/reads#a-transactions-execution-budget-under-eip-8037)).
 
-Measured against that budget, cold, from the start of a file:
+Measured against 2<sup>24</sup>, cold, from the start of a file:
 
 | Read | Most data in one call |
 | --- | --- |
@@ -159,14 +164,11 @@ So any file up to about 2.7 MB reads whole in one call as data, and its base64
 needs one call per ~300 KB. Every library in the
 [Art Blocks set](/docs/examples/ab500-libraries) reads whole as data in one call,
 and 11 of the 13 also as base64; Babylon.js (904 KB of gzip, 50.1M as one base64
-read) takes four 294,912-byte pages, and A-Frame (344 KB, 18.4M) two. Live on
-Sepolia, a whole-file base64 read of either fails with
-`out of gas: gas required exceeds: 16777216` even when the call is sent with 60M
-gas, and each page succeeds. A contract that reads a file and then does more work
-in the same call has less than this to spend on the read.
-
-Where the cap does not apply yet, endpoints still bound an `eth_call`: public ones
-commonly at 50M, keyed providers at several hundred million.
+read) takes four 294,912-byte pages, and A-Frame (344 KB, 18.4M) two. On a Sepolia
+endpoint that still applies 2<sup>24</sup> to `eth_call`, a whole-file base64 read of
+either fails with `out of gas: gas required exceeds: 16777216` even when the call is
+sent with 60M gas, and each page succeeds. A contract that reads a file and then does
+more work in the same call has less than this to spend on the read.
 
 ### Limits
 

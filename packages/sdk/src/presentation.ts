@@ -253,7 +253,8 @@ export async function readNativeFileData(client: PublicClient, addresses: Contra
 /**
  * `[start, start + length)` of a file's stored data through `FileDataReader`, for any codec (the data-level counterpart
  * of `readNativeFileRange`). `maxBytes` counts every chunk the range touches in full. Ranges page a file in calls that
- * each fit one call's gas budget, which EIP-8037 caps at 2^24 of execution gas, `eth_call` included.
+ * each fit a gas budget: EIP-8037's 2^24 execution budget for a contract reading inside a transaction, or an endpoint's
+ * `eth_call` cap (some reth versions also refuse an `eth_call` past 2^24 on EIP-8037 chains; fixed, not yet released).
  */
 export async function readNativeFileDataRange(client: PublicClient, addresses: ContractAddresses, cid: AbxfsCid, start: bigint, length: bigint, limits: NativeReadLimits): Promise<NativeFileData> {
   const [mimeType, codec, outputHash, data] = await client.readContract({ address: requireCapability(addresses, "fileDataReader"), abi: fileDataReaderAbi, functionName: "readFileDataRange", args: [cid, start, length, limits.maxBytes, limits.maxChunks] });
