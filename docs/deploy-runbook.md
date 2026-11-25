@@ -78,6 +78,50 @@ not acquire invented history. See
 `projectPresentation` capabilities only after they have passed the checks above. Never add presentation to an old
 factory record. A reader capability can be shared only by generations with its exact immutable store pair.
 
+## Optional: FileDataReader
+
+`FileDataReader` (`packages/contracts-companion`) returns a file's stored data, whole or as a byte range, for any
+codec, with its codec label and `outputHash`, plus base64 views. Nothing stores its address and no factory or
+generation depends on it, so it can be deployed to a chain at any time after the content layer, independently of the
+presentation generation. It is not deployed anywhere yet: deploying it, like anything on a production network, needs
+the maintainers' explicit go-ahead. Testnets first, as always.
+
+1. In `packages/contracts-companion`, run the suite, then dry-run `script/DeployDataReader.s.sol` (no
+   `--broadcast`) and compare its prediction with `pinned()`. `FILE_STORE`, `DIRECTORY_STORE` and `SSTORE2_BACKEND`
+   select the existing stores and raw backend (or default to their predictions); the pin covers all three, so any
+   other backend is refused off a local chain. The deploy is one account and its code, no storage: about 1.5M gas
+   on a legacy chain, about 11.1M under EIP-8037, nearly all of it state (`test_dataReaderDeployFitsInitcodeRuntimeAndGasBounds`
+   logs both).
+2. Broadcast that same script, then read back `fileStore()`, `directoryStore()`, `chunkStore()` and
+   `sstore2Backend()`.
+3. Read a known raw file and a known gzip file whole and as a range, and compare each with `FileStore.readChunk`
+   joined (`test/FileDataReaderFork.t.sol` does this for the 13 AB500 files with `ABXFS_FORK_RPC_URL` set to the
+   chain), then verify the source with its three constructor arguments.
+
+```bash
+cd packages/contracts-companion
+forge script script/DeployDataReader.s.sol --rpc-url "$RPC" --sender "$DEPLOYER"
+```
+
+On a Glamsterdam chain (EIP-8037: Sepolia now), forge's simulation prices the deploy on the old schedule and gives the
+transaction about 2.2M gas against the 11.2M it uses, so a broadcast runs out of gas. There, send the CREATE2
+transaction with the chain's own estimate, then run the script once more: it finds the reader, checks its wiring and
+that its code is this build's, and sends nothing.
+
+```bash
+INIT=$(forge inspect FileDataReader bytecode)$(cast abi-encode 'f(address,address,address)' \
+  "$DIRECTORY_STORE" "$FILE_STORE" "$SSTORE2_BACKEND" | cut -c3-)
+DATA=$(cast keccak "abx-fs/file-data-reader")${INIT#0x}
+GAS=$(cast estimate 0x4e59b44847b379578588920cA78FbF26c0B4956C "$DATA" --rpc-url "$RPC")
+cast send 0x4e59b44847b379578588920cA78FbF26c0B4956C "$DATA" --gas-limit $((GAS * 12 / 10)) --rpc-url "$RPC"
+```
+
+Promotion follows the verified deployment, per chain: add `fileDataReader` to that chain's entry in
+`packages/sdk/src/canonical.ts` (`canonical.test.ts` then holds it to `pinned()`), list it on the deployments page,
+and run source verification (`scripts/verification-plan.mjs` includes it wherever the book records it). The SDK's ABI,
+its `fileDataReader` address field and the CLI's config key already exist, so a candidate address can be configured
+and rehearsed before promotion.
+
 ## Legacy deployment procedure
 
 The remaining build tag, pins and deployment inventory describe the legacy generation. For a presentation
@@ -126,7 +170,7 @@ The org factory takes three of ABX's contracts as constructor arguments, so they
   (`0x4e59b44847b379578588920cA78FbF26c0B4956C`) with a fixed salt and no sender-dependent constructor argument, so
   **any key** lands it at the same address on every chain.
 - The salts are `keccak256("abx-fs/content")` (all five content contracts), `keccak256("abx-fs/ipfs-cid-resolver")`,
-  `keccak256("abx-fs/content-reader")`, `keccak256("abx-fs/project-presentation")`,
+  `keccak256("abx-fs/content-reader")`, `keccak256("abx-fs/file-data-reader")`, `keccak256("abx-fs/project-presentation")`,
   `keccak256("abx-fs/org-meta")`, `keccak256("abx-fs/org-factory")`, `keccak256("abx-fs/org-components")` and
   `keccak256("abx-fs/lens")`.
 - Predictions also include constructor arguments: the stores for the resolver and reader; the reader, resolver and

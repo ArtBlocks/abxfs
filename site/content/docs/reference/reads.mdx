@@ -136,3 +136,50 @@ rather than cosmetic — see [Deployments](/docs/reference/deployments).
 
 Pagination is what keeps a read under that ceiling: fetch a range, not a
 collection.
+
+### A transaction's execution budget under EIP-8037
+
+On a chain with EIP-8037 (Glamsterdam: live on Sepolia, expected on Ethereum), a
+transaction's execution gas is bounded by the transaction gas cap, whatever gas
+limit it sets:
+
+```
+gas_left = min(TX_MAX_GAS_LIMIT - intrinsic_gas, evm_gas)     TX_MAX_GAS_LIMIT = 2^24 = 16,777,216
+```
+
+Running past it behaves exactly like running out of gas. Only the state a
+transaction creates is billed in the separate state dimension, and a read creates
+none, so all of a read's gas is execution gas, memory expansion included: a call
+that builds a large result in memory pays for that memory inside the budget. This
+binds any contract that reads ABX FS inside a transaction. Its reads share the
+budget with everything else the transaction does; a transaction that only calls a
+reader pays 21,000 plus 4 gas per zero calldata byte and 16 per nonzero one, leaving
+about 16.75M.
+
+The EIP says nothing about `eth_call`, which stays bounded by its endpoint's own cap
+(see above). Some clients' RPC applied the transaction rule to `eth_call` after
+Amsterdam anyway, and each treated that as a bug: geth fixed it in v1.17.8
+([go-ethereum#35845](https://github.com/ethereum/go-ethereum/pull/35845)), erigon in
+[erigon#24519](https://github.com/erigontech/erigon/issues/24519), and reth in
+[reth#28583](https://github.com/paradigmxyz/reth/pull/28583), merged 2026-11-18 and
+not yet in a release. An endpoint on an unfixed client fails any `eth_call` past
+2<sup>24</sup> with `out of gas: gas required exceeds: 16777216`, whatever gas
+limit it sends. On 2026-11-24 that held for Sepolia on Alchemy and publicnode (both
+reth) and on Tenderly, while a geth v1.17.8 node (`rpc.sepolia.ethpandaops.io`) ran
+a 24.7M-gas `eth_call` to completion.
+
+What fits in 2<sup>24</sup>, measured cold from the start of a file:
+
+| Read | Most data in one call |
+| --- | --- |
+| `FileDataReader.readFileDataRange` | about 2.7 MB |
+| `FileDataReader.readFileDataRangeBase64` | about 313 KB of data (418 KB of base64) |
+| `ChunkStore.read` multicall, as the SDK plans it | at least 4 full chunks (FastLZ at its costliest), 64 raw |
+
+The SDK plans each chunk-read `eth_call` at no more than 25M of estimated gas, and
+after a node refuses one for gas it re-plans the rest at 12.5M, under 2<sup>24</sup>,
+so `readFile` works unchanged against such an endpoint. A contract that builds a
+large result in one call, such as an on-chain generator inlining a library, shares
+its budget with its own work. Inside a transaction, or for callers whose endpoint
+caps lower than the result needs, page with range reads, one call per page
+([Read files from contracts](/docs/reference/contract-reads#one-calls-gas-budget)).

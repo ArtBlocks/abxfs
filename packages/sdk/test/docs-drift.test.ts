@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 import { toFunctionSignature, type AbiFunction } from "viem";
 
 import { storageBackendAbi } from "../src/abi.js";
+import { fileDataReaderAbi } from "../src/abi-reader.js";
 import { CHUNK_LEAF_MAX_HASHES } from "../src/node-gas.js";
 
 const ROOT = resolve(__dirname, "../../..");
@@ -58,6 +59,21 @@ describe("docs agree with the code", () => {
   it("the storage-backend interface in the spec is the contract's", () => {
     const docs = documentedSignatures(read("specs/abx-fs.md"), /interface IStorageBackend \{([\s\S]*?)\n\}/);
     expect(docs).toEqual(abiSignatures);
+  });
+
+  it("the FileDataReader interface on the contract-reads page is the contract's read surface", () => {
+    const docs = documentedSignatures(
+      read("site/content/docs/reference/contract-reads.mdx"),
+      /interface IFileDataReader \{([\s\S]*?)\n\}/,
+    );
+    // The documented surface is every read; the four getters of its immutable wiring are left out.
+    const wiring = new Set(["directoryStore()", "fileStore()", "chunkStore()", "sstore2Backend()"]);
+    const reads = (fileDataReaderAbi as readonly { type: string }[])
+      .filter((x): x is AbiFunction => x.type === "function")
+      .map((f) => toFunctionSignature(f))
+      .filter((sig) => !wiring.has(sig))
+      .sort();
+    expect(docs).toEqual(reads);
   });
 
   it("the chunk-leaf limits the docs state are the contract's and the SDK's", () => {

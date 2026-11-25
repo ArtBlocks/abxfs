@@ -119,6 +119,7 @@ const ADDRESS_KEYS = new Set([
   "projectEnumeration",
   "projectPresentation",
   "contentReader",
+  "fileDataReader",
   "ipfsCidResolver",
 ]);
 const GENERATION_KEYS = new Set(["orgFactory", "projectHook", "fileStore", "directoryStore", "orgMinter", "projectEnumeration", "lens", "projectPresentation"]);

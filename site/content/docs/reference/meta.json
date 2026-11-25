@@ -1,5 +1,5 @@
 {
   "title": "Reference",
   "icon": "BookBookmark",
-  "pages": ["deployments", "cli", "sdk", "presentation", "reads"]
+  "pages": ["deployments", "cli", "sdk", "presentation", "contract-reads", "reads"]
 }

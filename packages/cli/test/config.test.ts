@@ -99,6 +99,15 @@ describe("file overlay", () => {
     expect(chain.addresses!.fileStore).toBe(CANONICAL.addresses!.fileStore);
   });
 
+  /** A companion with no verified canonical deployment yet can still be named per chain, as a candidate. */
+  it("accepts a candidate fileDataReader before its address is promoted", () => {
+    const candidate = "0x00000000000000000000000000000000000000Fd";
+    writeConfig({ chains: { "base-sepolia": { addresses: { fileDataReader: candidate } } } });
+    const chain = resolveChain(loadConfig(), "base-sepolia");
+    expect(chain.addresses!.fileDataReader).toBe(candidate);
+    expect(chain.addresses!.fileStore).toBe(CANONICAL.addresses!.fileStore);
+  });
+
   it("keeps builtins available alongside a custom chain", () => {
     writeConfig({
       chains: {

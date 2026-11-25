@@ -185,7 +185,15 @@ and chunk totals before allocating content. Range limits include the full decode
 sizes of touched boundary chunks, not just returned bytes. Limits bound bytes and
 chunk reads, not backend gas; Solidity callers containing failures should also cap
 call gas. `projectRoot` follows the org's own configure hook, including older orgs;
-it is a content convenience, not proof of factory registration.
+it is a content convenience, not proof of factory registration. Choosing between the
+two readers is covered in [Read files from contracts](/docs/reference/contract-reads).
+
+## Read a file's stored data
+
+`ContentReader` refuses a file with a codec. Its data-level counterpart,
+`FileDataReader`, returns such a file's stored data in one call, labelled with its
+codec and `outputHash`, with base64 views for data URIs. See
+[Read files from contracts](/docs/reference/contract-reads).
 
 ## Use stored content in an ABX reader field
 

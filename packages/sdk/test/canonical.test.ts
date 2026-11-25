@@ -93,6 +93,12 @@ describe("verified canonical deployments", () => {
     const companionPin = (file: string) => readFileSync(resolve(REPO_ROOT, file), "utf8")
       .match(/function pinned\(\)[^{]*\{\s*return (0x[0-9a-fA-F]{40});/)?.[1];
     expect(book.contentReader).toBe(companionPin("packages/contracts-companion/script/DeployReader.s.sol"));
+    // FileDataReader has no verified deployment yet, so no chain lists it; once one does, it must be the pin.
+    const dataReaderPin = companionPin("packages/contracts-companion/script/DeployDataReader.s.sol");
+    expect(dataReaderPin).toMatch(/^0x[0-9a-fA-F]{40}$/);
+    for (const d of Object.values(CANONICAL_DEPLOYMENTS)) {
+      if (d.addresses?.fileDataReader !== undefined) expect(d.addresses.fileDataReader, d.name).toBe(dataReaderPin);
+    }
     expect(book.projectPresentation).toBe(companionPin("packages/contracts-projects/script/DeployPresentation.s.sol"));
     expect(book.orgMeta).toBe(previous.orgMeta); // Both factory generations bind this same immutable renderer.
     for (const id of LEGACY_CHAINS) {

@@ -446,18 +446,31 @@ export async function readFile(
     ...(options.maxCalls !== undefined ? { maxCalls: options.maxCalls } : {}),
   });
   const data = concatBytes(...parts);
-
-  let bytes = data;
-  if (info.codec.toLowerCase() !== ZERO) {
-    bytes = await Promise.resolve(
-      getFileCodec(info.codec).decode(data, { maxOutputBytes: options.maxInflateBytes ?? DEFAULT_MAX_INFLATE_BYTES }),
-    );
-    const actual = keccak256Hex(bytes);
-    if (actual.toLowerCase() !== info.outputHash.toLowerCase()) {
-      throw new OutputHashMismatchError({ cid, expectedHash: info.outputHash, actualHash: actual });
-    }
-  }
+  const bytes = await decodeFileData(
+    { cid, codec: info.codec, outputHash: info.outputHash, data },
+    options.maxInflateBytes !== undefined ? { maxInflateBytes: options.maxInflateBytes } : {},
+  );
   return { cid, mimeType: info.mimeType, codec: info.codec, chunkIds, outputHash: info.outputHash, bytes, data };
+}
+
+/**
+ * A file's content from its data (spec §6): the data itself when there is no codec, otherwise `decode(codec, data)`,
+ * refused with {@link OutputHashMismatchError} unless it hashes to `outputHash`. {@link readFile} decodes through this,
+ * and so should any caller holding data from elsewhere, such as `FileDataReader` ({@link readNativeFileData}).
+ */
+export async function decodeFileData(
+  file: { cid: AbxfsCid; codec: FileCodec; outputHash: AbxfsCid; data: Uint8Array },
+  options: { maxInflateBytes?: number } = {},
+): Promise<Uint8Array> {
+  if (file.codec.toLowerCase() === ZERO) return file.data;
+  const bytes = await Promise.resolve(
+    getFileCodec(file.codec).decode(file.data, { maxOutputBytes: options.maxInflateBytes ?? DEFAULT_MAX_INFLATE_BYTES }),
+  );
+  const actual = keccak256Hex(bytes);
+  if (actual.toLowerCase() !== file.outputHash.toLowerCase()) {
+    throw new OutputHashMismatchError({ cid: file.cid, expectedHash: file.outputHash, actualHash: actual });
+  }
+  return bytes;
 }
 
 /**

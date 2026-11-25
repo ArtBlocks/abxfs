@@ -33,6 +33,17 @@ test("legacy inventory remains six-argument and refuses mismatched source before
   assert.throws(() => assertFactorySource(wrongTypes, true), /does not match/);
 });
 
+test("a recorded FileDataReader is verified with its three store constructor arguments, and is otherwise absent", () => {
+  assert.equal(verificationInventory(a, d).some(([, c]) => c.endsWith(":FileDataReader")), false);
+  const inventory = verificationInventory({ ...a, fileDataReader: address(29) }, d);
+  assert.equal(inventory.length, 16);
+  const [pkg, contract, addr, ctor] = inventory.find(([, c]) => c.endsWith(":FileDataReader"));
+  assert.equal(pkg, "contracts-companion");
+  assert.equal(contract, "src/FileDataReader.sol:FileDataReader");
+  assert.equal(addr, address(29));
+  assert.deepEqual(ctor, ["constructor(address,address,address)", a.directoryStore, a.fileStore, a.sstore2Backend]);
+});
+
 test("candidate inventory rejects missing reader and mismatched resolver", () => {
   assert.throws(() => verificationInventory(a, { ...candidate, reader: undefined }), /ContentReader/);
   assert.throws(() => verificationInventory(a, { ...candidate, resolver: address(99) }), /resolver differs/);

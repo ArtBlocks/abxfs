@@ -35,6 +35,7 @@ store, so the same bytes resolve whatever org points at them.
 | --- | --- |
 | Understand the on-chain content protocol | [`specs/abx-fs.md`](./specs/abx-fs.md) |
 | Understand orgs, projects, the factory, the hooks, or who can mint | [`specs/abx-fs-orgs.md`](./specs/abx-fs-orgs.md) |
+| Read a file from a contract | [`site/content/docs/reference/contract-reads.mdx`](./site/content/docs/reference/contract-reads.mdx): `ContentReader` for content, `FileDataReader` for stored data of any codec, whole or in ranges (`packages/contracts-companion`) |
 | Understand on-chain IPFS CID derivation | [`specs/abx-fs.md`](./specs/abx-fs.md) §8 and `packages/contracts-companion` (`IpfsCidResolver`) |
 | Work on the gateway | `packages/gateway/src/handler.ts` and `resolve.ts` — `abxfs-gateway` and every site built on the package run this code |
 | Pin everything published to IPFS | `packages/gateway/src/mirror.ts` (`abxfs-mirror`) — one cursor over the cross-org ledger |
@@ -93,10 +94,10 @@ If you touch key encoding, both must move together.
 **A contract's address is a function of its exact source, and a code change forks the content-address space.**
 Every contract is deployed with CREATE2 through the keyless deployer (`0x4e59…956C`) with fixed salts
 (`keccak256("abx-fs/content")` for the five content contracts; `abx-fs/ipfs-cid-resolver`, `abx-fs/content-reader`,
-`abx-fs/project-presentation`, `abx-fs/org-meta`, `abx-fs/org-factory`, `abx-fs/org-components` and `abx-fs/lens` for
-the rest), and every chunk id commits to its storage backend's ADDRESS. So
-changed code means a changed address, and for a backend or a store that silently forks the content-address space
-rather than failing.
+`abx-fs/file-data-reader` (proposed, not deployed), `abx-fs/project-presentation`, `abx-fs/org-meta`,
+`abx-fs/org-factory`, `abx-fs/org-components` and `abx-fs/lens` for the rest), and every chunk id commits to its
+storage backend's ADDRESS. So changed code means a changed address, and for a backend or a store that silently forks
+the content-address space rather than failing.
 
 The build keeps solc's metadata hash (by design: NatSpec is frozen with the code), so the bytecode commits to the
 exact source text, comments included, to the source paths and to the remappings. Three consequences: every comment edit

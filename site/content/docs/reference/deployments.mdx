@@ -96,6 +96,11 @@ new factories do not change stored CIDs.
 | `ContentReader` | `0xe6d62620A284565B7F0B3581A6972BA3Be5C8B13` |
 | `ProjectPresentation` | `0x5F7801b644596d68c3bbcf2f08ac56641745775F` |
 
+`FileDataReader`, the companion that returns a file's stored data for any codec
+([Read files from contracts](/docs/reference/contract-reads)), is not deployed yet.
+It joins this table, and the SDK's address book, on each network where a deployment
+is verified.
+
 ### Original generation: six networks only
 
 The `abx-fs-freeze-3` factory and its components remain available on Base, Base
@@ -154,7 +159,11 @@ on its original six networks.
 Sepolia (11155111) is the first chain with the Glamsterdam gas schedule
 (EIP-8037), which reprices state creation: there, deploying `ProjectHook` took
 20.3M gas, against 2.9M on Base Sepolia. ABX FS is deployed there so that it is
-proven before Ethereum mainnet upgrades to the same schedule. A chain gains its
+proven before Ethereum mainnet upgrades to the same schedule. The same schedule
+gives a transaction 2<sup>24</sup> of execution gas, which bounds what a contract
+can read inside one; some Sepolia RPC endpoints also apply it to `eth_call`, a
+client bug fixed in geth, erigon and reth (reth's fix not yet released)
+([Batched reads](/docs/reference/reads#a-transactions-execution-budget-under-eip-8037)). A chain gains its
 addresses in the registry only once a deployment exists there, so
 `isCanonicallyDeployed(chainId)` is the honest answer at any moment.
 

@@ -1,8 +1,8 @@
 /** Optional native reading and generation-specific project presentation. */
 import { hexToBytes, decodeFunctionResult, encodeFunctionData, keccak256, toBytes, type Abi, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
-import { contentReaderAbi } from "./abi-reader.js";
+import { contentReaderAbi, fileDataReaderAbi } from "./abi-reader.js";
 import { iProjectPresentationAbi } from "./abi-presentation.js";
-import { asAbxfsCid, ProjectKind, type AbxfsCid, type ContractAddresses } from "./types.js";
+import { asAbxfsCid, ProjectKind, type AbxfsCid, type ContractAddresses, type FileCodec } from "./types.js";
 import { ZERO_HASH } from "./cid.js";
 import { assertWalletChain } from "./wallet-chain.js";
 import { waitForSuccessfulReceipt } from "./receipts.js";
@@ -71,15 +71,17 @@ export interface PresentationRecommendation {
   diagnostics?: PresentationDiagnostic[];
   readReach?: PresentationReadReach;
 }
+/** A capability an address book may lack: a generation's presentation contract, or a native reader companion. */
+export type NativeCapability = "projectPresentation" | "contentReader" | "fileDataReader";
 export class PresentationCapabilityError extends Error {
-  constructor(readonly capability: "projectPresentation" | "contentReader", readonly factory?: Address) {
+  constructor(readonly capability: NativeCapability, readonly factory?: Address) {
     super(capability === "projectPresentation"
       ? `org generation ${factory ?? "(unconfigured)"} does not support project presentation; it cannot inherit a newer generation's contract`
-      : "this chain has no native contentReader configured");
+      : `this chain has no native ${capability} configured`);
     this.name = "PresentationCapabilityError";
   }
 }
-function requireCapability(addresses: ContractAddresses, capability: "projectPresentation" | "contentReader"): Address {
+function requireCapability(addresses: ContractAddresses, capability: NativeCapability): Address {
   const address = addresses[capability];
   if (!address) throw new PresentationCapabilityError(capability, addresses.orgFactory);
   return address;
@@ -228,6 +230,40 @@ export async function readNativePath(client: PublicClient, addresses: ContractAd
 export async function readNativeFileRange(client: PublicClient, addresses: ContractAddresses, cid: AbxfsCid, start: bigint, length: bigint, limits: NativeReadLimits) {
   const [mimeType, data] = await client.readContract({ address: requireCapability(addresses, "contentReader"), abi: contentReaderAbi, functionName: "readFileRange", args: [cid, start, length, limits.maxBytes, limits.maxChunks] });
   return { mimeType, bytes: hexToBytes(data) };
+}
+/** A file's stored data as `FileDataReader` returns it: labelled with its codec and `outputHash`, never decoded. */
+export interface NativeFileData {
+  mimeType: string;
+  /** The file codec label, zero for none. */
+  codec: FileCodec;
+  /** `keccak256(content)` when a codec is set, zero otherwise. */
+  outputHash: AbxfsCid;
+  /** The chunks' data joined: the content itself when `codec` is zero, otherwise its encoding. */
+  data: Uint8Array;
+}
+/**
+ * A file's stored data in one `eth_call` to `FileDataReader`, for any codec (`readNativeFile` refuses codec files).
+ * This is what a contract reading the file gets. The data is not decoded: pass it to `decodeFileData` for the content,
+ * checked against `outputHash`. Ordinary SDK reads (`readFile`) need no companion and page large files.
+ */
+export async function readNativeFileData(client: PublicClient, addresses: ContractAddresses, cid: AbxfsCid, limits: NativeReadLimits): Promise<NativeFileData> {
+  const [mimeType, codec, outputHash, data] = await client.readContract({ address: requireCapability(addresses, "fileDataReader"), abi: fileDataReaderAbi, functionName: "readFileData", args: [cid, limits.maxBytes, limits.maxChunks] });
+  return { mimeType, codec: codec as FileCodec, outputHash: outputHash as AbxfsCid, data: hexToBytes(data) };
+}
+/**
+ * `[start, start + length)` of a file's stored data through `FileDataReader`, for any codec (the data-level counterpart
+ * of `readNativeFileRange`). `maxBytes` counts every chunk the range touches in full. Ranges page a file in calls that
+ * each fit a gas budget: EIP-8037's 2^24 execution budget for a contract reading inside a transaction, or an endpoint's
+ * `eth_call` cap (some reth versions also refuse an `eth_call` past 2^24 on EIP-8037 chains; fixed, not yet released).
+ */
+export async function readNativeFileDataRange(client: PublicClient, addresses: ContractAddresses, cid: AbxfsCid, start: bigint, length: bigint, limits: NativeReadLimits): Promise<NativeFileData> {
+  const [mimeType, codec, outputHash, data] = await client.readContract({ address: requireCapability(addresses, "fileDataReader"), abi: fileDataReaderAbi, functionName: "readFileDataRange", args: [cid, start, length, limits.maxBytes, limits.maxChunks] });
+  return { mimeType, codec: codec as FileCodec, outputHash: outputHash as AbxfsCid, data: hexToBytes(data) };
+}
+/** {@link readNativeFileData} for a path; a selected directory reads its `index.html`, as `readNativePath` does. */
+export async function readNativePathData(client: PublicClient, addresses: ContractAddresses, root: AbxfsCid, path: string, limits: NativeReadLimits): Promise<NativeFileData> {
+  const [mimeType, codec, outputHash, data] = await client.readContract({ address: requireCapability(addresses, "fileDataReader"), abi: fileDataReaderAbi, functionName: "readPathData", args: [root, path, limits.maxBytes, limits.maxChunks] });
+  return { mimeType, codec: codec as FileCodec, outputHash: outputHash as AbxfsCid, data: hexToBytes(data) };
 }
 /** Conservative static signal. Active markup is uncertain even when no obvious network call is present. */
 export function analyzePresentationDependencies(mimeType: string, bytes: Uint8Array): { residualDependencies: string[]; runtimeUncertain: boolean } {

@@ -136,7 +136,7 @@ import { assertWalletChain } from "./wallet-chain.js";
 import {
   readPresentation, inspectPresentation, previewPresentation, configurePresentationTarget,
   setPresentationMethod, setPresentationEndpoints, lockPresentation, readPresentationLockCommitment,
-  readNativeFile, readNativePath, readNativeFileRange, verifyPresentationTokenUri,
+  readNativeFile, readNativePath, readNativeFileRange, readNativeFileData, readNativeFileDataRange, readNativePathData, verifyPresentationTokenUri,
   type PresentationTarget, type PresentationTokenUriOptions, type PresentationMethod, type NativeReadLimits, type PresentationLockReview,
 } from "./presentation.js";
 
@@ -835,6 +835,19 @@ export class AbxfsClient {
 
   readNativeFileRange(cid: AbxfsCid, start: bigint, length: bigint, limits: NativeReadLimits) {
     return readNativeFileRange(this.publicClient, this.addresses, cid, start, length, limits);
+  }
+
+  /** A file's stored data through `FileDataReader`, any codec, not decoded (see `decodeFileData`). */
+  readNativeFileData(cid: AbxfsCid, limits: NativeReadLimits) {
+    return readNativeFileData(this.publicClient, this.addresses, cid, limits);
+  }
+
+  readNativePathData(root: AbxfsCid, path: string, limits: NativeReadLimits) {
+    return readNativePathData(this.publicClient, this.addresses, root, path, limits);
+  }
+
+  readNativeFileDataRange(cid: AbxfsCid, start: bigint, length: bigint, limits: NativeReadLimits) {
+    return readNativeFileDataRange(this.publicClient, this.addresses, cid, start, length, limits);
   }
 
   verifyLocalIpfsCid(cid: AbxfsCid): Promise<IpfsCid> {
