@@ -12,7 +12,7 @@ import {Deploy as CoreDeploy} from "@abxfs/core-script/Deploy.s.sol";
 ///      `DeployReader.t.sol` does for `ContentReader`. Its constructor arguments are the two stores and the raw SSTORE2
 ///      backend, so a re-pinned content layer moves the address too. Re-pin deliberately, and only before a deployment.
 contract DeployDataReaderTest is Test {
-    bytes32 constant CREATION_CODE_HASH = 0xf09ae0b3e7cfc333b91a503793429a0d583d69cc88746747f1aa1458838dfe36;
+    bytes32 constant CREATION_CODE_HASH = 0xaf4a343a8b57dd5d721b88107d18dcfab20900c5a2349fb7bfdc8c173eb561bf;
 
     function test_dataReaderCreationCodeIsPinned() public pure {
         assertEq(keccak256(type(FileDataReader).creationCode), CREATION_CODE_HASH);

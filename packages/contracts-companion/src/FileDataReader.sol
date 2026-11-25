@@ -25,8 +25,8 @@ import {IFileStore} from "@abxfs/core/interfaces/IFileStore.sol";
 ///         returns exactly the bytes `FileStore.readChunk` returns, chunk by chunk, or reverts as it would.
 ///
 ///         Whole files and byte ranges: a range lets a caller page a file in calls that each fit its gas budget
-///         (EIP-8037 bounds one call's execution gas at 2^24), and base64 ranges aligned to 3 bytes concatenate to the
-///         whole file's base64.
+///         (a transaction's execution gas is capped at 2^24; an RPC caps `eth_call` at its own limit), and base64
+///         ranges aligned to 3 bytes concatenate to the whole file's base64.
 ///
 ///         Each read builds its ABI-encoded return value in one buffer, writes the chunks into it where the encoding
 ///         puts them, and returns that buffer, so the data is never copied a second time. A base64 view writes the
@@ -127,7 +127,7 @@ contract FileDataReader {
     /// @notice `[start, start + length)` of a file's data, for any codec. Bounds are strict; a zero length at the end
     ///         of the file is valid. With a codec the range is of the encoded data: ranges of one file joined in order
     ///         are its data, which a caller decodes whole. Ranges let a file be read in calls that each fit a gas
-    ///         budget (EIP-8037 bounds one call's execution gas at 2^24).
+    ///         budget (a transaction's execution gas is capped at 2^24; an RPC caps `eth_call` at its own limit).
     /// @dev `maxBytes` and `maxChunks` cover every chunk the range touches, read in full because each is checked
     ///      against its recorded hash, as `ContentReader.readFileRange` counts them. `FileStore.locateByte` finds both
     ///      ends without reading the chunks before them.
