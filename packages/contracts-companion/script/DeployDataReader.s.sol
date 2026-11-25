@@ -47,6 +47,10 @@ contract DeployDataReader is LocalChain {
         require(address(r.fileStore()) == fileStore, "reader wiring");
         require(address(r.directoryStore()) == directoryStore, "reader wiring");
         require(r.sstore2Backend() == sstore2Backend, "reader wiring");
+        // Reused or new, the code at the address must be this build's: a local, unbroadcast instance over the same
+        // stores has the same runtime code, immutables included.
+        address local = address(new FileDataReader(directoryStore, fileStore, sstore2Backend));
+        require(reader.codehash == local.codehash, "reader code differs from this build");
         console2.log("FileDataReader", reader);
     }
 
@@ -55,7 +59,7 @@ contract DeployDataReader is LocalChain {
     ///         broadcast. The content layer's addresses are constructor arguments, so a re-pinned content layer moves
     ///         this too. Re-pin deliberately, and only before a deployment.
     function pinned() public pure returns (address) {
-        return 0x7B724AbEA53398e71C06BE8560ac87cE5DC9c7DC;
+        return 0x8571A75695efAF94c7b91e5Ec3fc636Ce026cF05;
     }
 
     /// @notice Reverts `UnexpectedAddress` unless `reader` is `pinned()`.

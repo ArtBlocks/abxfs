@@ -43,7 +43,7 @@ contract's address (§1, principle 8), so keep the numbering.
 | Chunks | `ChunkStore`, `IStorageBackend`, `Sstore2Backend`, `FastLzSstore2Backend` | content-addressed chunk records; bytes live in backends |
 | Index | `NodeTree` (abstract), `FileStore`, `DirectoryStore` | trees of immutable nodes listing chunks and entries |
 | IPFS | `IpfsCidResolver` | view-only IPFS CIDv1 derivation from on-chain content |
-| Readers | `ContentReader`, `FileDataReader` (proposed), `AbxContentReader` | view-only whole-file reads for contracts: content (no codec) and stored data (any codec) |
+| Readers | `ContentReader`, `FileDataReader` (proposed), `AbxContentReader` | view-only reads for contracts, of whole files or byte ranges: content (no codec) and stored data (any codec) |
 | Projects and orgs | `OrgFactory`, `OrgMeta`, `OrgMinter`, `ProjectHook`, `ProjectEnumeration`, `ProjectCard`, `ProjectTraits`, `ProjectLinks`, `Lens` | [`abx-fs-orgs.md`](./abx-fs-orgs.md) |
 
 Hash prefixes:
@@ -384,11 +384,14 @@ and others fail). Without a pinned output, one file could show one thing on a ga
 mirror. With it, every reader produces exactly those bytes or refuses. Without a codec there is no decoding step, so the
 hash must be zero: an optional redundant hash would give one file two CIDs.
 
-Consequences: byte ranges are supported when `codec == 0` (offsets index the joined chunk data, which is then the
-content; that includes FastLZ chunks). With a codec there are no ranges, no on-chain reads of the content and no
-on-chain IPFS-CID derivation (§8). The data stays readable on chain, chunk by chunk through `FileStore.readChunk`, or
-whole and labelled with its codec and `outputHash` through the `FileDataReader` companion, for a consumer that hands it
-to a decoder off chain (a browser, for a gzip data URI) which then checks `outputHash`.
+Consequences: byte ranges of the content are supported when `codec == 0` (offsets index the joined chunk data, which
+is then the content; that includes FastLZ chunks). With a codec there are no ranges of the content, no on-chain reads of
+the content and no on-chain IPFS-CID derivation (§8). The data stays readable on chain: chunk by chunk through
+`FileStore.readChunk`, or whole or as byte ranges of the data, labelled with its codec and `outputHash`, through the
+`FileDataReader` companion, for a consumer that decodes it off chain and checks `outputHash`. A page that inflates a
+gzip data URI with its own script checks nothing, so whoever adopts a file for such a page checks `outputHash`
+beforehand, decoding as the page will. A gzip file of one member with a valid trailer and nothing after it decodes the
+same in every conforming inflater; several members, or bytes after the trailer, do not.
 
 SDK defaults: `codec = 0` with the FastLZ backend per chunk (raw where FastLZ does not help). Opt-in: `gzip` with the
 raw backend.

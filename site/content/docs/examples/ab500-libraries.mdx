@@ -57,9 +57,11 @@ abxfs upload ./ab500-libs --codec gzip --no-fastlz --chain <chain>
 ```
 
 - **`--codec gzip`** stores each library at about a quarter of its size. Each file
-  also records `outputHash`, the hash of the original library, so every reader that
-  inflates it gets exactly that library or refuses
-  ([Compression](/docs/using-abxfs/compression)).
+  also records `outputHash`, the hash of the original library, so a reader that
+  inflates it can check that it got exactly that library
+  ([Compression](/docs/using-abxfs/compression)). Each is a single gzip member with a
+  valid trailer, so every inflater decodes it the same way, including the script a
+  page uses to inflate a data URI, which checks nothing itself.
 - **`--no-fastlz`** keeps every chunk raw. Gzip output does not compress further,
   and raw chunks are the ones a contract can read most cheaply (below).
 

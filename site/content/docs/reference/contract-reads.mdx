@@ -95,7 +95,16 @@ against its recorded hash, and `maxBytes` and `maxChunks` count those chunks, as
 A reader that decodes the data itself must check `keccak256(content) == outputHash`,
 as every ABX FS reader must ([Compression](/docs/using-abxfs/compression)). A browser
 inflating a data URI does not check it; what you get is the stored data, which the
-chain checked chunk by chunk.
+chain checked chunk by chunk. So whoever adopts a file for such a page checks
+`outputHash` before adopting it, decoding as the page will. Inflaters disagree on
+unusual gzip, such as several members or bytes after the trailer: require one member
+with a valid CRC-32 and size and nothing after it, which decodes the same everywhere.
+
+The reader returns the labels it finds. It does not check that `codec` is one you can
+decode, or that the file is not empty: an empty file reads as a success with no data.
+Check both. A missing file or path reverts with the store's own error (`FileStore`'s
+`FileNotFound`, `DirectoryStore`'s `PathNotFound`), so decode reverts with the stores'
+ABIs as well as the reader's.
 
 ### Integrity
 
@@ -137,6 +146,8 @@ Two consequences for callers:
   bytes into memory and then copies the decoded `string` again. For a large file,
   make the `staticcall` yourself, copy the return data once, and point at the fourth
   value: its offset is the return data's fourth word, and `codec` is the second.
+  Check first that the return data is at least four words and that the offset and
+  length lie inside it: a call to an address with no code also succeeds, with no data.
 
 ### One call's gas budget
 

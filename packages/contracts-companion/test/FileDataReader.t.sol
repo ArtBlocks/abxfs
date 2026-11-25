@@ -9,6 +9,8 @@ import {DirectoryStore} from "@abxfs/core/DirectoryStore.sol";
 import {IChunkStore} from "@abxfs/core/interfaces/IChunkStore.sol";
 import {IFileStore} from "@abxfs/core/interfaces/IFileStore.sol";
 import {Base64} from "solady/utils/Base64.sol";
+import {LibZip} from "solady/utils/LibZip.sol";
+import {IStorageBackend} from "@abxfs/core/interfaces/IStorageBackend.sol";
 
 /// @dev A file store and chunk store in one, answering whatever records a test sets, so the reader's own length checks
 ///      can be driven with records the real stores would never hold.
@@ -78,6 +80,33 @@ contract GasMeter {
         }
         used = g - gasleft();
         require(ok, "measured call reverted");
+    }
+}
+
+/// @dev A readable backend whose pointers have bits above the address range, so none can be an SSTORE2 contract. It
+///      keeps each input in storage.
+contract HighBitsBackend is IStorageBackend {
+    mapping(bytes32 => bytes) internal held;
+
+    function store(bytes calldata input, address) external returns (bytes32 pointer) {
+        pointer = keccak256(input) | bytes32(uint256(1) << 255);
+        held[pointer] = input;
+    }
+
+    function readable() external pure returns (bool) {
+        return true;
+    }
+
+    function retrieve(bytes32 pointer) external view returns (bytes memory) {
+        return held[pointer];
+    }
+
+    function retrieval() external pure returns (bytes32, string memory) {
+        return ("evm-storage", "");
+    }
+
+    function maxInputSize() external pure returns (uint256) {
+        return type(uint256).max;
     }
 }
 
@@ -484,6 +513,66 @@ contract FileDataReaderTest is BaseCompanionTest {
         assertEq(b64, Base64.encode(slice(content, start, length)));
     }
 
+    /// Ranges and aligned base64 pages over a two-level chunk tree: 700 chunks, so leaves of 512 and 188 under one
+    /// branch, with ranges inside each leaf, across the leaf boundary and over the whole file.
+    function test_rangesOverAMultiLevelChunkTree() public {
+        bytes memory content = deterministicBytes(700 * 16, "levels");
+        bytes32 cid = writeFileChunked(content, 16, "text/plain");
+        assertEq(fileStore.getFileInfo(cid).rootLevel, 1, "two leaves under a branch");
+        uint256 leafEnd = LEAF_MAX * 16;
+        assertRange(cid, content, 5, 40);
+        assertRange(cid, content, leafEnd - 100, 300);
+        assertRange(cid, content, leafEnd, 16);
+        assertRange(cid, content, leafEnd + 7, content.length - leafEnd - 7);
+        assertRange(cid, content, 0, content.length);
+
+        string memory pages;
+        for (uint256 start; start < content.length; start += 3_000) {
+            uint256 length = start + 3_000 > content.length ? content.length - start : 3_000;
+            (,,, string memory page) =
+                reader.readFileDataRangeBase64(cid, start, length, type(uint256).max, type(uint256).max);
+            pages = string.concat(pages, page);
+        }
+        assertEq(pages, Base64.encode(content), "pages joined");
+    }
+
+    /// `testFuzz_ranges` with full-size chunks (the raw backend's maximum, 24,575 bytes) and a short tail, raw or
+    /// FastLZ where the compressed chunk fits, so ranges cut chunks at any offset of the largest chunk the store allows.
+    function testFuzz_rangesOverFullSizeChunks(
+        uint256 seed,
+        uint8 count,
+        uint256 rawMask,
+        uint256 start,
+        uint256 length
+    ) public {
+        uint256 n = bound(count, 1, 3) + 1;
+        uint256[] memory sizes = new uint256[](n);
+        uint256 total;
+        for (uint256 i; i < n; i++) {
+            sizes[i] = i + 1 < n ? RAW_MAX : 1 + seed % RAW_MAX;
+            total += sizes[i];
+        }
+        bytes memory content = bytes.concat(runBytes(total / 2), deterministicBytes(total - total / 2, "full size"));
+        bytes32[] memory ids = new bytes32[](n);
+        uint256 off;
+        for (uint256 i; i < n; i++) {
+            bytes memory piece = slice(content, off, sizes[i]);
+            bool fastLz = (rawMask >> i) & 1 == 0 && LibZip.flzCompress(piece).length <= flz.maxInputSize();
+            ids[i] = fastLz ? flzChunk(piece) : rawChunk(piece);
+            off += sizes[i];
+        }
+        bytes32 cid = createFileFromChunks(ids, sizes, "text/plain");
+        start = bound(start, 0, total);
+        length = bound(length, 0, total - start);
+        assertRange(cid, content, start, length);
+
+        start = start / 3 * 3;
+        length = start + length >= total ? total - start : length / 3 * 3;
+        (,,, string memory b64) =
+            reader.readFileDataRangeBase64(cid, start, length, type(uint256).max, type(uint256).max);
+        assertEq(b64, Base64.encode(slice(content, start, length)));
+    }
+
     // ---- paths -----------------------------------------------------------
 
     /// @dev root/{index.html, libs/hello-1.0.0.min.js (gzip)}.
@@ -611,6 +700,25 @@ contract FileDataReaderTest is BaseCompanionTest {
             assertData(others[i], flzCid, content);
             assertData(others[i], rawCid, content);
         }
+    }
+
+    /// A pointer with bits above the address range cannot name an SSTORE2 contract, so the direct read declines it,
+    /// even when its backend is the reader's raw backend, and the store's read serves the chunk.
+    function test_aPointerAboveTheAddressRangeReadsThroughTheStore() public {
+        HighBitsBackend highBits = new HighBitsBackend();
+        FileDataReader r = new FileDataReader(address(directoryStore), address(fileStore), address(highBits));
+        bytes memory content = deterministicBytes(5_000, "high bits");
+        bytes32[] memory ids = new bytes32[](1);
+        ids[0] = chunkStore.write(address(highBits), content, keccak256(content), uint48(content.length));
+        uint256[] memory sizes = new uint256[](1);
+        sizes[0] = content.length;
+        bytes32 cid = createFileFromChunks(ids, sizes, "text/plain");
+        (address backend,, bytes32 pointer,) = chunkStore.recordOf(ids[0]);
+        assertEq(backend, r.sstore2Backend(), "the reader's raw backend");
+        assertGt(uint256(pointer) >> 160, 0, "pointer above the address range");
+        assertData(r, cid, content);
+        (,,, bytes memory part) = r.readFileDataRange(cid, 1_000, 2_000, type(uint256).max, type(uint256).max);
+        assertEq(part, slice(content, 1_000, 2_000), "range");
     }
 
     function test_inconsistentRecordsAreRefused() public {

@@ -103,6 +103,19 @@ cd packages/contracts-companion
 forge script script/DeployDataReader.s.sol --rpc-url "$RPC" --sender "$DEPLOYER"
 ```
 
+On a Glamsterdam chain (EIP-8037: Sepolia now), forge's simulation prices the deploy on the old schedule and gives the
+transaction about 2.2M gas against the 11.2M it uses, so a broadcast runs out of gas. There, send the CREATE2
+transaction with the chain's own estimate, then run the script once more: it finds the reader, checks its wiring and
+that its code is this build's, and sends nothing.
+
+```bash
+INIT=$(forge inspect FileDataReader bytecode)$(cast abi-encode 'f(address,address,address)' \
+  "$DIRECTORY_STORE" "$FILE_STORE" "$SSTORE2_BACKEND" | cut -c3-)
+DATA=$(cast keccak "abx-fs/file-data-reader")${INIT#0x}
+GAS=$(cast estimate 0x4e59b44847b379578588920cA78FbF26c0B4956C "$DATA" --rpc-url "$RPC")
+cast send 0x4e59b44847b379578588920cA78FbF26c0B4956C "$DATA" --gas-limit $((GAS * 12 / 10)) --rpc-url "$RPC"
+```
+
 Promotion follows the verified deployment, per chain: add `fileDataReader` to that chain's entry in
 `packages/sdk/src/canonical.ts` (`canonical.test.ts` then holds it to `pinned()`), list it on the deployments page,
 and run source verification (`scripts/verification-plan.mjs` includes it wherever the book records it). The SDK's ABI,

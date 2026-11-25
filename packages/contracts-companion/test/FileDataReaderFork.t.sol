@@ -42,7 +42,8 @@ contract ReadChunkJoiner {
 ///      be byte for byte what `FileStore.readChunk` joins, hash to the gzip bytes that were uploaded, and carry the
 ///      original library's hash as its `outputHash`. Takes `ABXFS_FORK_RPC_URL`, else `ABXFS_RPC_URL_1`, else
 ///      `ABXFS_RPC_URL_84532` (any chain holding the root works; the fork reads state, not `eth_call`, so endpoint gas
-///      caps do not apply); skipped without one.
+///      caps do not apply); skipped without one. Where the reader is already deployed at the pin, `setUp` (the deploy
+///      script) also requires its code to be this build's.
 contract FileDataReaderForkTest is Test {
     bytes32 internal constant AB500_ROOT = 0x60cdc71765dc6954ebc3dcc4545d92a04d5a09ebd891bb02333d95ba0c39fa2d;
 
@@ -169,6 +170,41 @@ contract FileDataReaderForkTest is Test {
         for (uint256 i; i < l.length; i++) {
             (,,, string memory b64) = reader.readPathDataBase64(AB500_ROOT, l[i].name, 1 << 20, 64);
             assertEq(keccak256(bytes(b64)), keccak256(bytes(joiner.joinBase64(_lookup(l[i].name)))), l[i].name);
+        }
+    }
+
+    /// Each library read in data ranges and aligned base64 pages of 99,999 bytes (cutting chunks mid-way), joined:
+    /// the uploaded gzip bytes, and their base64.
+    function test_ab500RangesJoinToTheWholeFile() public {
+        Lib[13] memory l = libs();
+        for (uint256 i; i < l.length; i++) {
+            this.assertRangesJoin(l[i].name, l[i].gzipBytes, l[i].gzipHash);
+        }
+    }
+
+    /// @dev External, so each library's pages use a fresh call frame's memory. The pages are copied into buffers of
+    ///      the whole file's size, not concatenated, so memory stays linear in the file.
+    function assertRangesJoin(string memory name, uint256 size, bytes32 gzipHash) external view {
+        bytes32 cid = _lookup(name);
+        uint256 page = 99_999;
+        bytes memory data = new bytes(size);
+        bytes memory b64 = new bytes((size + 2) / 3 * 4);
+        for (uint256 start; start < size; start += page) {
+            uint256 length = start + page > size ? size - start : page;
+            (,,, bytes memory part) = reader.readFileDataRange(cid, start, length, 1 << 20, 64);
+            (,,, string memory encoded) = reader.readFileDataRangeBase64(cid, start, length, 1 << 20, 64);
+            assertEq(part.length, length, name);
+            assertEq(bytes(encoded).length, (length + 2) / 3 * 4, name);
+            _put(data, start, part);
+            _put(b64, start / 3 * 4, bytes(encoded));
+        }
+        assertEq(keccak256(data), gzipHash, name);
+        assertEq(string(b64), Base64.encode(data), name);
+    }
+
+    function _put(bytes memory dst, uint256 at, bytes memory src) private pure {
+        assembly ("memory-safe") {
+            mcopy(add(add(dst, 0x20), at), add(src, 0x20), mload(src))
         }
     }
 

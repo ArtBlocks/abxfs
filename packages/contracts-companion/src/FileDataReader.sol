@@ -13,8 +13,10 @@ import {IFileStore} from "@abxfs/core/interfaces/IFileStore.sol";
 ///         `decode(codec, data)`, which the chain neither performs nor can check against `outputHash`. This companion is
 ///         its data-level counterpart. It never decodes; it hands the stored bytes, labelled, to a caller that decodes
 ///         them off chain and checks `keccak256(content) == outputHash`, as §6 requires of every reader. The base64
-///         views serve on-chain HTML generators that emit gzip data URIs, where a browser does the decoding: encoding
-///         here, in this call's own memory, keeps the raw data out of the caller's frame.
+///         views serve on-chain HTML generators that emit gzip data URIs, inflated by a script in the page, which
+///         checks nothing: whoever adopts a file for such a page checks `outputHash` first, decoding as the page
+///         will (a gzip file of one member with a valid trailer decodes the same in every inflater). Encoding here,
+///         in this call's own memory, keeps the raw data out of the caller's frame.
 ///
 ///         Integrity matches the store's: every chunk returned hashes to the `dataHash` ChunkStore recorded for it. A
 ///         chunk held raw in `sstore2Backend` is read straight from its SSTORE2 contract with EXTCODECOPY and hashed
@@ -26,12 +28,15 @@ import {IFileStore} from "@abxfs/core/interfaces/IFileStore.sol";
 ///
 ///         Whole files and byte ranges: a range lets a caller page a file in calls that each fit its gas budget
 ///         (a transaction's execution gas is capped at 2^24; an RPC caps `eth_call` at its own limit), and base64
-///         ranges aligned to 3 bytes concatenate to the whole file's base64.
+///         ranges aligned to 3 bytes concatenate to the whole file's base64. Reading costs about 3 gas per data byte
+///         and base64 encoding about 50 more, so a whole-file base64 read takes about 16M gas for 300 KB of data and
+///         about 50M for 900 KB.
 ///
 ///         Each read builds its ABI-encoded return value in one buffer, writes the chunks into it where the encoding
-///         puts them, and returns that buffer, so the data is never copied a second time. A base64 view writes the
-///         data a third of the way into the space its encoding will fill and encodes forward over it, so the data and
-///         its encoding share that space.
+///         puts them, and returns that buffer. A whole chunk read straight from SSTORE2 is written once, where it is
+///         returned; a chunk a range cuts, or one read through `ChunkStore.read`, is copied into place. A base64 view
+///         writes the data a third of the way into the space its encoding will fill and encodes forward over it, so
+///         the data and its encoding share that space.
 /// @dev Limits bound data bytes and chunk reads, not gas, as in `ContentReader`. Callers that must contain failures
 ///      should also cap call gas. The read functions end in an assembly `return`; they are external and call nothing
 ///      after it. Built with the legacy code generator, under which putting the free memory pointer back after a
@@ -124,8 +129,8 @@ contract FileDataReader {
         _readWhole(_fileAt(root, path), maxBytes, maxChunks, true);
     }
 
-    /// @notice `[start, start + length)` of a file's data, for any codec. Bounds are strict; a zero length at the end
-    ///         of the file is valid. With a codec the range is of the encoded data: ranges of one file joined in order
+    /// @notice `[start, start + length)` of a file's data, for any codec. Bounds are strict; a zero length is valid
+    ///         anywhere in bounds, the end of the file included. With a codec the range is of the encoded data: ranges of one file joined in order
     ///         are its data, which a caller decodes whole. Ranges let a file be read in calls that each fit a gas
     ///         budget (a transaction's execution gas is capped at 2^24; an RPC caps `eth_call` at its own limit).
     /// @dev `maxBytes` and `maxChunks` cover every chunk the range touches, read in full because each is checked

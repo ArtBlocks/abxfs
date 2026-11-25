@@ -59,8 +59,12 @@ jobs:
         working-directory: packages/${{ matrix.package }}
         run: forge build --sizes
 
+      # The companion's fork suite reads the AB500 upload on a live chain. It needs an RPC URL for a chain holding it,
+      # from the `ABXFS_FORK_RPC_URL` repository secret, and skips without one (as on pull requests from forks).
       - name: forge test
         working-directory: packages/${{ matrix.package }}
+        env:
+          ABXFS_FORK_RPC_URL: ${{ secrets.ABXFS_FORK_RPC_URL }}
         run: forge test -vvv
 
       # The deploy scripts skip their pin check only on a chain whose RPC answers 31337 (`script/LocalChain.sol`). These
